@@ -147,10 +147,13 @@
     <!-- 右栏：输入 -->
     <div class="col panel panel-right">
       <h2>蓝图输入</h2>
-      <div style="display:flex; gap:8px; flex-shrink:0;">
+      <div style="display:flex; gap:8px; flex-shrink:0; flex-wrap:wrap; align-items:center;">
         <button id="parseButton">解析并渲染</button>
         <button id="pasteButton">粘贴</button>
         <button id="copyButton">复制</button>
+        <label style="display:flex; align-items:center; gap:4px; margin-left:8px; cursor:pointer; font-size:13px; color:#bcc8e0;">
+          <input type="checkbox" id="gridToggle"> 经度刻度
+        </label>
       </div>
       <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
     </div>
@@ -245,12 +248,68 @@
     const rootGroup = new THREE.Group();
     scene.add(rootGroup);
 
-    const axesHelper = new THREE.AxesHelper(0.1);
+    const gridGroup = new THREE.Group();
+    gridGroup.name = 'longitudeGrid';
+    scene.add(gridGroup);
+
+    const axesHelper = new THREE.AxesHelper(0.05);
     axesHelper.material.depthTest = false;
     axesHelper.renderOrder = 2;
     scene.add(axesHelper);
 
+    const originSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 32, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffff44, opacity: 0.5, transparent: true })
+    );
+    scene.add(originSphere);
+
     let currentScale = 1;
+
+    function createLongitudeGrid(radius) {
+      while (gridGroup.children.length) {
+        const child = gridGroup.children[0];
+        gridGroup.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      }
+      const tickLen = radius * 0.08;
+      const fontSize = radius * 0.04;
+      // 每 30° 一个刻度：0°, 30°, 60°, ..., 330°
+      for (let deg = 0; deg < 360; deg += 30) {
+        const rad = THREE.MathUtils.degToRad(deg + 180);
+        const dir = new THREE.Vector3(Math.sin(rad), 0, Math.cos(rad));
+        const start = dir.clone().multiplyScalar(radius);
+        const end = dir.clone().multiplyScalar(radius + tickLen);
+        const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
+        const mat = new THREE.LineBasicMaterial({ color: 0xffdd99, linewidth: 1, depthTest: false });
+        gridGroup.add(new THREE.Line(geom, mat));
+        // 刻度标签使用精灵
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffdd99';
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${deg}°`, 32, 24);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.copy(dir.clone().multiplyScalar(radius + tickLen * 1.8));
+        sprite.scale.set(fontSize * 2, fontSize, 1);
+        gridGroup.add(sprite);
+      }
+      // 大圆环
+      const ringPts = [];
+      for (let i = 0; i <= 128; i++) {
+        const a = (i / 128) * Math.PI * 2;
+        ringPts.push(new THREE.Vector3(Math.sin(a) * radius, 0, Math.cos(a) * radius));
+      }
+      const ringGeom = new THREE.BufferGeometry().setFromPoints(ringPts);
+      const ringMat = new THREE.LineBasicMaterial({ color: 0x556688, linewidth: 1, depthTest: false });
+      gridGroup.add(new THREE.Line(ringGeom, ringMat));
+      gridGroup.visible = document.getElementById('gridToggle').checked;
+    }
 
     function resizeRenderer() {
       const width = canvas.clientWidth;
@@ -468,7 +527,7 @@
       const a = toLatLon(from, pole);
       const b = toLatLon(to, pole);
       const maxAbsLat = Math.max(Math.abs(a.lat), Math.abs(b.lat));
-      const nearPole = maxAbsLat > Math.PI * 0.4;  // 纬度 > 72° 视为近极点
+      const nearPole = maxAbsLat > Math.PI * 0.49;  // 纬度 > 85° 视为近极点
 
       let dLon = b.lon - a.lon;
       // 归一化经度差到 [-π, π]
@@ -658,16 +717,24 @@
       const polygon = flatPoints.map((p, idx) => ({ x: p.x, y: p.y, idx }));
       const triangles_2d = earClipFlat(polygon);
 
-      // 近极点检测：在壳层极点附近的三角形强制使用球面法线细分
+      // 近极点检测：检查壳层极点是否在壳面多边形内部
       const nearPoleGlobal = (() => {
         if (!pole) return false;
-        for (const p of spherePoints) {
-          const r = p.length();
-          if (r > 1e-6 && Math.abs(p.clone().normalize().dot(pole.clone().normalize())) > 0.9) {
-            return true;
+        // 将极点方向投影到切平面
+        const polePt3D = pole.clone().normalize().multiplyScalar(avgRadius);
+        const d = polePt3D.clone().sub(centroid3D);
+        const px = d.dot(axisU);
+        const py = d.dot(axisV);
+        // 射线法判断点是否在2D多边形内
+        let inside = false;
+        for (let i = 0, j = flatPoints.length - 1; i < flatPoints.length; j = i++) {
+          const xi = flatPoints[i].x, yi = flatPoints[i].y;
+          const xj = flatPoints[j].x, yj = flatPoints[j].y;
+          if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+            inside = !inside;
           }
         }
-        return false;
+        return inside;
       })();
 
       if (gridType === 1 && !nearPoleGlobal) {
@@ -848,7 +915,7 @@
           }
         }
         if (hasFillGridWarning) {
-          addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色图案显示会有差异');
+          addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色不能正确显示');
         }
 
         // 云轨道参数
@@ -963,14 +1030,14 @@
                 const faceColor = toHexColor(face.color, 0x00b7ff);
                 const faceOpacity = colorOpacity(face.color, 1);
                 // 从框架边推断壳面类型（多数为 type1 则为经纬线）
-                // 只有过壳层原始极点（|lat|>80°）才强制测地线细分
+                // 只有过壳层原始极点（|lat|>88°）才强制测地线细分
                 let faceType = 0;
                 let nearPole = false;
                 if (facePoints.length > 0 && shellPole) {
                   const poleN = shellPole.clone().normalize();
                   for (const p of facePoints) {
                     const r = p.length();
-                    if (r > 1e-6 && Math.abs(p.dot(poleN) / r) > Math.sin(Math.PI * 80 / 180)) {
+                    if (r > 1e-6 && Math.abs(p.dot(poleN) / r) > Math.sin(Math.PI * 88 / 180)) {
                       nearPole = true;
                       break;
                     }
@@ -992,6 +1059,8 @@
           }
         }
 
+
+        createLongitudeGrid(baseSphereRadius * 1.2);
 
         camera.position.set(0, baseSphereRadius * 2.2, baseSphereRadius * 3.2);
         controls.target.set(0, 0, 0);
@@ -1021,6 +1090,10 @@
       } catch {
         alert('无法复制到剪贴板');
       }
+    });
+
+    document.getElementById('gridToggle').addEventListener('change', (e) => {
+      gridGroup.visible = e.target.checked;
     });
 
     parseButton.addEventListener('click', async () => {
