@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>戴森球蓝图 3D 可视化</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #090b14;
+      color: #e7ebff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 320px 1fr 380px;
+      gap: 12px;
+      padding: 10px;
+      height: 100vh;
+      width: 100%;
+    }
+    .col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.8rem;
+    }
+    .controls {
+      display: grid;
+      gap: 12px;
+    }
+    * { box-sizing: border-box; }
+    textarea {
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid #23334f;
+      background: #101624;
+      color: #eef2ff;
+      font-size: 14px;
+      resize: none;
+    }
+    button {
+      width: fit-content;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 12px;
+      background: #4364eb;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+    .viewer {
+      display: grid;
+      gap: 12px;
+    }
+    .panel {
+      background: #0f1628;
+      border: 1px solid #243556;
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+    }
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      width: 100%;
+      min-height: 0;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #05080e;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .stat-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .stat-box {
+      padding: 8px 12px;
+      background: #111926;
+      border: 1px solid #1e3657;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .panel-left h2 {
+      margin: 0 0 8px;
+      font-size: 1.0rem;
+    }
+    textarea::-webkit-scrollbar { width: 6px; }
+    textarea::-webkit-scrollbar-thumb { background: #334; border-radius: 3px; }
+    .panel-right { min-width: 0; }
+    .panel-right h2 {
+      margin: 0 0 8px;
+      font-size: 1.0rem;
+      flex-shrink: 0;
+    }
+    .panel-right button { flex-shrink: 0; }
+    .panel-center {
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-center h2 {
+      margin: 0 0 8px;
+      font-size: 1.0rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- 左栏：蓝图信息 -->
+    <div class="col panel panel-left">
+      <h2>蓝图信息</h2>
+      <div class="stat-grid" id="stats">
+        <div class="stat-box">请输入蓝图字符串并点击解析</div>
+      </div>
+    </div>
+
+    <!-- 中间：3D 视图 -->
+    <div class="col panel panel-center">
+      <h2>3D 视图</h2>
+      <div class="canvas-container">
+        <canvas id="canvas3d"></canvas>
+      </div>
+    </div>
+
+    <!-- 右栏：输入 -->
+    <div class="col panel panel-right">
+      <h2>蓝图输入</h2>
+      <button id="parseButton">解析并渲染</button>
+      <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import { parseBlueprintString } from './dysonBlueprintParser.js';
+    import * as THREE from 'three';
+    import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+    import { fetchTextFile } from './fetchTextFile.js';
+
+    const blueprintInput = document.getElementById('blueprintInput');
+    const parseButton = document.getElementById('parseButton');
+    const statsElement = document.getElementById('stats');
+    const canvas = document.getElementById('canvas3d');
+
+    // 检查URL参数，如有 txt= 则自动加载并渲染
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const txtUrl = params.get('txt');
+      if (txtUrl) {
+        try {
+          const text = await fetchTextFile(txtUrl);
+          blueprintInput.value = text;
+          parseButton.click();
+        } catch (e) {
+          clearStats();
+          addStat('❌ 加载失败', e.message);
+        }
+      }
+    })();
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x3F5C6A);
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+    camera.position.set(0, 1.5, 3.0);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.minDistance = 0.8;
+    controls.maxDistance = 20;
+
+    // --- 均匀全方位光照 ---
+    // 中心点光源（模拟恒星）
+    const pointLight = new THREE.PointLight(0xffeedd, 1.2, 0, 0);
+    pointLight.position.set(0, 0, 0);
+    scene.add(pointLight);
+
+    // 半球光（天空+地面柔和环境光）
+    //scene.add(new THREE.HemisphereLight(0xbcc8e0, 0x556a7a, 0.8));
+
+    // 环境光补光（均匀照亮所有面）
+    scene.add(new THREE.AmbientLight(0xbcc8e0, 0.65));
+
+    // 消除暗面：六盏弱方向灯从六个方位均匀打光
+    const dirLight1 = new THREE.DirectionalLight(0xddeeff, 0.22);
+    dirLight1.position.set(3, 2, 5);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xddeeff, 0.22);
+    dirLight2.position.set(-3, 2, -5);
+    scene.add(dirLight2);
+
+    const dirLight3 = new THREE.DirectionalLight(0xddeeff, 0.22);
+    dirLight3.position.set(5, -2, -3);
+    scene.add(dirLight3);
+
+    const dirLight4 = new THREE.DirectionalLight(0xddeeff, 0.22);
+    dirLight4.position.set(-5, -2, 3);
+    scene.add(dirLight4);
+
+    const dirLight5 = new THREE.DirectionalLight(0xffddcc, 0.18);
+    dirLight5.position.set(0, 3, 0);
+    scene.add(dirLight5);
+
+    const dirLight6 = new THREE.DirectionalLight(0xccddff, 0.18);
+    dirLight6.position.set(0, -3, 0);
+    scene.add(dirLight6);
+
+    const rootGroup = new THREE.Group();
+    scene.add(rootGroup);
+
+    const axesHelper = new THREE.AxesHelper(0.1);
+    axesHelper.material.depthTest = false;
+    axesHelper.renderOrder = 2;
+    scene.add(axesHelper);
+
+    let currentScale = 1;
+
+    function resizeRenderer() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      if (canvas.width !== width || canvas.height !== height) {
+        renderer.setSize(width, height, false);
+      }
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+
+    window.addEventListener('resize', () => {
+      resizeRenderer();
+    });
+
+    function render() {
+      resizeRenderer();
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+
+    function addStat(label, value) {
+      const box = document.createElement('div');
+      box.className = 'stat-box';
+      box.innerHTML = `<strong>${label}</strong><br>${value}`;
+      statsElement.appendChild(box);
+    }
+
+    function clearStats() {
+      statsElement.innerHTML = '';
+    }
+
+    function clearScene() {
+      while (rootGroup.children.length) {
+        const child = rootGroup.children[0];
+        rootGroup.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      }
+    }
+
+    function convertBlueprintPosition(coord) {
+      // 蓝图坐标系与 Three.js 坐标系的 Z 轴方向相反，修正镜像
+      return new THREE.Vector3(coord.x, coord.y, -coord.z);
+    }
+
+    function normalizeQuaternion(orbit) {
+      const q = new THREE.Quaternion(orbit.x, orbit.y, orbit.z, orbit.w);
+      q.normalize();
+      return q;
+    }
+
+    function quaternionToOrbitParams(orbit) {
+      const q = new THREE.Quaternion(orbit.x, orbit.y, orbit.z, orbit.w);
+      const halfInclSin = Math.hypot(q.x, q.z);
+      const halfInclCos = Math.hypot(q.y, q.w);
+      const inclination = 2.0 * Math.atan2(halfInclSin, halfInclCos) * THREE.MathUtils.RAD2DEG;
+      const longAscNode = 2.0 * Math.atan2(-q.y, q.w) * THREE.MathUtils.RAD2DEG;
+      return {
+        inclination: ((inclination % 360) + 360) % 360,
+        ascendingNode: ((longAscNode % 360) + 360) % 360,
+      };
+    }
+
+    function colorIsValid(color) {
+      // RGBA 或 HSVA 通用检测
+      if (!color) return false;
+      if (typeof color.r === 'number') return true;  // RGBA
+      if (typeof color.h === 'number') return true;  // HSVA
+      return false;
+    }
+
+    function toHexColor(color, defaultColor) {
+      if (!colorIsValid(color)) return defaultColor;
+      // RGBA 颜色
+      if (typeof color.r === 'number') {
+        if (color.a === 0) return defaultColor;
+        return (color.r << 16) | (color.g << 8) | color.b;
+      }
+      // HSVA 颜色：H(0-1)/S(0-1) 转 RGB，V 强制=1
+      if (typeof color.h === 'number') {
+        if (color.a === 0) return defaultColor;
+        const h = color.h, s = color.s;
+        const hAngle = (h * 360) % 360;
+        const c = s;
+        const x = c * (1 - Math.abs((hAngle / 60) % 2 - 1));
+        let r = 0, g = 0, b = 0;
+        if (hAngle < 60) { r = c; g = x; }
+        else if (hAngle < 120) { r = x; g = c; }
+        else if (hAngle < 180) { g = c; b = x; }
+        else if (hAngle < 240) { g = x; b = c; }
+        else if (hAngle < 300) { r = x; b = c; }
+        else { r = c; b = x; }
+        const m = 1 - c;
+        return (Math.round((r+m)*255)<<16) | (Math.round((g+m)*255)<<8) | Math.round((b+m)*255);
+      }
+      return defaultColor;
+    }
+
+    function colorOpacity(color, defaultOpacity = 1) {
+      if (!colorIsValid(color)) return defaultOpacity;
+      // RGBA：a=0-255
+      if (typeof color.r === 'number') {
+        if (color.a === 0 || typeof color.a !== 'number') return defaultOpacity;
+        return Math.max(0, Math.min(1, color.a / 255));
+      }
+      // HSVA：a=0-1
+      if (typeof color.h === 'number') {
+        if (color.a === 0 || typeof color.a !== 'number') return defaultOpacity;
+        return Math.max(0, Math.min(1, color.a));
+      }
+      return defaultOpacity;
+    }
+
+    function createOrbitRing(radius, orbit, color = 0x00b7ff, opacity = 0.9) {
+      const q = normalizeQuaternion(orbit);
+      const segments = 128;
+      const points = [];
+      for (let i = 0; i <= segments; i += 1) {
+        const theta = (i / segments) * Math.PI * 2;
+        const point = new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
+        point.applyQuaternion(q);
+        points.push(convertBlueprintPosition(point));
+      }
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({ color, opacity, transparent: opacity < 1 });
+      return new THREE.LineLoop(geometry, material);
+    }
+
+    function createNodeSphere(position, id, color = 0x44ffb8, opacity = 1) {
+      const geometry = new THREE.SphereGeometry(0.018 * currentScale, 10, 10);
+      const material = new THREE.MeshStandardMaterial({ color, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6, transparent: opacity < 1, opacity });
+      const sphere = new THREE.Mesh(geometry, material);
+      sphere.position.copy(position);
+      sphere.name = `node-${id}`;
+      return sphere;
+    }
+
+    function normalizeLongitude(delta) {
+      return ((delta + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    }
+
+    function createSphericalArcPoints(from, to, segments = 36) {
+      const radius = (from.length() + to.length()) / 2;
+      const fromN = from.clone().normalize();
+      const toN = to.clone().normalize();
+      const dot = THREE.MathUtils.clamp(fromN.dot(toN), -1, 1);
+      const angle = Math.acos(dot);
+
+      const axis = new THREE.Vector3().crossVectors(fromN, toN);
+      if (axis.lengthSq() < 1e-6) {
+        const points = [];
+        for (let i = 0; i <= segments; i += 1) {
+          points.push(fromN.clone().lerp(toN, i / segments).normalize().multiplyScalar(radius));
+        }
+        return points;
+      }
+
+      axis.normalize();
+      const points = [];
+      for (let i = 0; i <= segments; i += 1) {
+        const theta = (i / segments) * angle;
+        points.push(fromN.clone().applyAxisAngle(axis, theta).multiplyScalar(radius));
+      }
+      return points;
+    }
+
+    function toLatLon(pos, pole = new THREE.Vector3(0, 1, 0)) {
+      // 纬度 = asin(dot(pole, pos)/r)，经度需用 pole 的垂直基
+      const r = pos.length();
+      const poleN = pole.clone().normalize();
+      const lat = Math.asin(THREE.MathUtils.clamp(pos.dot(poleN) / r, -1, 1));
+      // 经度基：基于 pole 的切平面
+      const ref = Math.abs(poleN.x) < 0.99
+        ? new THREE.Vector3(1, 0, 0)
+        : new THREE.Vector3(0, 1, 0);
+      const east = new THREE.Vector3().crossVectors(ref, poleN).normalize();
+      if (east.lengthSq() < 1e-6) {
+        east.crossVectors(new THREE.Vector3(0, 0, 1), poleN).normalize();
+      }
+      const north = new THREE.Vector3().crossVectors(poleN, east).normalize();
+      const px = pos.dot(east);
+      const py = pos.dot(north);
+      const lon = Math.atan2(px, py);
+      return { lat, lon, r };
+    }
+
+    function latLonToWorld(lat, lon, r, pole = new THREE.Vector3(0, 1, 0)) {
+      const poleN = pole.clone().normalize();
+      const ref = Math.abs(poleN.x) < 0.99
+        ? new THREE.Vector3(1, 0, 0)
+        : new THREE.Vector3(0, 1, 0);
+      const east = new THREE.Vector3().crossVectors(ref, poleN).normalize();
+      if (east.lengthSq() < 1e-6) {
+        east.crossVectors(new THREE.Vector3(0, 0, 1), poleN).normalize();
+      }
+      const north = new THREE.Vector3().crossVectors(poleN, east).normalize();
+      const cosLat = Math.cos(lat);
+      return new THREE.Vector3()
+        .addScaledVector(east, r * cosLat * Math.sin(lon))
+        .addScaledVector(north, r * cosLat * Math.cos(lon))
+        .addScaledVector(poleN, r * Math.sin(lat));
+    }
+
+    function createGridArcPoints(from, to, segments = 18, pole = null) {
+      const a = toLatLon(from, pole);
+      const b = toLatLon(to, pole);
+      const maxAbsLat = Math.max(Math.abs(a.lat), Math.abs(b.lat));
+      const nearPole = maxAbsLat > Math.PI * 0.4;  // 纬度 > 72° 视为近极点
+
+      let dLon = b.lon - a.lon;
+      // 归一化经度差到 [-π, π]
+      while (dLon > Math.PI) dLon -= 2 * Math.PI;
+      while (dLon < -Math.PI) dLon += 2 * Math.PI;
+
+      const points = [];
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        let p;
+        if (nearPole) {
+          // 近极点：使用球面大圆弧（Slerp），避免经纬度插值扭曲
+          const fromN = from.clone().normalize();
+          const toN = to.clone().normalize();
+          const dot = THREE.MathUtils.clamp(fromN.dot(toN), -1, 1);
+          const angle = Math.acos(dot);
+          if (angle < 1e-6) {
+            p = latLonToWorld(a.lat + t * (b.lat - a.lat), a.lon + t * dLon, a.r + t * (b.r - a.r), pole);
+          } else {
+            const sinA = Math.sin((1 - t) * angle);
+            const sinB = Math.sin(t * angle);
+            p = new THREE.Vector3()
+              .addScaledVector(fromN, sinA / Math.sin(angle))
+              .addScaledVector(toN, sinB / Math.sin(angle))
+              .normalize()
+              .multiplyScalar(a.r + t * (b.r - a.r));
+          }
+        } else {
+          const lat = a.lat + t * (b.lat - a.lat);
+          const lon = a.lon + t * dLon;
+          const r = a.r + t * (b.r - a.r);
+          p = latLonToWorld(lat, lon, r, pole);
+        }
+        points.push(p);
+      }
+      return points;
+    }
+
+    function createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
+      let points;
+      if (type === 1) {
+        // 经纬线：沿纬度/经度方向的球面网格弧线
+        points = createGridArcPoints(from, to, 18, pole);
+      } else {
+        // 测地线（type 0）：球面大圆弧（最短路径）
+        points = createSphericalArcPoints(from, to, 18);
+      }
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+      return new THREE.Line(geometry, material);
+    }
+
+    function createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, gridType = 0, pole = null) {
+      if (points.length < 3) return null;
+
+      const avgRadius = points.reduce((sum, p) => sum + p.length(), 0) / points.length;
+      // 始终使用原始顶点坐标，与框架线端点保持一致
+      const spherePoints = points.map((p) => p.clone());
+
+      // effective radius for spherical subdivision fallback
+      const sphereRadius = avgRadius;
+
+      const vertices = [];
+      const indices = [];
+
+      const addVertex = (vertex) => {
+        vertices.push(vertex.x, vertex.y, vertex.z);
+        return (vertices.length / 3) - 1;
+      };
+
+      const subdivideTriangleSpherical = (a, b, c, divisions = 3) => {
+        const ra = a.length(), rb = b.length(), rc = c.length();
+        const rowIndices = [];
+        for (let i = 0; i <= divisions; i += 1) {
+          const row = [];
+          for (let j = 0; j <= divisions - i; j += 1) {
+            const k = divisions - i - j;
+            const tA = i / divisions;
+            const tB = j / divisions;
+            const tC = k / divisions;
+            const r = tA * ra + tB * rb + tC * rc;
+            const point = new THREE.Vector3()
+              .addScaledVector(a, tA)
+              .addScaledVector(b, tB)
+              .addScaledVector(c, tC)
+              .normalize()
+              .multiplyScalar(r);
+            row.push(addVertex(point));
+          }
+          rowIndices.push(row);
+        }
+
+        for (let i = 0; i < rowIndices.length - 1; i += 1) {
+          const current = rowIndices[i];
+          const next = rowIndices[i + 1];
+          for (let j = 0; j < current.length - 1; j += 1) {
+            const aIndex = current[j];
+            const bIndex = current[j + 1];
+            const cIndex = next[j];
+            const dIndex = next[j + 1];
+            indices.push(aIndex, bIndex, cIndex);
+            if (j < current.length - 2) {
+              indices.push(bIndex, dIndex, cIndex);
+            }
+          }
+        }
+      };
+
+      // ---------- 2D ear-clipping 辅助 ----------
+      function earClipFlat(polygon) {
+        const triangles = [];
+        const remaining = polygon.slice();
+        function signedArea(a, b, c) {
+          return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+        }
+        function isConvex(prev, curr, next) {
+          return signedArea(prev, curr, next) > 0;
+        }
+        function pointInTriangle(pt, a, b, c) {
+          const d1 = signedArea(pt, a, b);
+          const d2 = signedArea(pt, b, c);
+          const d3 = signedArea(pt, c, a);
+          const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+          const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+          return !(hasNeg && hasPos);
+        }
+
+        while (remaining.length > 3) {
+          let earFound = false;
+          for (let i = 0; i < remaining.length; i++) {
+            const prev = remaining[(i - 1 + remaining.length) % remaining.length];
+            const curr = remaining[i];
+            const next = remaining[(i + 1) % remaining.length];
+            if (!isConvex(prev, curr, next)) continue;
+            let isEar = true;
+            for (let j = 0; j < remaining.length; j++) {
+              if (j === (i - 1 + remaining.length) % remaining.length ||
+                  j === i ||
+                  j === (i + 1) % remaining.length) continue;
+              if (pointInTriangle(remaining[j], prev, curr, next)) {
+                isEar = false;
+                break;
+              }
+            }
+            if (isEar) {
+              triangles.push([prev.idx, curr.idx, next.idx]);
+              remaining.splice(i, 1);
+              earFound = true;
+              break;
+            }
+          }
+          if (!earFound) {
+            const base = remaining[0];
+            for (let i = 1; i < remaining.length - 1; i++) {
+              triangles.push([base.idx, remaining[i].idx, remaining[i + 1].idx]);
+            }
+            break;
+          }
+        }
+        if (remaining.length === 3) {
+          triangles.push([remaining[0].idx, remaining[1].idx, remaining[2].idx]);
+        }
+        return triangles;
+      }
+
+      // 切平面投影 + ear-clipping
+      const faceNormal = new THREE.Vector3();
+      for (let i = 0; i < spherePoints.length; i++) {
+        const curr = spherePoints[i];
+        const next = spherePoints[(i + 1) % spherePoints.length];
+        faceNormal.x += (curr.y - next.y) * (curr.z + next.z);
+        faceNormal.y += (curr.z - next.z) * (curr.x + next.x);
+        faceNormal.z += (curr.x - next.x) * (curr.y + next.y);
+      }
+      faceNormal.normalize();
+
+      const refX = Math.abs(faceNormal.x) < 0.99
+        ? new THREE.Vector3(1, 0, 0)
+        : new THREE.Vector3(0, 1, 0);
+      const axisU = new THREE.Vector3().crossVectors(refX, faceNormal).normalize();
+      const axisV = new THREE.Vector3().crossVectors(faceNormal, axisU).normalize();
+      const centroid3D = spherePoints.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / spherePoints.length);
+      const flatPoints = spherePoints.map((p) => {
+        const d = p.clone().sub(centroid3D);
+        return { x: d.dot(axisU), y: d.dot(axisV) };
+      });
+      const polygon = flatPoints.map((p, idx) => ({ x: p.x, y: p.y, idx }));
+      const triangles_2d = earClipFlat(polygon);
+
+      // 近极点检测：在壳层极点附近的三角形强制使用球面法线细分
+      const nearPoleGlobal = (() => {
+        if (!pole) return false;
+        for (const p of spherePoints) {
+          const r = p.length();
+          if (r > 1e-6 && Math.abs(p.clone().normalize().dot(pole.clone().normalize())) > 0.9) {
+            return true;
+          }
+        }
+        return false;
+      })();
+
+      if (gridType === 1 && !nearPoleGlobal) {
+        // 经纬线面片：lat/lon 空间细分（面片走向与经纬线框架一致）
+        const latLonPts = spherePoints.map((p) => toLatLon(p, pole));
+        const maxAbsLat = latLonPts.reduce((m, p) => Math.max(m, Math.abs(p.lat)), 0);
+        const subdivisions = (maxAbsLat > Math.PI * 0.35) ? 2 : 4;
+
+        triangles_2d.forEach(([aIdx, bIdx, cIdx]) => {
+          if (aIdx >= latLonPts.length || bIdx >= latLonPts.length || cIdx >= latLonPts.length) return;
+          const al = latLonPts[aIdx], bl = latLonPts[bIdx], cl = latLonPts[cIdx];
+          // 解包经度到 al.lon 附近
+          let blLon = bl.lon, clLon = cl.lon;
+          while (blLon - al.lon > Math.PI) blLon -= 2 * Math.PI;
+          while (blLon - al.lon < -Math.PI) blLon += 2 * Math.PI;
+          while (clLon - al.lon > Math.PI) clLon -= 2 * Math.PI;
+          while (clLon - al.lon < -Math.PI) clLon += 2 * Math.PI;
+          const rowIndices = [];
+          for (let i = 0; i <= subdivisions; i++) {
+            const row = [];
+            for (let j = 0; j <= subdivisions - i; j++) {
+              const tA = i / subdivisions;
+              const tB = j / subdivisions;
+              const tC = 1 - tA - tB;
+              const lat = tA * al.lat + tB * bl.lat + tC * cl.lat;
+              const lon = tA * al.lon + tB * blLon + tC * clLon;
+              const r = tA * al.r + tB * bl.r + tC * cl.r;
+              row.push(addVertex(latLonToWorld(lat, lon, r, pole)));
+            }
+            rowIndices.push(row);
+          }
+          for (let ii = 0; ii < rowIndices.length - 1; ii++) {
+            const cur = rowIndices[ii];
+            const nxt = rowIndices[ii + 1];
+            for (let j = 0; j < cur.length - 1; j++) {
+              indices.push(cur[j], cur[j + 1], nxt[j]);
+              if (j < cur.length - 2) {
+                indices.push(cur[j + 1], nxt[j + 1], nxt[j]);
+              }
+            }
+          }
+        });
+      } else {
+        // 测地线面片 或 近极点面片：球面法线方向细分
+        triangles_2d.forEach(([aIdx, bIdx, cIdx]) => {
+          if (aIdx >= spherePoints.length || bIdx >= spherePoints.length || cIdx >= spherePoints.length) return;
+          subdivideTriangleSpherical(spherePoints[aIdx], spherePoints[bIdx], spherePoints[cIdx], 3);
+        });
+      }
+
+      if (triangles_2d.length === 0) return null;
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      const material = new THREE.MeshStandardMaterial({
+        color,
+        opacity,
+        transparent: opacity < 1,
+        side: THREE.DoubleSide,
+        depthWrite: true,
+      });
+      return new THREE.Mesh(geometry, material);
+    }
+
+    function edgeKey(id1, id2) {
+      return id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
+    }
+
+    function createFaceBoundaryLine(points, color = 0x9ed1ff) {
+      const arcPoints = [];
+      for (let i = 0; i < points.length; i += 1) {
+        const from = points[i];
+        const to = points[i === points.length - 1 ? 0 : i + 1];
+        const segment = createSphericalArcPoints(from, to, 18);
+        if (arcPoints.length > 0) {
+          segment.shift();
+        }
+        arcPoints.push(...segment);
+      }
+      const geometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+      const material = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+      return new THREE.Line(geometry, material);
+    }
+
+    function parseAndRender(blueprintText) {
+      clearScene();
+      clearStats();
+      const result = {
+        header: null,
+        body: null,
+      };
+
+      return parseBlueprintString(blueprintText).then((parsed) => {
+
+        const cloud = parsed.body.dysonCloud;
+        const shell = parsed.body.dysonShell ?? (parsed.body.singleShell ? { shells: [parsed.body.singleShell], orbitList: [] } : null);
+        const nodes = shell?.shells?.flatMap((s) => (s?.nodes ?? []).map((n, idx) => ({ node: n, index: idx }))) ?? [];
+        const nodeCoords = new Map();
+        let maxRadius = 1;
+
+        if (nodes.length > 0) {
+          for (const entry of nodes) {
+            const node = entry.node;
+            if (!node) continue;
+            const pos = new THREE.Vector3(node.coordinate.x, node.coordinate.y, node.coordinate.z);
+            maxRadius = Math.max(maxRadius, pos.length());
+          }
+        }
+
+        const shellOrbitRadii = shell?.orbitList?.filter(Boolean).map((orbit) => orbit.radius) ?? [];
+        const cloudOrbitRadii = cloud?.orbits?.filter(Boolean).map((orbit) => orbit.radius) ?? [];
+        for (const radius of shellOrbitRadii.concat(cloudOrbitRadii)) {
+          if (typeof radius === 'number' && !Number.isNaN(radius)) {
+            maxRadius = Math.max(maxRadius, radius);
+          }
+        }
+
+        currentScale = 1 / Math.max(1, maxRadius);
+
+        const baseSphereRadius = Math.max(1, maxRadius) * currentScale;
+        //const baseSphereRadius = Math.max(1, maxRadius) * currentScale;
+        const sphereGeometry = new THREE.SphereGeometry(baseSphereRadius, 48, 32);
+        const sphereMaterial = new THREE.MeshStandardMaterial({
+          color: 0x112946,
+          opacity: 0.0,
+          transparent: true,
+        });
+        const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        rootGroup.add(sphereMesh);
+
+        const orbitById = new Map();
+        if (shell?.orbitList) {
+          shell.orbitList.forEach((orbit) => {
+            if (!orbit) return;
+            orbitById.set(orbit.id, orbit);
+          });
+        }
+
+        const shellNodeMaps = [];
+        if (shell?.shells) {
+          for (let shellIndex = 0; shellIndex < shell.shells.length; shellIndex += 1) {
+            const shellData = shell.shells[shellIndex];
+            const shellOrbit = orbitById.get(shellIndex) ?? shell.orbitList?.[shellIndex] ?? null;
+            const shellQuat = shellOrbit ? normalizeQuaternion(shellOrbit) : null;
+            // 壳层的原始极点：标准坐标 (0,1,0) 经轨道旋转 + Z-flip
+            const poleRaw = new THREE.Vector3(0, 1, 0);
+            if (shellQuat) poleRaw.applyQuaternion(shellQuat);
+            const shellPole = convertBlueprintPosition(poleRaw);  // 世界坐标下的壳层极点
+            const nodeMap = new Map();
+            if (shellData && shellData.nodes) {
+              for (let nodeIndex = 1; nodeIndex < shellData.nodes.length; nodeIndex += 1) {
+                const node = shellData.nodes[nodeIndex];
+                if (!node) continue;
+                const position = new THREE.Vector3(node.coordinate.x, node.coordinate.y, node.coordinate.z);
+                if (shellQuat) {
+                  position.applyQuaternion(shellQuat);
+                }
+                const worldPosition = convertBlueprintPosition(position).multiplyScalar(currentScale);
+                nodeMap.set(node.id, worldPosition);
+                const nodeColor = toHexColor(node.color, 0x00b7ff);
+                const nodeOpacity = colorOpacity(node.color, 1);
+                rootGroup.add(createNodeSphere(worldPosition, node.id, nodeColor, nodeOpacity));
+              }
+            }
+            shellNodeMaps[shellIndex] = nodeMap;
+          }
+        }
+
+        addStat('蓝图类型', parsed.header.typeName || '未知');
+
+        // 检查填色网格
+        let hasFillGridWarning = false;
+        if (shell?.shells) {
+          for (const sData of shell.shells) {
+            if (sData?.fillGrid?.n > 0) { hasFillGridWarning = true; break; }
+          }
+        }
+        if (hasFillGridWarning) {
+          addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色图案显示会有差异');
+        }
+
+        // 云轨道参数
+        if (cloud?.orbits) {
+          cloud.orbits.forEach((orbit, index) => {
+            if (!orbit) return;
+            const orbitParams = quaternionToOrbitParams(orbit);
+            addStat(`云轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(2)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°`);
+          });
+        }
+
+        // 壳轨道参数 + 单层壳信息
+        if (shell?.orbitList) {
+          const shells = shell.shells;
+          for (let i = 0; i < shell.orbitList.length; i++) {
+            const orbit = shell.orbitList[i];
+            if (!orbit) continue;
+            const orbitParams = quaternionToOrbitParams(orbit);
+            const sData = shells ? shells[i] : null;
+            let extra = '';
+            if (sData) {
+              const nodeCnt = sData.nodes ? sData.nodes.filter(Boolean).length : 0;
+              const frameCnt = sData.frames ? sData.frames.filter(Boolean).length : 0;
+              const faceCnt = sData.faces ? sData.faces.filter(Boolean).length : 0;
+              extra = ` / 节点${nodeCnt} 框架${frameCnt} 壳面${faceCnt}`;
+            }
+            addStat(`壳轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(2)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°${extra}`);
+          }
+        }
+
+        // 单层壳（无轨道列表）：显示壳层组件数量
+        if (parsed.header.typeId == 1) {
+          for (let i = 0; i < shell.shells.length; i++) {
+            const sData = shell.shells[i];
+            if (!sData) continue;
+            const nodeCnt = sData.nodes ? sData.nodes.filter(Boolean).length : 0;
+            const frameCnt = sData.frames ? sData.frames.filter(Boolean).length : 0;
+            const faceCnt = sData.faces ? sData.faces.filter(Boolean).length : 0;
+            addStat(`壳层 ${i}`, `节点${nodeCnt} 框架${frameCnt} 壳面${faceCnt}`);
+          }
+        }
+
+        // 云轨道3D环线渲染
+        if (cloud?.orbits) {
+          cloud.orbits.forEach((orbit, index) => {
+            if (!orbit) return;
+            const radius = orbit.radius * currentScale;
+            const cloudColorEntry = cloud.colors?.[orbit.id] ?? cloud.colors?.[orbit.id - 1] ?? cloud.colors?.[index];
+            const orbitColor = toHexColor(cloudColorEntry, 0xffcba6);
+            const orbitOpacity = colorOpacity(cloudColorEntry, 0.9);
+            const ring = createOrbitRing(radius, orbit, orbitColor, orbitOpacity);
+            ring.name = `cloud-orbit-${index}`;
+            rootGroup.add(ring);
+          });
+        }
+
+        if (shell?.shells) {
+          for (let shellIndex = 0; shellIndex < shell.shells.length; shellIndex += 1) {
+            const shellData = shell.shells[shellIndex];
+            if (!shellData) continue;
+            const shellOrbit = orbitById.get(shellIndex) ?? shell.orbitList?.[shellIndex] ?? null;
+            const shellQuat = shellOrbit ? normalizeQuaternion(shellOrbit) : null;
+            const poleRaw = new THREE.Vector3(0, 1, 0);
+            if (shellQuat) poleRaw.applyQuaternion(shellQuat);
+            const shellPole = convertBlueprintPosition(poleRaw);
+            const nodeMap = shellNodeMaps[shellIndex] ?? new Map();
+            const renderedEdges = new Set();
+            const renderEdge = (id1, id2, color, type = 0) => {
+              const key = id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
+              if (renderedEdges.has(key)) return;
+              renderedEdges.add(key);
+              const from = nodeMap.get(id1);
+              const to = nodeMap.get(id2);
+              if (!from || !to) return;
+              rootGroup.add(createLineSegment(from, to, color, type, shellPole));
+            };
+
+            // frame edges
+            const frameEdges = new Set();
+            const frameTypeByEdge = new Map();
+            if (shellData.frames) {
+              shellData.frames.forEach((frame) => {
+                if (!frame) return;
+                const frameColor = toHexColor(frame.color, 0x00b7ff);
+                const frameOpacity = colorOpacity(frame.color, 1);
+                const key = edgeKey(frame.structureRelation[0], frame.structureRelation[1]);
+                frameEdges.add(key);
+                frameTypeByEdge.set(key, frame.type);
+                renderEdge(frame.structureRelation[0], frame.structureRelation[1], frameColor, frame.type);
+              });
+            }
+            // faces
+            if (shellData.faces) {
+              shellData.faces.forEach((face) => {
+                if (!face || !Array.isArray(face.relation) || face.relation.length < 3) return;
+                const missingNodeIds = face.relation.filter((nodeId) => !nodeMap.has(nodeId));
+                if (missingNodeIds.length > 0) return;
+
+                const relation = face.relation.slice();
+                const facePoints = relation.map((nodeId) => nodeMap.get(nodeId));
+                if (facePoints.some((p) => !p)) return;
+
+                const missingFrames = [];
+                for (let i = 0; i < relation.length; i += 1) {
+                  const current = relation[i];
+                  const next = relation[i === relation.length - 1 ? 0 : i + 1];
+                  if (!frameEdges.has(edgeKey(current, next))) {
+                    missingFrames.push([current, next]);
+                  }
+                }
+
+                const faceColor = toHexColor(face.color, 0x00b7ff);
+                const faceOpacity = colorOpacity(face.color, 1);
+                // 从框架边推断壳面类型（多数为 type1 则为经纬线）
+                // 只有过壳层原始极点（|lat|>80°）才强制测地线细分
+                let faceType = 0;
+                let nearPole = false;
+                if (facePoints.length > 0 && shellPole) {
+                  const poleN = shellPole.clone().normalize();
+                  for (const p of facePoints) {
+                    const r = p.length();
+                    if (r > 1e-6 && Math.abs(p.dot(poleN) / r) > Math.sin(Math.PI * 80 / 180)) {
+                      nearPole = true;
+                      break;
+                    }
+                  }
+                }
+                if (!nearPole && relation.length > 0) {
+                  let cnt1 = 0;
+                  for (let i = 0; i < relation.length; i++) {
+                    if ((frameTypeByEdge.get(edgeKey(relation[i], relation[(i + 1) % relation.length])) ?? 0) === 1) cnt1++;
+                  }
+                  faceType = cnt1 > relation.length / 2 ? 1 : 0;
+                }
+                const faceMesh = createFaceMesh(facePoints, faceColor, faceOpacity, faceType, shellPole);
+                if (faceMesh) {
+                  rootGroup.add(faceMesh);
+                }
+              });
+            }
+          }
+        }
+
+
+        camera.position.set(0, baseSphereRadius * 2.2, baseSphereRadius * 3.2);
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }).catch((error) => {
+        clearScene();
+        clearStats();
+        addStat('❌ 解析失败', error.message);
+      });
+    }
+
+    parseButton.addEventListener('click', async () => {
+      const text = blueprintInput.value.trim();
+      if (!text) return;
+      parseButton.disabled = true;
+      parseButton.textContent = '解析中...';
+      try {
+        await parseAndRender(text);
+      } finally {
+        parseButton.disabled = false;
+        parseButton.textContent = '解析并渲染';
+      }
+    });
+  </script>
+</body>
+</html>
