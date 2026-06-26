@@ -911,7 +911,12 @@
         let hasFillGridWarning = false;
         if (shell?.shells) {
           for (const sData of shell.shells) {
-            if (sData?.fillGrid?.n > 0) { hasFillGridWarning = true; break; }
+            const colors = sData?.fillGrid?.colors;
+            if (!colors) continue;
+            for (const c of colors) {
+              if (c && c.a) { hasFillGridWarning = true; break; }
+            }
+            if (hasFillGridWarning) break;
           }
         }
         if (hasFillGridWarning) {

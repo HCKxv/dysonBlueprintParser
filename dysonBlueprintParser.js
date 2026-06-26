@@ -353,17 +353,13 @@ function parseFillGrid(reader) {
   }
 
   const colorCount = reader.readInt32();
-  const colors = [];
-   let n = 0;
+   const colors = [];
    for (let i = 0; i < colorCount; i += 1) {
-     const rgb = parseRGBColor(reader);
-     if (rgb.a) n += 1;
-     colors.push(rgb);
+     colors.push(parseRGBColor(reader));
    }
 
   return {
     gridType,
-    n,
     colors,
   };
 }
