@@ -73,6 +73,7 @@ function base64ToUint8Array(base64String) {
   return bytes;
 }
 
+// 将 蓝图中段 Base64 字符串解码并解压
 async function decodeBase64Gzip(base64String) {
   const compressed = base64ToUint8Array(base64String);
 
@@ -87,9 +88,25 @@ async function decodeBase64Gzip(base64String) {
     return pako.ungzip(compressed);
   }
 
-  throw new Error('浏览器不支持 gzip 解压，请在环境中引入 pako 或使用支持 DecompressionStream 的浏览器。');
+  throw new Error('浏览器不支持 gzip 解压，请使用 Edge 或 Chrome 浏览器。');
 }
 
+// 比较版本号：v1 > v2 返回 1，v1 < v2 返回 -1，相等返回 0
+function compareVersion(v1, v2) {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  const maxLen = Math.max(parts1.length, parts2.length);
+
+  for (let i = 0; i < maxLen; i++) {
+    const num1 = parts1[i] || 0; // 不足的位补 0
+    const num2 = parts2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
+
+// 解析蓝图头部
 function parseHeader(headerString) {
   const values = headerString.split(',');
   if (values.length !== 5 || values[0] !== '0') {
@@ -101,7 +118,7 @@ function parseHeader(headerString) {
 
   return {
     raw: headerString,
-    createdTicks: BigInt(ticks),
+    createdTicks: ticks,
     createdAt: ticksToDate(ticks),
     version: values[2].trim(),
     typeId,
@@ -115,6 +132,8 @@ function parseHeader(headerString) {
 // 2) 解析头部元信息
 // 3) 解码并解析主体数据
 async function parseBlueprintString(blueprintString) {
+  blueprintString = blueprintString.trim();
+
   if (typeof blueprintString !== 'string') {
     throw new TypeError('blueprintString must be a string');
   }
@@ -123,7 +142,7 @@ async function parseBlueprintString(blueprintString) {
     throw new Error('蓝图格式错误: 必须以 DYBP: 开头');
   }
 
-  const rawBody = blueprintString.slice(5);
+  const rawBody = blueprintString.slice(5);  // 去掉前缀 DYBP:
   const segments = rawBody.split('"');
   if (segments.length < 3) {
     throw new Error('蓝图格式错误: 未找到中段或签名');
@@ -134,16 +153,20 @@ async function parseBlueprintString(blueprintString) {
   const signature = segments[2];
 
   const header = parseHeader(headerString);
+
+  if (compareVersion(header.version, '0.10') < 0) {
+    throw new Error(`蓝图版本过低：${header.version}`);
+  }
   const body = await parseBlueprintBody(bodyString, header.typeId);
 
   return {
     header,
     body,
-    //signature: signature.trim(),
+    //signature,
   };
 }
 
-// 解析蓝图主体：先解压 gzip 数据，再根据蓝图类型选择对应解析器
+// 解析蓝图主体：先解压数据，再根据蓝图类型选择对应解析器
 async function parseBlueprintBody(bodyString, typeId) {
   const decoded = await decodeBase64Gzip(bodyString);
   const reader = new BinaryReader(decoded);
@@ -152,7 +175,7 @@ async function parseBlueprintBody(bodyString, typeId) {
   reader.readInt32();
 
   const body = {
-    //typeId,
+    typeId,
     typeName: BlueprintType.getName(typeId),
   };
 
@@ -245,7 +268,7 @@ function parseComponentList(reader, parseItem) {
   for (let i = 1; i < pointer; i += 1) {
     const id = reader.readInt32();
     if (id !== 0) {
-      list[i] = parseItem(reader, id);
+      list[i] = parseItem(reader);
     }
   }
 
@@ -256,8 +279,8 @@ function parseComponentList(reader, parseItem) {
   return list;
 }
 
-// 解析节点数据项，包含版本字段、样式、坐标、结构点数以及可选颜色
-function parseNode(reader, id) {
+// 解析节点数据项，包含样式、坐标、结构点数以及颜色
+function parseNode(reader) {
   const version = reader.readInt32();
   const itemId = reader.readInt32();
   const style = reader.readInt32();
@@ -284,7 +307,7 @@ function parseNode(reader, id) {
   }
 
   return {
-    id: itemId || id,
+    id: itemId,
     style,
     coordinate,
     structurePoints,
@@ -292,8 +315,8 @@ function parseNode(reader, id) {
   };
 }
 
-// 解析框架数据项，包含版本字段、节点关系、类型、结构点数和可选颜色
-function parseFrame(reader, id) {
+// 解析框架数据项，包含节点关系、类型、结构点数和颜色
+function parseFrame(reader) {
   const version = reader.readInt32();
   const itemId = reader.readInt32();
   const style = reader.readInt32();
@@ -309,7 +332,7 @@ function parseFrame(reader, id) {
   }
 
   return {
-    id: itemId || id,
+    id: itemId,
     style,
     type,
     structureRelation: [nodeA, nodeB],
@@ -318,8 +341,8 @@ function parseFrame(reader, id) {
   };
 }
 
-// 解析壳面数据项，包含版本字段、图案、可选颜色和节点关系列表
-function parseFace(reader, id) {
+// 解析壳面数据项，包含图案、颜色和节点关系列表
+function parseFace(reader) {
   const version = reader.readInt32();
   const itemId = reader.readInt32();
   const pattern = reader.readInt32();
@@ -337,7 +360,7 @@ function parseFace(reader, id) {
   }
 
   return {
-    id: itemId || id,
+    id: itemId,
     pattern,
     relation,
     color,
@@ -372,7 +395,7 @@ function parseVisibility(reader) {
   };
 }
 
-// 解析轨道数据项，包含版本、id、半径、四元数坐标和是否有效的标记
+// 解析轨道数据项，包含id、半径、四元数坐标
 function parseOrbit(reader) {
   const version = reader.readInt32();
   const id = reader.readInt32();
@@ -407,7 +430,7 @@ function parseCoordinate(reader) {
   };
 }
 
-// 解析 HSV 颜色，返回原始 HSVA 数据
+// 解析 HSVA 颜色，范围为 0-1
 function parseHSVColor(reader) {
   const h = reader.readFloat32();
   const s = reader.readFloat32();
@@ -416,7 +439,7 @@ function parseHSVColor(reader) {
   return { h, s, v, a };
 }
 
-// 解析 RGBA 颜色值（4 字节）
+// 解析 RGBA 颜色值
 function parseRGBColor(reader) {
   const r = reader.readUInt8();
   const g = reader.readUInt8();

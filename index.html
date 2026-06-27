@@ -162,16 +162,17 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+      "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
     }
   }
   </script>
 
   <script type="module">
     import { parseBlueprintString } from './dysonBlueprintParser.js';
-    import * as THREE from 'three';
-    import { OrbitControls } from 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js';
     import { fetchTextFile } from './fetchTextFile.js';
+    import * as THREE from 'three';
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
     const blueprintInput = document.getElementById('blueprintInput');
     const parseButton = document.getElementById('parseButton');
