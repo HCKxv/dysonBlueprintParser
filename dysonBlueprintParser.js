@@ -538,7 +538,7 @@ function quaternionToOrbitParams(orbit) {
 
 // 从掩码中获取可见性
 function isVisible(visibilityMask, index) {
-    return (visibilityMask >>> index) & 1;
+  return (visibilityMask >>> index) & 1;
 }
 
 export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime, isVisible };

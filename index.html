@@ -169,7 +169,7 @@
   </script>
 
   <script type="module">
-    import { parseBlueprintString, quaternionToOrbitParams } from './dysonBlueprintParser.js';
+    import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dysonBlueprintParser.js';
     import { fetchTextFile } from './fetchTextFile.js';
     import * as THREE from 'three';
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -478,7 +478,7 @@
     function toLatLon(pos, pole = new THREE.Vector3(0, 1, 0)) {
       // 纬度 = asin(dot(pole, pos)/r)，经度需用 pole 的垂直基
       const r = pos.length();
-      const poleN = pole.clone().normalize();
+      const poleN = (pole ?? new THREE.Vector3(0, 1, 0)).clone().normalize();
       const lat = Math.asin(THREE.MathUtils.clamp(pos.dot(poleN) / r, -1, 1));
       // 经度基：基于 pole 的切平面
       const ref = Math.abs(poleN.x) < 0.99
@@ -496,7 +496,7 @@
     }
 
     function latLonToWorld(lat, lon, r, pole = new THREE.Vector3(0, 1, 0)) {
-      const poleN = pole.clone().normalize();
+      const poleN = (pole ?? new THREE.Vector3(0, 1, 0)).clone().normalize();
       const ref = Math.abs(poleN.x) < 0.99
         ? new THREE.Vector3(1, 0, 0)
         : new THREE.Vector3(0, 1, 0);
@@ -513,8 +513,9 @@
     }
 
     function createGridArcPoints(from, to, segments = 18, pole = null) {
-      const a = toLatLon(from, pole);
-      const b = toLatLon(to, pole);
+      const safePole = pole ?? new THREE.Vector3(0, 1, 0);
+      const a = toLatLon(from, safePole);
+      const b = toLatLon(to, safePole);
       const maxAbsLat = Math.max(Math.abs(a.lat), Math.abs(b.lat));
       const nearPole = maxAbsLat > Math.PI * 0.49;  // 纬度 > 85° 视为近极点
 
@@ -534,7 +535,7 @@
           const dot = THREE.MathUtils.clamp(fromN.dot(toN), -1, 1);
           const angle = Math.acos(dot);
           if (angle < 1e-6) {
-            p = latLonToWorld(a.lat + t * (b.lat - a.lat), a.lon + t * dLon, a.r + t * (b.r - a.r), pole);
+            p = latLonToWorld(a.lat + t * (b.lat - a.lat), a.lon + t * dLon, a.r + t * (b.r - a.r), safePole);
           } else {
             const sinA = Math.sin((1 - t) * angle);
             const sinB = Math.sin(t * angle);
@@ -548,7 +549,7 @@
           const lat = a.lat + t * (b.lat - a.lat);
           const lon = a.lon + t * dLon;
           const r = a.r + t * (b.r - a.r);
-          p = latLonToWorld(lat, lon, r, pole);
+          p = latLonToWorld(lat, lon, r, safePole);
         }
         points.push(p);
       }
@@ -557,11 +558,11 @@
 
     function createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
       let points;
-      if (type === 1) {
-        // 经纬线：沿纬度/经度方向的球面网格弧线
+      if (type === 1 && pole) {
+        // 经纬线：沿纬度/经度方向的球面网格弧线（须有极点方向）
         points = createGridArcPoints(from, to, 18, pole);
       } else {
-        // 测地线（type 0）：球面大圆弧（最短路径）
+        // 测地线（type 0 / pole 为空）：球面大圆弧（最短路径）
         points = createSphericalArcPoints(from, to, 18);
       }
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -821,32 +822,20 @@
       return parseBlueprintString(blueprintText).then((parsed) => {
 
         const cloud = parsed.body.dysonCloud;
-        const shell = parsed.body.dysonShell ?? (parsed.body.singleShell ? { shells: [parsed.body.singleShell], orbitList: [] } : null);
-        const nodes = shell?.shells?.flatMap((s) => (s?.nodes ?? []).map((n, idx) => ({ node: n, index: idx }))) ?? [];
-        const nodeCoords = new Map();
-        let maxRadius = 1;
+        const shell = parsed.body.dysonShell ?? (parsed.body.singleShell ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] } : null);
+        // 最大半径：仅由云/壳轨道半径确定（节点应映射在轨道球面上）
+        const shellOrbitRadii = shell?.orbitList?.filter(Boolean).map((o) => o.radius) ?? [];
+        const cloudOrbitRadii = cloud?.orbits?.filter(Boolean).map((o) => o.radius) ?? [];
+        const allRadii = shellOrbitRadii.concat(cloudOrbitRadii);
+        const maxRadius = allRadii.length > 0
+          ? Math.max(1, ...allRadii)
+          : (shell?.shells?.[0]?.nodes
+              ? Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z)))
+              : 1);
 
-        if (nodes.length > 0) {
-          for (const entry of nodes) {
-            const node = entry.node;
-            if (!node) continue;
-            const pos = new THREE.Vector3(node.coordinate.x, node.coordinate.y, node.coordinate.z);
-            maxRadius = Math.max(maxRadius, pos.length());
-          }
-        }
+        currentScale = 1 / maxRadius;
 
-        const shellOrbitRadii = shell?.orbitList?.filter(Boolean).map((orbit) => orbit.radius) ?? [];
-        const cloudOrbitRadii = cloud?.orbits?.filter(Boolean).map((orbit) => orbit.radius) ?? [];
-        for (const radius of shellOrbitRadii.concat(cloudOrbitRadii)) {
-          if (typeof radius === 'number' && !Number.isNaN(radius)) {
-            maxRadius = Math.max(maxRadius, radius);
-          }
-        }
-
-        currentScale = 1 / Math.max(1, maxRadius);
-
-        const baseSphereRadius = Math.max(1, maxRadius) * currentScale;
-        //const baseSphereRadius = Math.max(1, maxRadius) * currentScale;
+        const baseSphereRadius = 1;  // maxRadius * currentScale ≡ 1
         const sphereGeometry = new THREE.SphereGeometry(baseSphereRadius, 48, 32);
         const sphereMaterial = new THREE.MeshStandardMaterial({
           color: 0x112946,
@@ -856,206 +845,136 @@
         const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
         rootGroup.add(sphereMesh);
 
-        const orbitById = new Map();
+        // 
         if (shell?.orbitList) {
-          shell.orbitList.forEach((orbit) => {
-            if (!orbit) return;
-            orbitById.set(orbit.id, orbit);
-          });
-        }
-
-        const shellNodeMaps = [];
-        if (shell?.shells) {
-          for (let shellIndex = 0; shellIndex < shell.shells.length; shellIndex += 1) {
-            const shellData = shell.shells[shellIndex];
-            const shellOrbit = orbitById.get(shellIndex) ?? shell.orbitList?.[shellIndex] ?? null;
-            const shellQuat = shellOrbit ? normalizeQuaternion(shellOrbit) : null;
-            // 壳层的原始极点：标准坐标 (0,1,0) 经轨道旋转 + Z-flip
-            const poleRaw = new THREE.Vector3(0, 1, 0);
-            if (shellQuat) poleRaw.applyQuaternion(shellQuat);
-            const shellPole = convertBlueprintPosition(poleRaw);  // 世界坐标下的壳层极点
-            const nodeMap = new Map();
-            if (shellData && shellData.nodes) {
-              for (let nodeIndex = 1; nodeIndex < shellData.nodes.length; nodeIndex += 1) {
-                const node = shellData.nodes[nodeIndex];
-                if (!node) continue;
-                const position = new THREE.Vector3(node.coordinate.x, node.coordinate.y, node.coordinate.z);
-                if (shellQuat) {
-                  position.applyQuaternion(shellQuat);
-                }
-                const worldPosition = convertBlueprintPosition(position).multiplyScalar(currentScale);
-                nodeMap.set(node.id, worldPosition);
-                const nodeColor = toHexColor(node.color, 0x60D6FD);
-                const nodeOpacity = colorOpacity(node.color, 1);
-                rootGroup.add(createNodeSphere(worldPosition, node.id, nodeColor, nodeOpacity));
+          let hasFillGridWarning = false;
+            for (let i = 0; i < shell.orbitList.length; i++) {
+              const orbit = shell.orbitList[i];
+              if (!orbit) continue;
+              const shData = shell.shells?.[orbit.id] ?? null;
+              if (!hasFillGridWarning && shData?.fillGrid?.colors) {
+                for (const cc of shData.fillGrid.colors) {
+                    if (cc && cc.a) { hasFillGridWarning = true; break; }
+                  }
               }
             }
-            shellNodeMaps[shellIndex] = nodeMap;
-          }
-        }
-
-        // 检查填色网格
-        let hasFillGridWarning = false;
-        if (shell?.shells) {
-          for (const sData of shell.shells) {
-            const colors = sData?.fillGrid?.colors;
-            if (!colors) continue;
-            for (const c of colors) {
-              if (c && c.a) { hasFillGridWarning = true; break; }
-            }
-            if (hasFillGridWarning) break;
-          }
-        }
-        if (hasFillGridWarning) {
-          addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色不能正确显示');
+          if (hasFillGridWarning) addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色不能正确显示');
         }
 
         addStat('蓝图类型', parsed.header.typeName || '未知');
         addStat('蓝图版本', parsed.header.version);
         addStat('创建时间', parsed.header.createdAt);
 
-        // 云轨道参数
+        // 云轨道环线
         if (cloud?.orbits) {
-          cloud.orbits.forEach((orbit, index) => {
-            if (!orbit) return;
-            const orbitParams = quaternionToOrbitParams(orbit);
-            addStat(`云轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(0)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°`);
-          });
-        }
-
-        // 壳轨道参数 + 单层壳信息
-        if (shell?.orbitList) {
-          const shells = shell.shells;
-          for (let i = 0; i < shell.orbitList.length; i++) {
-            const orbit = shell.orbitList[i];
-            if (!orbit) continue;
-            const orbitParams = quaternionToOrbitParams(orbit);
-            const sData = shells ? shells[orbit.id] : null;
-            let extra = '';
-            if (sData) {
-              const nodeCnt = sData.nodes ? sData.nodes.filter(Boolean).length : 0;
-              const frameCnt = sData.frames ? sData.frames.filter(Boolean).length : 0;
-              const faceCnt = sData.faces ? sData.faces.filter(Boolean).length : 0;
-              extra = ` / 节点${nodeCnt} 框架${frameCnt} 壳面${faceCnt}`;
-            }
-            addStat(`壳轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(1)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°${extra}`);
-          }
-        }
-
-        // 单层壳（无轨道列表）：显示壳层组件数量
-        if (parsed.header.typeId == 1) {
-          for (let i = 0; i < shell.shells.length; i++) {
-            const sData = shell.shells[i];
-            if (!sData) continue;
-            const nodeCnt = sData.nodes ? sData.nodes.filter(Boolean).length : 0;
-            const frameCnt = sData.frames ? sData.frames.filter(Boolean).length : 0;
-            const faceCnt = sData.faces ? sData.faces.filter(Boolean).length : 0;
-            addStat(`壳层 ${i}`, `节点${nodeCnt} 框架${frameCnt} 壳面${faceCnt}`);
-          }
-        }
-
-        // 云轨道3D环线渲染
-        if (cloud?.orbits) {
-          cloud.orbits.forEach((orbit, index) => {
-            if (!orbit) return;
-            const radius = orbit.radius * currentScale;
-            const cloudColorEntry = cloud.colors?.[orbit.id] ?? cloud.colors?.[orbit.id - 1] ?? cloud.colors?.[index];
-            const orbitColor = toHexColor(cloudColorEntry, 0xffcba6);
-            const orbitOpacity = colorOpacity(cloudColorEntry, 0.9);
-            const ring = createOrbitRing(radius, orbit, orbitColor, orbitOpacity);
-            ring.name = `cloud-orbit-${index}`;
+          cloud.orbits.forEach((orb, idx) => {
+            if (!orb) return;
+            const vis = cloud.visibility ? isVisible(cloud.visibility.inGame, orb.id) : true;
+            // 统计
+            const op = quaternionToOrbitParams(orb);
+            const tag = vis ? '' : ' [隐藏]';
+            addStat('云轨道 '+orb.id+tag, '半径 '+orb.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°');
+            // 渲染
+            if (!vis) return;
+            const r = orb.radius * currentScale;
+            const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id-1] ?? cloud.colors?.[idx];
+            const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), colorOpacity(e, 0.9));
+            ring.name = 'cloud-orbit-'+idx;
             rootGroup.add(ring);
           });
         }
 
-        if (shell?.shells) {
-          for (let shellIndex = 0; shellIndex < shell.shells.length; shellIndex += 1) {
-            const shellData = shell.shells[shellIndex];
-            if (!shellData) continue;
-            const shellOrbit = orbitById.get(shellIndex) ?? shell.orbitList?.[shellIndex] ?? null;
-            const shellQuat = shellOrbit ? normalizeQuaternion(shellOrbit) : null;
+        // 壳层
+        if (shell?.orbitList) {
+          for (let i = 0; i < shell.orbitList.length; i++) {
+            const orbit = shell.orbitList[i];
+            if (!orbit) continue;
+            const vis = shell.visibility ? isVisible(shell.visibility.inGame, orbit.id) : true;
+            const shData = shell.shells?.[orbit.id] ?? null;
+            //统计
+            const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
+            const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
+            const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
+            if (parsed.header.typeId === 1) {
+              addStat('壳层', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt);
+            } else {
+              const tag = vis ? '' : ' [隐藏]';
+              const op = quaternionToOrbitParams(orbit);
+              addStat('壳轨道 '+orbit.id+tag, '半径 '+orbit.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'° / 节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+tag);
+            }
+            // 渲染
+            if (!shData) continue;
+            if (!vis) continue;
+            const shQuat = normalizeQuaternion(orbit);
             const poleRaw = new THREE.Vector3(0, 1, 0);
-            if (shellQuat) poleRaw.applyQuaternion(shellQuat);
-            const shellPole = convertBlueprintPosition(poleRaw);
-            const nodeMap = shellNodeMaps[shellIndex] ?? new Map();
-            const renderedEdges = new Set();
-            const renderEdge = (id1, id2, color, type = 0) => {
-              const key = id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
-              if (renderedEdges.has(key)) return;
-              renderedEdges.add(key);
-              const from = nodeMap.get(id1);
-              const to = nodeMap.get(id2);
-              if (!from || !to) return;
-              rootGroup.add(createLineSegment(from, to, color, type, shellPole));
-            };
+            poleRaw.applyQuaternion(shQuat);
+            const shPole = convertBlueprintPosition(poleRaw);
 
-            // frame edges
+            // 节点
+            const nodeMap = new Map();
+            if (shData.nodes) {
+              for (let ni = 1; ni < shData.nodes.length; ni++) {
+                const nd = shData.nodes[ni];
+                if (!nd) continue;
+                const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
+                d.applyQuaternion(shQuat);
+                const pos = convertBlueprintPosition(d).multiplyScalar(orbit.radius * currentScale);
+                nodeMap.set(nd.id, pos);
+                rootGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), colorOpacity(nd.color, 1)));
+              }
+            }
+
+            // 框架
+            const renderedEdges = new Set();
             const frameEdges = new Set();
-            const frameTypeByEdge = new Map();
-            if (shellData.frames) {
-              shellData.frames.forEach((frame) => {
-                if (!frame) return;
-                const frameColor = toHexColor(frame.color, 0x175473);
-                const frameOpacity = colorOpacity(frame.color, 1);
-                const key = edgeKey(frame.structureRelation[0], frame.structureRelation[1]);
-                frameEdges.add(key);
-                frameTypeByEdge.set(key, frame.type);
-                renderEdge(frame.structureRelation[0], frame.structureRelation[1], frameColor, frame.type);
+            const ftMap = new Map();
+            const re = (id1, id2, color, type = 0) => {
+              const k = id1 < id2 ? id1+"-"+id2 : id2+"-"+id1;
+              if (renderedEdges.has(k)) return;
+              renderedEdges.add(k);
+              const f = nodeMap.get(id1), t = nodeMap.get(id2);
+              if (f && t) rootGroup.add(createLineSegment(f, t, color, type, shPole));
+            };
+            if (shData.frames) {
+              shData.frames.forEach((fr) => {
+                if (!fr) return;
+                const k = edgeKey(fr.structureRelation[0], fr.structureRelation[1]);
+                frameEdges.add(k); ftMap.set(k, fr.type);
+                re(fr.structureRelation[0], fr.structureRelation[1], toHexColor(fr.color, 0x175473), fr.type);
               });
             }
-            // faces
-            if (shellData.faces) {
-              shellData.faces.forEach((face) => {
-                if (!face || !Array.isArray(face.relation) || face.relation.length < 3) return;
-                const missingNodeIds = face.relation.filter((nodeId) => !nodeMap.has(nodeId));
-                if (missingNodeIds.length > 0) return;
 
-                const relation = face.relation.slice();
-                const facePoints = relation.map((nodeId) => nodeMap.get(nodeId));
-                if (facePoints.some((p) => !p)) return;
-
-                const missingFrames = [];
-                for (let i = 0; i < relation.length; i += 1) {
-                  const current = relation[i];
-                  const next = relation[i === relation.length - 1 ? 0 : i + 1];
-                  if (!frameEdges.has(edgeKey(current, next))) {
-                    missingFrames.push([current, next]);
-                  }
-                }
-
-                const faceColor = toHexColor(face.color, 0x175473);
-                const faceOpacity = colorOpacity(face.color, 1);
-                // 从框架边推断壳面类型（多数为 type1 则为经纬线）
-                // 只有过壳层原始极点（|lat|>88°）才强制测地线细分
-                let faceType = 0;
-                let nearPole = false;
-                if (facePoints.length > 0 && shellPole) {
-                  const poleN = shellPole.clone().normalize();
-                  for (const p of facePoints) {
-                    const r = p.length();
-                    if (r > 1e-6 && Math.abs(p.dot(poleN) / r) > Math.sin(Math.PI * 88 / 180)) {
-                      nearPole = true;
-                      break;
+            // 壳面
+            if (shData.faces) {
+              shData.faces.forEach((fc) => {
+                if (!fc || !Array.isArray(fc.relation) || fc.relation.length < 3) return;
+                if (fc.relation.some(nid => !nodeMap.has(nid))) return;
+                const rel = fc.relation.slice();
+                const pts = rel.map(nid => nodeMap.get(nid));
+                if (pts.some(p => !p)) return;
+                let ft = 0, nearPole = false;
+                if (shPole) {
+                  const pn = shPole.clone().normalize();
+                  for (const pt of pts) {
+                    if (pt.length() > 1e-6 && Math.abs(pt.dot(pn) / pt.length()) > Math.sin(Math.PI*88/180)) {
+                      nearPole = true; break;
                     }
                   }
                 }
-                if (!nearPole && relation.length > 0) {
-                  let cnt1 = 0;
-                  for (let i = 0; i < relation.length; i++) {
-                    if ((frameTypeByEdge.get(edgeKey(relation[i], relation[(i + 1) % relation.length])) ?? 0) === 1) cnt1++;
+                if (!nearPole && rel.length > 0) {
+                  let c1 = 0;
+                  for (let j = 0; j < rel.length; j++) {
+                    if ((ftMap.get(edgeKey(rel[j], rel[(j+1)%rel.length])) ?? 0) === 1) c1++;
                   }
-                  faceType = cnt1 > relation.length / 2 ? 1 : 0;
+                  ft = c1 > rel.length/2 ? 1 : 0;
                 }
-                const faceMesh = createFaceMesh(facePoints, faceColor, faceOpacity, faceType, shellPole);
-                if (faceMesh) {
-                  rootGroup.add(faceMesh);
-                }
+                const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), colorOpacity(fc.color, 1), ft, shPole);
+                if (m) rootGroup.add(m);
               });
             }
           }
         }
-
-
+        
         createLongitudeGrid(baseSphereRadius * 1.2);
 
         camera.position.set(0, baseSphereRadius * 2.2, baseSphereRadius * 3.2);
