@@ -169,7 +169,7 @@
   </script>
 
   <script type="module">
-    import { parseBlueprintString } from './dysonBlueprintParser.js';
+    import { parseBlueprintString, quaternionToOrbitParams } from './dysonBlueprintParser.js';
     import { fetchTextFile } from './fetchTextFile.js';
     import * as THREE from 'three';
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -370,18 +370,6 @@
       const q = new THREE.Quaternion(orbit.x, orbit.y, orbit.z, orbit.w);
       q.normalize();
       return q;
-    }
-
-    function quaternionToOrbitParams(orbit) {
-      const q = new THREE.Quaternion(orbit.x, orbit.y, orbit.z, orbit.w);
-      const halfInclSin = Math.hypot(q.x, q.z);
-      const halfInclCos = Math.hypot(q.y, q.w);
-      const inclination = 2.0 * Math.atan2(halfInclSin, halfInclCos) * THREE.MathUtils.RAD2DEG;
-      const longAscNode = 2.0 * Math.atan2(-q.y, q.w) * THREE.MathUtils.RAD2DEG;
-      return {
-        inclination: ((inclination % 360) + 360) % 360,
-        ascendingNode: ((longAscNode % 360) + 360) % 360,
-      };
     }
 
     function colorIsValid(color) {
@@ -907,6 +895,8 @@
         }
 
         addStat('蓝图类型', parsed.header.typeName || '未知');
+        addStat('蓝图版本', parsed.header.version);
+        addStat('创建时间', parsed.header.createdAt);
 
         // 检查填色网格
         let hasFillGridWarning = false;
@@ -929,7 +919,7 @@
           cloud.orbits.forEach((orbit, index) => {
             if (!orbit) return;
             const orbitParams = quaternionToOrbitParams(orbit);
-            addStat(`云轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(2)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°`);
+            addStat(`云轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(0)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°`);
           });
         }
 
@@ -940,7 +930,7 @@
             const orbit = shell.orbitList[i];
             if (!orbit) continue;
             const orbitParams = quaternionToOrbitParams(orbit);
-            const sData = shells ? shells[i] : null;
+            const sData = shells ? shells[orbit.id] : null;
             let extra = '';
             if (sData) {
               const nodeCnt = sData.nodes ? sData.nodes.filter(Boolean).length : 0;
@@ -948,7 +938,7 @@
               const faceCnt = sData.faces ? sData.faces.filter(Boolean).length : 0;
               extra = ` / 节点${nodeCnt} 框架${frameCnt} 壳面${faceCnt}`;
             }
-            addStat(`壳轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(2)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°${extra}`);
+            addStat(`壳轨道 ${orbit.id}`, `半径 ${orbit.radius.toFixed(1)} / 倾角 ${orbitParams.inclination.toFixed(1)}° / 升交点 ${orbitParams.ascendingNode.toFixed(1)}°${extra}`);
           }
         }
 

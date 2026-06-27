@@ -54,13 +54,24 @@ class BinaryReader {
   }
 }
 
-// 将 .NET ticks 转换为 JavaScript Date 对象
-function ticksToDate(ticks) {
-  const ticksBigInt = BigInt(ticks);
-  const msSinceDotNetEpoch = ticksBigInt / 10_000n;
-  const dotNetEpochToUnixMs = 62135596800000n;
-  const msSinceUnixEpoch = msSinceDotNetEpoch - dotNetEpochToUnixMs;
-  return new Date(Number(msSinceUnixEpoch));
+// 将 .NET ticks 转换为格式化的时间字符串
+function ticksTime(ticks) {
+  // 公元 1 年到 1970 年 1 月 1 日的 ticks 数
+  const EPOCH_OFFSET_TICKS = 621355968000000000;
+  // 1 tick = 100 纳秒，1 毫秒 = 10000 ticks
+  const ms = (ticks - EPOCH_OFFSET_TICKS) / 10000;
+
+  const date = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+
+  const year = date.getUTCFullYear();
+  const month = pad(date.getUTCMonth() + 1);  // 月份从 0 开始
+  const day = pad(date.getUTCDate());
+  const hours = pad(date.getUTCHours());
+  const minutes = pad(date.getUTCMinutes());
+  const seconds = pad(date.getUTCSeconds());
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 // 将 Base64 字符串解码为 Uint8Array
@@ -119,7 +130,7 @@ function parseHeader(headerString) {
   return {
     raw: headerString,
     createdTicks: ticks,
-    createdAt: ticksToDate(ticks),
+    createdAt: ticksTime(ticks),
     version: values[2].trim(),
     typeId,
     typeName: BlueprintType.getName(typeId),
@@ -155,7 +166,7 @@ async function parseBlueprintString(blueprintString) {
   const header = parseHeader(headerString);
 
   if (compareVersion(header.version, '0.9.25') < 0) {
-    throw new Error(`蓝图版本过低：${header.version}`);
+    throw new Error(`蓝图版本过低：${header.version}，请输入 0.9.25 及以上版本的蓝图`);
   }
   const body = await parseBlueprintBody(bodyString, header.typeId);
 
@@ -511,7 +522,21 @@ function hsvaToRgba(h, s, v, a = 1.0) {
   };
 }
 
-export { parseBlueprintString, BlueprintType};
+// 将轨道的四元数转换为倾角和升交点经度
+function quaternionToOrbitParams(orbit) {
+  const x = orbit.x, y = orbit.y, z = orbit.z, w = orbit.w;
+  const halfInclSin = Math.hypot(x, z);
+  const halfInclCos = Math.hypot(y, w);
+  const rad2deg = 180 / Math.PI;
+  const inclination = 2.0 * Math.atan2(halfInclSin, halfInclCos) * rad2deg;
+  const longAscNode = 2.0 * Math.atan2(-y, w) * rad2deg;
+  return {
+    inclination: ((inclination % 360) + 360) % 360,
+    ascendingNode: ((longAscNode % 360) + 360) % 360,
+  };
+}
+
+export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime };
 
 // Example usage:
 // import { parseBlueprintString } from './dysonBlueprintParser.js';
