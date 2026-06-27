@@ -151,8 +151,12 @@
         <button id="parseButton">解析并渲染</button>
         <button id="pasteButton">粘贴</button>
         <button id="copyButton">复制</button>
-        <label style="display:flex; align-items:center; gap:4px; margin-left:8px; cursor:pointer; font-size:13px; color:#bcc8e0;">
-          <input type="checkbox" id="gridToggle"> 经度刻度
+        <div style="flex-basis:100%; height:0;"></div>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px; color:#bcc8e0;">
+          <input type="checkbox" id="rotateToggle" checked> 旋转
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px; color:#bcc8e0;">
+          <input type="checkbox" id="gridToggle" checked> 经度刻度
         </label>
       </div>
       <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
@@ -253,6 +257,11 @@
     gridGroup.name = 'longitudeGrid';
     scene.add(gridGroup);
 
+    const clock = new THREE.Clock();
+    let shellGroups = [];  // { group, pole, radius } 全局引用，供 render 旋转
+    let shellRotationEnabled = true;
+    const SHELL_BASE_SPEED = 0.1;  // 线性速度（rad·单位/s）
+
     const axesHelper = new THREE.AxesHelper(0.05);
     axesHelper.material.depthTest = false;
     axesHelper.renderOrder = 2;
@@ -289,7 +298,7 @@
         canvas.width = 64; canvas.height = 32;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#ffdd99';
-        ctx.font = '20px sans-serif';
+        ctx.font = 'bold 20px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`${deg}°`, 32, 24);
         const texture = new THREE.CanvasTexture(canvas);
@@ -328,6 +337,15 @@
 
     function render() {
       resizeRenderer();
+      const dt = Math.min(clock.getDelta(), 0.1);
+      if (shellRotationEnabled) {
+        const maxR = currentScale > 0 ? 1 / currentScale : 1;
+        for (const sg of shellGroups) {
+          const omega = SHELL_BASE_SPEED * maxR / sg.radius;
+          const rot = new THREE.Quaternion().setFromAxisAngle(sg.pole, omega * dt);
+          sg.group.quaternion.premultiply(rot);
+        }
+      }
       controls.update();
       renderer.render(scene, camera);
       requestAnimationFrame(render);
@@ -347,6 +365,7 @@
     }
 
     function clearScene() {
+      shellGroups.length = 0;
       while (rootGroup.children.length) {
         const child = rootGroup.children[0];
         rootGroup.remove(child);
@@ -858,7 +877,7 @@
                   }
               }
             }
-          if (hasFillGridWarning) addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色不能正确显示');
+          if (hasFillGridWarning) addStat('⚡ 蓝图含有网格涂色', '当前不支持蓝图的网格涂色，颜色不能正确显示');
         }
 
         addStat('蓝图类型', parsed.header.typeName || '未知');
@@ -885,6 +904,7 @@
         }
 
         // 壳层
+        shellGroups = [];  // 清空并重新填充
         if (shell?.orbitList) {
           for (let i = 0; i < shell.orbitList.length; i++) {
             const orbit = shell.orbitList[i];
@@ -910,6 +930,10 @@
             poleRaw.applyQuaternion(shQuat);
             const shPole = convertBlueprintPosition(poleRaw);
 
+            // 每层壳独立 Group，用于独立旋转
+            const shellGroup = new THREE.Group();
+            shellGroups.push({ group: shellGroup, pole: shPole.clone().normalize(), radius: orbit.radius });
+
             // 节点
             const nodeMap = new Map();
             if (shData.nodes) {
@@ -920,7 +944,7 @@
                 d.applyQuaternion(shQuat);
                 const pos = convertBlueprintPosition(d).multiplyScalar(orbit.radius * currentScale);
                 nodeMap.set(nd.id, pos);
-                rootGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), colorOpacity(nd.color, 1)));
+                shellGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), colorOpacity(nd.color, 1)));
               }
             }
 
@@ -933,7 +957,7 @@
               if (renderedEdges.has(k)) return;
               renderedEdges.add(k);
               const f = nodeMap.get(id1), t = nodeMap.get(id2);
-              if (f && t) rootGroup.add(createLineSegment(f, t, color, type, shPole));
+              if (f && t) shellGroup.add(createLineSegment(f, t, color, type, shPole));
             };
             if (shData.frames) {
               shData.frames.forEach((fr) => {
@@ -969,9 +993,11 @@
                   ft = c1 > rel.length/2 ? 1 : 0;
                 }
                 const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), colorOpacity(fc.color, 1), ft, shPole);
-                if (m) rootGroup.add(m);
+                if (m) shellGroup.add(m);
               });
             }
+
+            rootGroup.add(shellGroup);
           }
         }
         
@@ -1009,6 +1035,10 @@
 
     document.getElementById('gridToggle').addEventListener('change', (e) => {
       gridGroup.visible = e.target.checked;
+    });
+
+    document.getElementById('rotateToggle').addEventListener('change', (e) => {
+      shellRotationEnabled = e.target.checked;
     });
 
     parseButton.addEventListener('click', async () => {
