@@ -154,7 +154,7 @@ async function parseBlueprintString(blueprintString) {
 
   const header = parseHeader(headerString);
 
-  if (compareVersion(header.version, '0.10') < 0) {
+  if (compareVersion(header.version, '0.9.25') < 0) {
     throw new Error(`蓝图版本过低：${header.version}`);
   }
   const body = await parseBlueprintBody(bodyString, header.typeId);
