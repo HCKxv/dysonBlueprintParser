@@ -885,7 +885,7 @@
                 }
                 const worldPosition = convertBlueprintPosition(position).multiplyScalar(currentScale);
                 nodeMap.set(node.id, worldPosition);
-                const nodeColor = toHexColor(node.color, 0x00b7ff);
+                const nodeColor = toHexColor(node.color, 0x60D6FD);
                 const nodeOpacity = colorOpacity(node.color, 1);
                 rootGroup.add(createNodeSphere(worldPosition, node.id, nodeColor, nodeOpacity));
               }
@@ -893,10 +893,6 @@
             shellNodeMaps[shellIndex] = nodeMap;
           }
         }
-
-        addStat('蓝图类型', parsed.header.typeName || '未知');
-        addStat('蓝图版本', parsed.header.version);
-        addStat('创建时间', parsed.header.createdAt);
 
         // 检查填色网格
         let hasFillGridWarning = false;
@@ -913,6 +909,10 @@
         if (hasFillGridWarning) {
           addStat('⚡ 提示', '当前不支持蓝图的网格涂色，颜色不能正确显示');
         }
+
+        addStat('蓝图类型', parsed.header.typeName || '未知');
+        addStat('蓝图版本', parsed.header.version);
+        addStat('创建时间', parsed.header.createdAt);
 
         // 云轨道参数
         if (cloud?.orbits) {
@@ -995,7 +995,7 @@
             if (shellData.frames) {
               shellData.frames.forEach((frame) => {
                 if (!frame) return;
-                const frameColor = toHexColor(frame.color, 0x00b7ff);
+                const frameColor = toHexColor(frame.color, 0x175473);
                 const frameOpacity = colorOpacity(frame.color, 1);
                 const key = edgeKey(frame.structureRelation[0], frame.structureRelation[1]);
                 frameEdges.add(key);
@@ -1023,7 +1023,7 @@
                   }
                 }
 
-                const faceColor = toHexColor(face.color, 0x00b7ff);
+                const faceColor = toHexColor(face.color, 0x175473);
                 const faceOpacity = colorOpacity(face.color, 1);
                 // 从框架边推断壳面类型（多数为 type1 则为经纬线）
                 // 只有过壳层原始极点（|lat|>88°）才强制测地线细分

@@ -536,7 +536,12 @@ function quaternionToOrbitParams(orbit) {
   };
 }
 
-export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime };
+// 从掩码中获取可见性
+function isVisible(visibilityMask, index) {
+    return (visibilityMask >>> index) & 1;
+}
+
+export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime, isVisible };
 
 // Example usage:
 // import { parseBlueprintString } from './dysonBlueprintParser.js';
