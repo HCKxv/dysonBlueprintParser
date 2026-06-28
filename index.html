@@ -124,6 +124,12 @@
       margin: 0 0 8px;
       font-size: 1.0rem;
     }
+    .label {
+    display: inline-block;      /* 必须设置宽度 */
+    width: 4em;                 /* 按四个汉字宽度 */
+    text-align-last: justify;   /* 核心：单行两端对齐 */
+    text-align: justify;        /* 兼容兜底 */
+    }
   </style>
 </head>
 <body>
@@ -146,9 +152,17 @@
 
     <!-- 右栏：输入 -->
     <div class="col panel panel-right">
+      <div id="powerPanel" style="text-align:center; padding:12px 0; border-bottom:1px solid #243556; margin-bottom:8px;">
+        <div id="powerMain" style="font-size:2.2rem; font-weight:700; color:#ffd866; line-height:1.2; font-variant-numeric:tabular-nums;">⚡ 0&thinsp;W</div>
+        <div style="margin-top:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:13px; color:#bcc8e0; flex-wrap:wrap;">
+          <span id="radiusLabel" class="label">半径</span> <input type="number" id="shellRadiusInput" value="10000" step="100" min="1000" style="width:80px; padding:4px 8px; border-radius:6px; border:1px solid #23334f; background:#101624; color:#eef2ff; font-size:13px; text-align:center;">
+          光度系数 <input type="number" id="luminosityInput" value="1.0" step="0.1" min="0.1" style="width:70px; padding:4px 8px; border-radius:6px; border:1px solid #23334f; background:#101624; color:#eef2ff; font-size:13px; text-align:center;">
+          <button id="recalcButton" disabled style="padding:4px 10px; font-size:12px; border-radius:6px; background:#4364eb; color:white; border:none; cursor:pointer;">重新计算</button>
+        </div>
+      </div>
       <h2>蓝图输入</h2>
       <div style="display:flex; gap:8px; flex-shrink:0; flex-wrap:wrap; align-items:center;">
-        <button id="parseButton">解析并渲染</button>
+        <button id="parseButton">解析并预览</button>
         <button id="pasteButton">粘贴</button>
         <button id="copyButton">复制</button>
         <div style="flex-basis:100%; height:0;"></div>
@@ -156,7 +170,7 @@
           <input type="checkbox" id="rotateToggle" checked> 旋转
         </label>
         <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px; color:#bcc8e0;">
-          <input type="checkbox" id="gridToggle"> 经度刻度
+          <input type="checkbox" id="gridToggle" checked> 刻度
         </label>
       </div>
       <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
@@ -174,6 +188,7 @@
 
   <script type="module">
     import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dysonBlueprintParser.js';
+    import { computePoints, computePower } from './dysonSpherePower.js';
     import { fetchTextFile } from './fetchTextFile.js';
     import * as THREE from 'three';
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -552,42 +567,27 @@
       const safePole = pole ?? new THREE.Vector3(0, 1, 0);
       const a = toLatLon(from, safePole);
       const b = toLatLon(to, safePole);
-      const maxAbsLat = Math.max(Math.abs(a.lat), Math.abs(b.lat));
-      const nearPole = maxAbsLat > Math.PI * 0.49;  // 纬度 > 85° 视为近极点
 
+      // 极点处理：近极点端借用远端的经度
+      // C# 判定: abs(x) < 1e-6 && abs(z) < 1e-6 (在极轴上)
+      // JS 等价: |lat| > π/2 - 1e-3 (纬度接近 ±90°)
+      const nearPoleThreshold = Math.PI / 2 - 1e-3;
+      if (Math.abs(a.lat) > nearPoleThreshold) a.lon = b.lon;
+      if (Math.abs(b.lat) > nearPoleThreshold) b.lon = a.lon;
+
+      // 经度差归一化到 [0, 2π)，再映射到 [-π, π]
       let dLon = b.lon - a.lon;
-      // 归一化经度差到 [-π, π]
-      while (dLon > Math.PI) dLon -= 2 * Math.PI;
-      while (dLon < -Math.PI) dLon += 2 * Math.PI;
+      dLon -= Math.floor(dLon / (2 * Math.PI)) * (2 * Math.PI);
+      if (dLon > Math.PI) dLon -= 2 * Math.PI;
 
       const points = [];
       for (let i = 0; i <= segments; i++) {
         const t = i / segments;
-        let p;
-        if (nearPole) {
-          // 近极点：使用球面大圆弧（Slerp），避免经纬度插值扭曲
-          const fromN = from.clone().normalize();
-          const toN = to.clone().normalize();
-          const dot = THREE.MathUtils.clamp(fromN.dot(toN), -1, 1);
-          const angle = Math.acos(dot);
-          if (angle < 1e-6) {
-            p = latLonToWorld(a.lat + t * (b.lat - a.lat), a.lon + t * dLon, a.r + t * (b.r - a.r), safePole);
-          } else {
-            const sinA = Math.sin((1 - t) * angle);
-            const sinB = Math.sin(t * angle);
-            p = new THREE.Vector3()
-              .addScaledVector(fromN, sinA / Math.sin(angle))
-              .addScaledVector(toN, sinB / Math.sin(angle))
-              .normalize()
-              .multiplyScalar(a.r + t * (b.r - a.r));
-          }
-        } else {
-          const lat = a.lat + t * (b.lat - a.lat);
-          const lon = a.lon + t * dLon;
-          const r = a.r + t * (b.r - a.r);
-          p = latLonToWorld(lat, lon, r, safePole);
-        }
-        points.push(p);
+        // 总是线性插值 lat, lon, r，不退化到 Slerp
+        const lat = a.lat + t * (b.lat - a.lat);
+        const lon = a.lon + t * dLon;
+        const r = a.r + t * (b.r - a.r);
+        points.push(latLonToWorld(lat, lon, r, safePole));
       }
       return points;
     }
@@ -790,7 +790,11 @@
         body: null,
       };
 
+      // 判断是否是重新计算（在 lastParsedData 被覆盖前检查）
+      const isRecalc = !!lastParsedData;
+
       return parseBlueprintString(blueprintText).then((parsed) => {
+        lastParsedData = parsed;  // 保存供重新计算按钮使用
 
         const cloud = parsed.body.dysonCloud;
         const shell = parsed.body.dysonShell ?? (parsed.body.singleShell ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] } : null);
@@ -804,9 +808,7 @@
               ? Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z)))
               : 1);
 
-        currentScale = 1 / maxRadius;
-
-        const baseSphereRadius = 1;  // maxRadius * currentScale ≡ 1
+        const baseSphereRadius = 1;  // 视图缩放到基准球面半径为 1
         const sphereGeometry = new THREE.SphereGeometry(baseSphereRadius, 48, 32);
         const sphereMaterial = new THREE.MeshStandardMaterial({
           color: 0x112946,
@@ -838,18 +840,74 @@
           +'<br>'+'创建时间：'+parsed.header.createdAt
         );
 
-        // 云轨道环线
+        // 半径输入框常显：单层壳="半径"默认10000，多层壳="最大半径"默认蓝图最大半径
+        const radiusLabel = document.getElementById('radiusLabel');
+        const radiusInput = document.getElementById('shellRadiusInput');
+        const lumInput = document.getElementById('luminosityInput');
+        const isSingleShell = parsed.header.typeId === 1;
+
+        // 首次解析时设默认值；重新计算时保留用户输入
+        if (!isRecalc) {
+          if (isSingleShell) {
+            radiusLabel.textContent = '半径';
+            radiusInput.value = 10000;
+          } else {
+            radiusLabel.textContent = '最大半径';
+            radiusInput.value = maxRadius;
+          }
+        } else {
+          radiusLabel.textContent = isSingleShell ? '半径' : '最大半径';
+        }
+
+        // 计算框架长度和壳面面积，传入最大半径约束
+        const userRadius = parseFloat(radiusInput.value) || 10000;
+        // 非单层壳大小始终以蓝图最大半径为基准（初次解析和重新计算）
+        currentScale = isSingleShell ? (1 / userRadius) : (1 / maxRadius);
+        const powerResult = computePoints(parsed, userRadius, isSingleShell ? null : userRadius);
+        const powerMain = document.getElementById('powerMain');
+
+        // 重置发电量，避免纯戴森云蓝图保留上一个蓝图的残余值
+        if (!powerResult) {
+          powerMain.textContent = '⚡ 0 W';
+        } else {
+          // 格式化功率（输入为 kW），固定3位有效数字
+          const fmtKW = (kw) => {
+            if (kw === 0) return '0 W';
+            if (kw >= 1e9) return (kw/1e9).toPrecision(3)+' TW';
+            if (kw >= 1e6) return (kw/1e6).toPrecision(3)+' GW';
+            if (kw >= 1e3) return (kw/1e3).toPrecision(3)+' MW';
+            return kw.toPrecision(3)+' kW';
+          };
+
+          // 更新右栏功率面板 — computePower 内部已含光度系数
+          const updateFinalPower = () => {
+            const lum = parseFloat(lumInput.value) || 1.0;
+            powerResult.totalPower = computePower(powerResult, lum);
+            powerMain.textContent = '⚡ '+fmtKW(powerResult.totalPower);
+          };
+
+          lumInput.oninput = updateFinalPower;
+          updateFinalPower();
+
+          // 左栏不再单独显示长度与面积 —— 在壳轨道条目中展示结构点和细胞点
+        }
+
+        // 云轨道：等同游戏 QuerySwarmRadius — 逐个独立 clamp，不保持比例
         if (cloud?.orbits) {
           cloud.orbits.forEach((orb, idx) => {
             if (!orb) return;
+            const adjCloudR = Math.min(orb.radius, userRadius);
             const op = quaternionToOrbitParams(orb);
             const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
             const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
             const def = gv;
-            const val = '半径 '+orb.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'
+            const radStr = (Math.abs(adjCloudR - orb.radius) > 0.5)
+              ? '原半径 '+orb.radius.toFixed(0)+' → 现半径 '+adjCloudR.toFixed(0)+'<br>'
+              : '半径 '+orb.radius.toFixed(1);
+            const val = radStr+' / 倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'
               +'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
             addStatToggle('cloud_'+orb.id, '云轨道 '+orb.id, val, def);
-            const r = orb.radius * currentScale;
+            const r = adjCloudR * currentScale;
             const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id-1] ?? cloud.colors?.[idx];
             const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), colorOpacity(e, 0.9));
             ring.name = 'cloud-orbit-'+idx;
@@ -872,16 +930,26 @@
             const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
             const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
             const def = gv;
+            const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
             if (parsed.header.typeId === 1) {
-              addStat('壳层', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt);
+              addStat('壳层', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt
+                +'<br>结构点'+(layerData?.totalStructurePoints||0)+' / 细胞点'+(layerData?.totalCellPoints||0));
             } else {
               const op = quaternionToOrbitParams(orbit);
-              const val = '半径 '+orbit.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'
-                +'<br>节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt
+              const adjR = layerData?.radius ?? orbit.radius;
+              const origR = layerData?.originalRadius ?? orbit.radius;
+              const radiusStr = (Math.abs(adjR - origR) > 0.5)
+                ? '原半径 '+origR.toFixed(0)+' → 现半径 '+adjR.toFixed(0)+'<br>'
+                : '半径 '+orbit.radius.toFixed(1);
+              const val = radiusStr+' / 倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'
+                +'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt
+                +'<br>结构点'+(layerData?.totalStructurePoints||0)+' / 细胞点'+(layerData?.totalCellPoints||0)
                 +'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
               addStatToggle('shell_'+orbit.id, '壳轨道 '+orbit.id, val, def);
             }
             if (!shData) continue;
+            // 使用 computePoints 调整后的半径渲染
+            const renderR = layerData?.radius ?? orbit.radius;
             const shQuat = normalizeQuaternion(orbit);
             const poleRaw = new THREE.Vector3(0, 1, 0);
             poleRaw.applyQuaternion(shQuat);
@@ -889,7 +957,7 @@
 
             // 每层壳独立 Group，用于独立旋转
             const shellGroup = new THREE.Group();
-            shellGroups.push({ group: shellGroup, pole: shPole.clone().normalize(), radius: orbit.radius });
+            shellGroups.push({ group: shellGroup, pole: shPole.clone().normalize(), radius: renderR });
 
             // 节点
             const nodeMap = new Map();
@@ -899,7 +967,7 @@
                 if (!nd) continue;
                 const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
                 d.applyQuaternion(shQuat);
-                const pos = convertBlueprintPosition(d).multiplyScalar(orbit.radius * currentScale);
+                const pos = convertBlueprintPosition(d).multiplyScalar(renderR * currentScale);
                 nodeMap.set(nd.id, pos);
                 shellGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), colorOpacity(nd.color, 1)));
               }
@@ -951,6 +1019,7 @@
         controls.target.set(0, 0, 0);
         controls.update();
       }).catch((error) => {
+        lastParsedData = null;  // 解析失败后禁止重新计算
         clearScene();
         clearStats();
         addStat('❌ 解析失败', error.message);
@@ -985,17 +1054,53 @@
       shellRotationEnabled = e.target.checked;
     });
 
+    // 监听半径输入，强制下限：最大半径≥10000，半径≥1000
+    const radiusInput = document.getElementById('shellRadiusInput');
+    radiusInput.addEventListener('input', () => {
+      const val = parseFloat(radiusInput.value);
+      if (isNaN(val)) return;
+      const labelText = document.getElementById('radiusLabel').textContent;
+      // 最大半径不能低于 10000
+      if (labelText === '最大半径' && val < 10000) radiusInput.value = 10000;
+      // 半径不能低于 1000
+      if (labelText === '半径' && val < 1000) radiusInput.value = 1000;
+    });
+
+    // 重新计算按钮：用当前半径和光度系数重新计算 SP/CP/功率并重渲染 3D 场景
+    let lastParsedData = null;
+    const recalcButton = document.getElementById('recalcButton');
+    recalcButton.addEventListener('click', () => {
+      const text = blueprintInput.value.trim();
+      if (!text) return;
+      recalcButton.disabled = true;
+      parseButton.disabled = true;
+      parseButton.textContent = '重新计算中...';
+      parseAndRender(text).then(() => {
+        recalcButton.disabled = false;
+        parseButton.disabled = false;
+        parseButton.textContent = '解析并预览';
+      }).catch((error) => {
+        clearScene();
+        clearStats();
+        addStat('❌ 解析失败', error.message);
+        recalcButton.disabled = false;
+        parseButton.disabled = false;
+        parseButton.textContent = '解析并预览';
+      });
+    });
+
     parseButton.addEventListener('click', async () => {
       const text = blueprintInput.value.trim();
       if (!text) return;
+      lastParsedData = null;  // 首次解析强制重置半径/光度默认值
       parseButton.disabled = true;
       parseButton.textContent = '解析中...';
-      try {
-        await parseAndRender(text);
-      } finally {
-        parseButton.disabled = false;
-        parseButton.textContent = '解析并渲染';
-      }
+      recalcButton.disabled = true;
+      await parseAndRender(text);
+      // parseAndRender 内部已处理错误（.catch），此处仅根据 lastParsedData 决定是否启用重算
+      if (lastParsedData) recalcButton.disabled = false;
+      parseButton.disabled = false;
+      parseButton.textContent = '解析并预览';
     });
   </script>
 </body>
