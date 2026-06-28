@@ -589,15 +589,27 @@
       return new THREE.Line(geometry, material);
     }
 
-    function createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, gridType = 0, pole = null) {
+    function createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null) {
       if (points.length < 3) return null;
 
       const avgRadius = points.reduce((sum, p) => sum + p.length(), 0) / points.length;
       // 始终使用原始顶点坐标，与框架线端点保持一致
       const spherePoints = points.map((p) => p.clone());
 
-      // effective radius for spherical subdivision fallback
-      const sphereRadius = avgRadius;
+      // 有边类型信息：每条边按自己的类型独立细分，纯/混合面流程一致
+      if (edgeTypes) {
+        const geoSegs = 3, gridSegs = 5;
+        const refined = [];
+        for (let i = 0; i < points.length; i++) {
+          const from = points[i];
+          const to = points[(i+1) % points.length];
+          const sub = edgeTypes[i] === 1 && pole
+            ? createGridArcPoints(from, to, gridSegs, pole)
+            : createSphericalArcPoints(from, to, geoSegs);
+          for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
+        }
+        return createFaceMesh(refined, color, opacity, pole, null);
+      }
 
       const vertices = [];
       const indices = [];
@@ -726,73 +738,11 @@
       const polygon = flatPoints.map((p, idx) => ({ x: p.x, y: p.y, idx }));
       const triangles_2d = earClipFlat(polygon);
 
-      // 近极点检测：检查壳层极点是否在壳面多边形内部
-      const nearPoleGlobal = (() => {
-        if (!pole) return false;
-        // 将极点方向投影到切平面
-        const polePt3D = pole.clone().normalize().multiplyScalar(avgRadius);
-        const d = polePt3D.clone().sub(centroid3D);
-        const px = d.dot(axisU);
-        const py = d.dot(axisV);
-        // 射线法判断点是否在2D多边形内
-        let inside = false;
-        for (let i = 0, j = flatPoints.length - 1; i < flatPoints.length; j = i++) {
-          const xi = flatPoints[i].x, yi = flatPoints[i].y;
-          const xj = flatPoints[j].x, yj = flatPoints[j].y;
-          if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
-            inside = !inside;
-          }
-        }
-        return inside;
-      })();
-
-      if (gridType === 1 && !nearPoleGlobal) {
-        // 经纬线面片：lat/lon 空间细分（面片走向与经纬线框架一致）
-        const latLonPts = spherePoints.map((p) => toLatLon(p, pole));
-        const maxAbsLat = latLonPts.reduce((m, p) => Math.max(m, Math.abs(p.lat)), 0);
-        const subdivisions = (maxAbsLat > Math.PI * 0.35) ? 2 : 4;
-
-        triangles_2d.forEach(([aIdx, bIdx, cIdx]) => {
-          if (aIdx >= latLonPts.length || bIdx >= latLonPts.length || cIdx >= latLonPts.length) return;
-          const al = latLonPts[aIdx], bl = latLonPts[bIdx], cl = latLonPts[cIdx];
-          // 解包经度到 al.lon 附近
-          let blLon = bl.lon, clLon = cl.lon;
-          while (blLon - al.lon > Math.PI) blLon -= 2 * Math.PI;
-          while (blLon - al.lon < -Math.PI) blLon += 2 * Math.PI;
-          while (clLon - al.lon > Math.PI) clLon -= 2 * Math.PI;
-          while (clLon - al.lon < -Math.PI) clLon += 2 * Math.PI;
-          const rowIndices = [];
-          for (let i = 0; i <= subdivisions; i++) {
-            const row = [];
-            for (let j = 0; j <= subdivisions - i; j++) {
-              const tA = i / subdivisions;
-              const tB = j / subdivisions;
-              const tC = 1 - tA - tB;
-              const lat = tA * al.lat + tB * bl.lat + tC * cl.lat;
-              const lon = tA * al.lon + tB * blLon + tC * clLon;
-              const r = tA * al.r + tB * bl.r + tC * cl.r;
-              row.push(addVertex(latLonToWorld(lat, lon, r, pole)));
-            }
-            rowIndices.push(row);
-          }
-          for (let ii = 0; ii < rowIndices.length - 1; ii++) {
-            const cur = rowIndices[ii];
-            const nxt = rowIndices[ii + 1];
-            for (let j = 0; j < cur.length - 1; j++) {
-              indices.push(cur[j], cur[j + 1], nxt[j]);
-              if (j < cur.length - 2) {
-                indices.push(cur[j + 1], nxt[j + 1], nxt[j]);
-              }
-            }
-          }
-        });
-      } else {
-        // 测地线面片 或 近极点面片：球面法线方向细分
-        triangles_2d.forEach(([aIdx, bIdx, cIdx]) => {
+      // 测地线面片：球面法线方向细分
+      triangles_2d.forEach(([aIdx, bIdx, cIdx]) => {
           if (aIdx >= spherePoints.length || bIdx >= spherePoints.length || cIdx >= spherePoints.length) return;
           subdivideTriangleSpherical(spherePoints[aIdx], spherePoints[bIdx], spherePoints[cIdx], 3);
         });
-      }
 
       if (triangles_2d.length === 0) return null;
 
@@ -814,21 +764,6 @@
       return id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
     }
 
-    function createFaceBoundaryLine(points, color = 0x9ed1ff) {
-      const arcPoints = [];
-      for (let i = 0; i < points.length; i += 1) {
-        const from = points[i];
-        const to = points[i === points.length - 1 ? 0 : i + 1];
-        const segment = createSphericalArcPoints(from, to, 18);
-        if (arcPoints.length > 0) {
-          segment.shift();
-        }
-        arcPoints.push(...segment);
-      }
-      const geometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
-      const material = new THREE.LineBasicMaterial({ color, linewidth: 2 });
-      return new THREE.Line(geometry, material);
-    }
 
     function parseAndRender(blueprintText) {
       clearScene();
@@ -976,23 +911,8 @@
                 const rel = fc.relation.slice();
                 const pts = rel.map(nid => nodeMap.get(nid));
                 if (pts.some(p => !p)) return;
-                let ft = 0, nearPole = false;
-                if (shPole) {
-                  const pn = shPole.clone().normalize();
-                  for (const pt of pts) {
-                    if (pt.length() > 1e-6 && Math.abs(pt.dot(pn) / pt.length()) > Math.sin(Math.PI*88/180)) {
-                      nearPole = true; break;
-                    }
-                  }
-                }
-                if (!nearPole && rel.length > 0) {
-                  let c1 = 0;
-                  for (let j = 0; j < rel.length; j++) {
-                    if ((ftMap.get(edgeKey(rel[j], rel[(j+1)%rel.length])) ?? 0) === 1) c1++;
-                  }
-                  ft = c1 > rel.length/2 ? 1 : 0;
-                }
-                const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), colorOpacity(fc.color, 1), ft, shPole);
+                const edgeTypes = rel.map((_, j) => ftMap.get(edgeKey(rel[j], rel[(j+1)%rel.length])) ?? 0);
+                const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), colorOpacity(fc.color, 1), shPole, edgeTypes);
                 if (m) shellGroup.add(m);
               });
             }
