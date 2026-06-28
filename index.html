@@ -156,7 +156,7 @@
           <input type="checkbox" id="rotateToggle" checked> 旋转
         </label>
         <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px; color:#bcc8e0;">
-          <input type="checkbox" id="gridToggle" checked> 经度刻度
+          <input type="checkbox" id="gridToggle"> 经度刻度
         </label>
       </div>
       <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
@@ -353,10 +353,27 @@
 
     requestAnimationFrame(render);
 
+    const visObjects = new Map();
     function addStat(label, value) {
       const box = document.createElement('div');
       box.className = 'stat-box';
       box.innerHTML = `<strong>${label}</strong><br>${value}`;
+      statsElement.appendChild(box);
+    }
+    function addStatToggle(key, label, value, defChecked) {
+      const box = document.createElement('div');
+      box.className = 'stat-box';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = defChecked;
+      cb.style.cssText = 'margin-right:4px;vertical-align:middle;';
+      cb.addEventListener('change', () => {
+        const obj = visObjects.get(key);
+        if (obj) obj.visible = cb.checked;
+      });
+      box.appendChild(cb);
+      const span = document.createElement('span');
+      span.innerHTML = `<strong>${label}</strong><br>${value}`;
+      box.appendChild(span);
       statsElement.appendChild(box);
     }
 
@@ -815,25 +832,29 @@
           if (hasFillGridWarning) addStat('⚡ 蓝图含有网格涂色', '当前不支持蓝图的网格涂色，颜色不能正确显示');
         }
 
-        addStat('蓝图类型', parsed.header.typeName || '未知');
-        addStat('蓝图版本', parsed.header.version);
-        addStat('创建时间', parsed.header.createdAt);
+        addStat('蓝图信息', 
+           '蓝图类型：'+(parsed.header.typeName || '未知')
+          +'<br>'+'蓝图版本：'+parsed.header.version
+          +'<br>'+'创建时间：'+parsed.header.createdAt
+        );
 
         // 云轨道环线
         if (cloud?.orbits) {
           cloud.orbits.forEach((orb, idx) => {
             if (!orb) return;
-            const vis = cloud.visibility ? isVisible(cloud.visibility.inGame, orb.id) : true;
-            // 统计
             const op = quaternionToOrbitParams(orb);
-            const tag = vis ? '' : ' [隐藏]';
-            addStat('云轨道 '+orb.id+tag, '半径 '+orb.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°');
-            // 渲染
-            if (!vis) return;
+            const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
+            const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
+            const def = gv;
+            const val = '半径 '+orb.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'
+              +'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
+            addStatToggle('cloud_'+orb.id, '云轨道 '+orb.id, val, def);
             const r = orb.radius * currentScale;
             const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id-1] ?? cloud.colors?.[idx];
             const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), colorOpacity(e, 0.9));
             ring.name = 'cloud-orbit-'+idx;
+            ring.visible = def;
+            visObjects.set('cloud_'+orb.id, ring);
             rootGroup.add(ring);
           });
         }
@@ -844,22 +865,23 @@
           for (let i = 0; i < shell.orbitList.length; i++) {
             const orbit = shell.orbitList[i];
             if (!orbit) continue;
-            const vis = shell.visibility ? isVisible(shell.visibility.inGame, orbit.id) : true;
             const shData = shell.shells?.[orbit.id] ?? null;
-            //统计
             const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
             const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
             const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
+            const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
+            const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
+            const def = gv;
             if (parsed.header.typeId === 1) {
               addStat('壳层', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt);
             } else {
-              const tag = vis ? '' : ' [隐藏]';
               const op = quaternionToOrbitParams(orbit);
-              addStat('壳轨道 '+orbit.id+tag, '半径 '+orbit.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'° / 节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+tag);
+              const val = '半径 '+orbit.radius.toFixed(1)+' / 倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'
+                +'<br>节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt
+                +'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
+              addStatToggle('shell_'+orbit.id, '壳轨道 '+orbit.id, val, def);
             }
-            // 渲染
             if (!shData) continue;
-            if (!vis) continue;
             const shQuat = normalizeQuaternion(orbit);
             const poleRaw = new THREE.Vector3(0, 1, 0);
             poleRaw.applyQuaternion(shQuat);
@@ -917,6 +939,8 @@
               });
             }
 
+            shellGroup.visible = def;
+            visObjects.set('shell_'+orbit.id, shellGroup);
             rootGroup.add(shellGroup);
           }
         }
