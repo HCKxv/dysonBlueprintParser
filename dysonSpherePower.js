@@ -224,6 +224,71 @@ function _generateShellGeometry(faceNodes, faceFrames, radius) {
 
 // ==================== 公有 API ====================
 
+/**
+ * 计算单个框架的结构点数
+ * @param {object} fr - 框架数据 (含 structureRelation)
+ * @param {Map<number, object>} nodeMap - 节点映射
+ * @param {number} R - 壳层半径
+ * @returns {number | null} 框架 SP，计算失败返回 null
+ */
+export function computeFrameStructurePoints(fr, nodeMap, R) {
+  if (!fr) return null;
+  const ndA = nodeMap.get(fr.structureRelation[0]);
+  const ndB = nodeMap.get(fr.structureRelation[1]);
+  if (!ndA || !ndB) return null;
+
+  const posA = _v(ndA.coordinate.x, ndA.coordinate.y, ndA.coordinate.z);
+  const posB = _v(ndB.coordinate.x, ndB.coordinate.y, ndB.coordinate.z);
+  const dotVal = _clamp(_dot(_norm(posA), _norm(posB)), -1, 1);
+  const arcLen = Math.acos(dotVal) * R;
+  if (isNaN(arcLen) || arcLen <= 0) return null;
+
+  // C#: segCount = max(2, round(arcLen/600)*2)
+  const segCount = Math.max(2, Math.round(arcLen / 600) * 2);
+  return segCount * 10;
+}
+
+/**
+ * 计算单个壳面的细胞点数
+ * @param {object} fc - 壳面数据 (含 relation 节点列表)
+ * @param {Map<number, object>} nodeMap - 节点映射
+ * @param {Map<string, {type: number, euler: boolean}>} edgeMap - 框架类型映射
+ * @param {number} R - 壳层半径
+ * @returns {number | null} 壳面 CP，计算失败返回 null
+ */
+export function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
+  if (!fc || !Array.isArray(fc.relation) || fc.relation.length < 3) return null;
+
+  const faceNodes = [];
+  const faceFrames = [];
+  let allValid = true;
+  for (let i = 0; i < fc.relation.length; i++) {
+    const nid = fc.relation[i];
+    const nd = nodeMap.get(nid);
+    if (!nd) { allValid = false; break; }
+    const pos = _scale(_norm(_v(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z)), R);
+    faceNodes.push({ id: nd.id, pos, origNode: nd });
+
+    const nextNid = fc.relation[(i + 1) % fc.relation.length];
+    const nextNd = nodeMap.get(nextNid);
+    if (!nextNd) { allValid = false; break; }
+    const nextPos = _scale(_norm(_v(nextNd.coordinate.x, nextNd.coordinate.y, nextNd.coordinate.z)), R);
+
+    const eKey = nid < nextNid ? nid + '-' + nextNid : nextNid + '-' + nid;
+    const edgeInfo = edgeMap.get(eKey);
+    faceFrames.push({
+      nodeA: { pos: pos, id: nd.id },
+      nodeB: { pos: nextPos, id: nextNd.id },
+      euler: edgeInfo ? edgeInfo.euler : false,
+      type: edgeInfo ? edgeInfo.type : 0,
+    });
+  }
+  if (!allValid || faceNodes.length < 3) return null;
+
+  const nodeCPs = _generateShellGeometry(faceNodes, faceFrames, R);
+  return nodeCPs.reduce((a, b) => a + b, 0);
+}
+
 export function computePoints(parsed, r0 = 10000, maxRadius = null) {
   let shell;
   const isSingle = !!parsed.body.singleShell;
@@ -284,64 +349,23 @@ export function computePoints(parsed, r0 = 10000, maxRadius = null) {
       nodeSP += nd.structurePoints ?? 30;
     }
 
-    // ---- 框架结构点：C# 公式 segCount=round(arccos(dot)·R/600)*2, sp=segCount*10 ----
+    // ---- 框架结构点 ----
     const structures = [];
     let frameSP = 0;
     if (sh.frames) for (const fr of sh.frames) {
-      if (!fr) continue;
-      const ndA = nodeMap.get(fr.structureRelation[0]);
-      const ndB = nodeMap.get(fr.structureRelation[1]);
-      if (!ndA || !ndB) continue;
-
-      const posA = _v(ndA.coordinate.x, ndA.coordinate.y, ndA.coordinate.z);
-      const posB = _v(ndB.coordinate.x, ndB.coordinate.y, ndB.coordinate.z);
-      const dotVal = _clamp(_dot(_norm(posA), _norm(posB)), -1, 1);
-      const arcLen = Math.acos(dotVal) * R;
-      if (isNaN(arcLen) || arcLen <= 0) continue;
-
-      // C#: segCount = max(2, round(arcLen/600)*2)
-      const segCount = Math.max(2, Math.round(arcLen / 600) * 2);
-      const sp = segCount * 10;
-      frameSP += sp;
-      structures.push({ id: fr.id, type: fr.type ?? 0, structurePoints: sp, arcLength: arcLen });
+      const sp = computeFrameStructurePoints(fr, nodeMap, R);
+      if (sp != null) {
+        frameSP += sp;
+        structures.push({ id: fr.id, structurePoints: sp });
+      }
     }
 
-    // ---- 细胞点数：C# 六边形网格离散化 (DysonShell.GenerateGeometry) ----
+    // ---- 细胞点数 ----
     let cellPts = 0;
     const cells = [];
     if (sh.faces) for (const fc of sh.faces) {
-      if (!fc || !Array.isArray(fc.relation) || fc.relation.length < 3) continue;
-
-      const faceNodes = [];
-      const faceFrames = [];
-      let allValid = true;
-      for (let i = 0; i < fc.relation.length; i++) {
-        const nid = fc.relation[i];
-        const nd = nodeMap.get(nid);
-        if (!nd) { allValid = false; break; }
-        const pos = _scale(_norm(_v(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z)), R);
-        faceNodes.push({ id: nd.id, pos, origNode: nd });
-
-        const nextNid = fc.relation[(i + 1) % fc.relation.length];
-        const nextNd = nodeMap.get(nextNid);
-        if (!nextNd) { allValid = false; break; }
-        const nextPos = _scale(_norm(_v(nextNd.coordinate.x, nextNd.coordinate.y, nextNd.coordinate.z)), R);
-
-        const eKey = nid < nextNid ? nid + '-' + nextNid : nextNid + '-' + nid;
-        const edgeInfo = edgeMap.get(eKey);
-        faceFrames.push({
-          nodeA: { pos: pos, id: nd.id },
-          nodeB: { pos: nextPos, id: nextNd.id },
-          euler: edgeInfo ? edgeInfo.euler : false,
-          type: edgeInfo ? edgeInfo.type : 0,
-        });
-      }
-      if (!allValid || faceNodes.length < 3) continue;
-
-      const nodeCPs = _generateShellGeometry(faceNodes, faceFrames, R);
-      const faceCP = nodeCPs.reduce((a, b) => a + b, 0);
-      cellPts += faceCP;
-      cells.push({ id: fc.id, cellPoints: faceCP });
+      const cp = computeShellCellPoints(fc, nodeMap, edgeMap, R);
+      if (cp != null) { cellPts += cp; cells.push({ id: fc.id, cellPoints: cp }); }
     }
 
     const lSP = nodeSP + frameSP;
@@ -365,7 +389,6 @@ export function computePoints(parsed, r0 = 10000, maxRadius = null) {
 
 // 发电量 (单位: kW)
 // 游戏内公式: (CpMax*250 + SpMax*1600)*60 * luminosity / 1000
-// C# DysonSphere.Init(): energyGenPerNode|Frame=1600*dysonLumino, energyGenPerShell=250*dysonLumino
 // 96kW = 1600W*60tick/1000, 15kW = 250W*60tick/1000
 export function computePower(points, luminosity = 1.0) {
   return ((points.totalStructurePoints || 0) * 96 + (points.totalCellPoints || 0) * 15) * luminosity;

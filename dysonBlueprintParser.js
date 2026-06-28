@@ -134,7 +134,7 @@ function parseHeader(headerString) {
     version: values[2].trim(),
     typeId,
     typeName: BlueprintType.getName(typeId),
-    extra: values[4].trim(),
+    latLimit: values[4].trim(),
   };
 }
 
