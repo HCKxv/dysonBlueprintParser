@@ -166,7 +166,7 @@ async function parseBlueprintString(blueprintString) {
   const header = parseHeader(headerString);
 
   if (compareVersion(header.version, '0.9.25') < 0) {
-    throw new Error(`蓝图版本过低：${header.version}，请输入 0.9.25 及以上版本的蓝图`);
+    throw new Error(`蓝图版本过低：${header.version}，仅支持 0.9.25 及以上版本的蓝图`);
   }
   const body = await parseBlueprintBody(bodyString, header.typeId);
 
@@ -303,10 +303,12 @@ function parseNode(reader) {
   if (version >= 2) {
     reader.readInt32();
   }
+
   reader.readInt32();
   if (version >= 1) {
     reader.readInt32();
   }
+
   reader.readInt32();
   if (version >= 4) {
     reader.readInt32();

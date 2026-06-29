@@ -289,12 +289,24 @@ export function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
   return nodeCPs.reduce((a, b) => a + b, 0);
 }
 
+/**
+ * 计算戴森球蓝图的结构点 SP 和细胞点 CP
+ *
+ * @param {object} parsed - parseBlueprintString 的解析结果
+ * @param {number} [r0=10000] - 单层壳的用户输入半径 / 多层壳的蓝图最大半径
+ * @param {number|null} [maxRadius=null] - 最大半径（多层壳时逐层递减1000）
+ * @returns {object|null} 返回 { layers: [...], totalStructurePoints, totalCellPoints }，无壳数据时返回 null
+ */
 export function computePoints(parsed, r0 = 10000, maxRadius = null) {
+  const isSingle = parsed.body.typeId === 1;
   let shell;
-  const isSingle = !!parsed.body.singleShell;
-  if (parsed.body.dysonShell) shell = parsed.body.dysonShell;
-  else if (parsed.body.singleShell) shell = { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: r0, x: 0, y: 0, z: 0, w: 1 }] };
-  else return null;
+  if (isSingle) {
+    shell = { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: r0, x: 0, y: 0, z: 0, w: 1 }] };
+  } else if (parsed.body.dysonShell) {
+    shell = parsed.body.dysonShell;
+  } else {
+    return null;
+  }
   if (!shell.orbitList || !shell.shells) return null;
 
   // 根据最大半径调整壳层轨道半径（仅多层壳，最小间距 1000，云轨道不受限）
@@ -387,9 +399,15 @@ export function computePoints(parsed, r0 = 10000, maxRadius = null) {
   };
 }
 
-// 发电量 (单位: kW)
-// 游戏内公式: (CpMax*250 + SpMax*1600)*60 * luminosity / 1000
-// 96kW = 1600W*60tick/1000, 15kW = 250W*60tick/1000
+/**
+ * 计算戴森球发电量
+ *
+ * 游戏内公式: (CpMax*250 + SpMax*1600)*60 * luminosity / 1000
+ *
+ * @param {object} points - computePoints 的返回值（含 totalStructurePoints, totalCellPoints）
+ * @param {number} [luminosity=1.0] - 光度系数 dysonLumino
+ * @returns {number} 发电量，单位 kW
+ */
 export function computePower(points, luminosity = 1.0) {
   return ((points.totalStructurePoints || 0) * 96 + (points.totalCellPoints || 0) * 15) * luminosity;
 }

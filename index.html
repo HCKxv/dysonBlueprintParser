@@ -14,24 +14,27 @@
     button {width:fit-content;padding:12px 18px;border:none;border-radius:12px;background:#4364eb;color:white;font-size:15px;cursor:pointer;}
     button:disabled {opacity:0.55;cursor:default;}
     .panel {background:#0f1628;border:1px solid #243556;border-radius:16px;padding:14px;}
-    .panel h2 {margin:0 0 10px;font-size:1.1rem;}
     .canvas-container {flex:1;position:relative;width:100%;min-height:0;border-radius:16px;overflow:hidden;background:#05080e;}
     canvas {width:100%;height:100%;display:block;}
     .stat-grid {display:flex;flex-direction:column;gap:6px;}
     .stat-box {padding:8px 12px;background:#111926;border:1px solid #1e3657;border-radius:10px;font-size:13px;line-height:1.4;}
-    .panel-left h2 {margin:0 0 8px;font-size:1.0rem;}
-    textarea::-webkit-scrollbar {width:6px;}
-    textarea::-webkit-scrollbar-thumb {background:#334;border-radius:3px;}
+    .panel-left h2, .panel-right h2, .panel-center h2 {margin:0 0 8px;font-size:1.0rem;}
+    .panel-right h2 {flex-shrink:0;}
+    textarea::-webkit-scrollbar, .col::-webkit-scrollbar {width:6px;}
+    textarea::-webkit-scrollbar-thumb, .col::-webkit-scrollbar-thumb {background:#334;border-radius:3px;}
     .panel-right {min-width:0;}
-    .panel-right h2 {margin:0 0 8px;font-size:1.0rem;flex-shrink:0;}
     .panel-right button {flex-shrink:0;}
-    .panel-center {display:flex;flex-direction:column;min-width:500px;}
-    .panel-center h2 {margin:0 0 8px;font-size:1.0rem;}
+    .panel-center {min-width:500px;}
     .label {display:inline-block;width:4em;text-align-last:justify;text-align:justify;}
   </style>
 </head>
 <body>
 <div class="app">
+  <div style="grid-column:1/-1;background:#0f1628;border:1px solid #243556;border-radius:12px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:1.2rem;font-weight:bold;flex-shrink:0;">
+    <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0i5Zu+5bGCXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeD0iMHB4IiB5PSIwcHgiDQoJIHZpZXdCb3g9IjAgMCA1NjYuOTMgNTY2LjkzIiBmaWxsPSIjZTdlYmZmIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA1NjYuOTMgNTY2LjkzOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8cGF0aCBkPSJNMjgyLjQ3LDQ5My44OGMtMzQuOTYsMC02Ni43Ni0xNC4wMi05MC41MS0zNi45NEwyOC4zNSw1MDAuNzdsMTIxLjMtMTM3LjgyYy0wLjEyLTIuNDItMC4xOC00Ljg1LTAuMTgtNy4zDQoJYzAtNTYuMTgsMzIuMjUtMTA0LjUzLDc4LjU3LTEyNi4xNWw1NS4wMS0xOTEuN2w1NS4xOSwxOTIuMzNjNDUuNiwyMS45Miw3Ny4yNSw2OS44Nyw3Ny4yNSwxMjUuNTJjMCwxLjY4LTAuMDQsMy4zNS0wLjEsNS4wMQ0KCWwxMjMuMiwxNDAuMTFsLTE2NS4xOC00NC4yNkMzNDkuNjIsNDc5LjY4LDMxNy42NCw0OTMuODgsMjgyLjQ3LDQ5My44OHogTTM1MS45Myw0MjguNTdsMTI0LjA5LDMzLjI1TDM4Mi44OSwzNTUuOQ0KCWMwLjA5LTEuMTksMC4xNi0yLjM5LDAuMjItMy42MWMtMS41Ni00OC4xNi0yNi40Ny03OS45My01OC4yNS05NC41NmwtNDEuNzEtMTQ1LjM1bC00MS40NywxNDQuNQ0KCWMtMzEuNzMsMTQuMDEtNTYuOSw0NS41Ni01OS4zNiw5NS40MWMwLjA2LDEuODEsMC4xNiwzLjU5LDAuMjgsNS4zNUw5MC45LDQ2MS44MmwxMjMuMTItMzIuOTkNCglDMjUxLjc3LDQ2NC45MywzMTQuMzYsNDY1LjYzLDM1MS45Myw0MjguNTd6Ii8+DQo8cGF0aCBkPSJNMzM2LjEsNDExbDk1LjM5LDI1LjU2bC03MS42LTgxLjQzYzAuMDctMC45MiwwLjEzLTEuODQsMC4xNy0yLjc3Yy0xLjItMzcuMDItMjAuMzUtNjEuNDUtNDQuNzgtNzIuNjlsLTMyLjA3LTExMS43Mw0KCWwtMzEuODgsMTExLjA4Yy0yNC4zOSwxMC43Ny00My43NCwzNS4wMi00NS42Myw3My4zNWMwLjA1LDEuMzksMC4xMiwyLjc2LDAuMjIsNC4xMWwtNzAuNDksODAuMDlsOTQuNjQtMjUuMzYNCglDMjU5LjEsNDM4Ljk1LDMwNy4yMSw0MzkuNDgsMzM2LjEsNDExeiIvPg0KPC9zdmc+DQo=" style="height:24px;width:auto;">
+    戴森球蓝图预览
+    <span style="margin-left:auto;font-weight:normal;font-size:12px;opacity:0.55;">by.氢碳钾xv</span>
+  </div>
   <div class="col panel panel-left">
     <h2>蓝图信息</h2>
     <div class="stat-grid" id="stats"><div class="stat-box">请输入蓝图字符串并点击解析</div></div>
@@ -78,6 +81,15 @@ const blueprintInput = document.getElementById('blueprintInput');
 const parseButton = document.getElementById('parseButton');
 const statsElement = document.getElementById('stats');
 const canvas = document.getElementById('canvas3d');
+const powerMain = document.getElementById('powerMain');
+
+const fmtKW = (kw) => {
+  if (kw === 0) return '0 W';
+  if (kw >= 1e9) return (kw/1e9).toPrecision(3)+' TW';
+  if (kw >= 1e6) return (kw/1e6).toPrecision(3)+' GW';
+  if (kw >= 1e3) return (kw/1e3).toPrecision(3)+' MW';
+  return kw.toPrecision(3)+' kW';
+};
 
 (async () => {
   const params = new URLSearchParams(window.location.search);
@@ -118,6 +130,7 @@ function updateSunColor(luminosity) {
   else color = new THREE.Color(0x5588ff);
   pointLight.color.copy(color);
   originSphere.material.color.copy(color);
+  starGlowInner.material.color.copy(color);
 }
 
 scene.add(new THREE.AmbientLight(0xffffff, 1.2));
@@ -139,11 +152,18 @@ axesHelper.material.depthTest = false;
 axesHelper.renderOrder = 2;
 scene.add(axesHelper);
 
+// 恒星
 const originSphere = new THREE.Mesh(
-  new THREE.SphereGeometry(0.05, 32, 16),
-  new THREE.MeshBasicMaterial({ color: 0xffdd55, opacity: 0.8, transparent: true })
+  new THREE.SphereGeometry(0.05, 48, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffdd55 })
 );
 scene.add(originSphere);
+// 恒星光晕
+const starGlowInner = new THREE.Mesh(
+  new THREE.SphereGeometry(0.068, 32, 16),
+  new THREE.MeshBasicMaterial({ color: 0xffdd55, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+scene.add(starGlowInner);
 
 let currentScale = 1;
 
@@ -228,7 +248,7 @@ function addStatToggle(key, label, value, defChecked) {
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.checked = defChecked;
   cb.style.cssText = 'margin-right:4px;vertical-align:middle;';
-  cb.addEventListener('change', () => { const obj = visObjects.get(key); if (obj) obj.visible = cb.checked; });
+  cb.addEventListener('change', () => { const obj = visObjects.get(key); if (obj) obj.visible = cb.checked; const glow = visObjects.get(key.replace(/^cloud_/, 'cloud_glow_')); if (glow) glow.visible = cb.checked; });
   box.appendChild(cb);
   const span = document.createElement('span');
   span.innerHTML = `<strong>${label}</strong><br>${value}`;
@@ -295,6 +315,21 @@ function createOrbitRing(radius, orbit, color = 0x00b7ff, opacity = 0.9) {
   return new THREE.LineLoop(geometry, material);
 }
 
+function createOrbitGlow(radius, orbit, color = 0xffcba6, opacity = 0.18) {
+  const q = normalizeQuaternion(orbit);
+  const points = [];
+  for (let i = 0; i <= 128; i++) {
+    const theta = (i / 128) * Math.PI * 2;
+    const point = new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
+    point.applyQuaternion(q);
+    points.push(convertBlueprintPosition(point));
+  }
+  const curve = new THREE.CatmullRomCurve3(points, true);
+  const geometry = new THREE.TubeGeometry(curve, 100, 0.006, 8, true);
+  const material = new THREE.MeshBasicMaterial({ color, opacity, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+  return new THREE.Mesh(geometry, material);
+}
+
 function createNodeSphere(position, id, color = 0x44ffb8, opacity = 1) {
   const geometry = new THREE.SphereGeometry(50 * currentScale, 8, 8);
   const material = new THREE.MeshStandardMaterial({ color, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6, transparent: opacity < 1, opacity });
@@ -322,24 +357,25 @@ function createSphericalArcPoints(from, to, segments = 36) {
   return points;
 }
 
-function toLatLon(pos, pole = new THREE.Vector3(0, 1, 0)) {
-  const r = pos.length();
+function getPoleBasis(pole) {
   const poleN = (pole ?? new THREE.Vector3(0, 1, 0)).clone().normalize();
-  const lat = Math.asin(THREE.MathUtils.clamp(pos.dot(poleN) / r, -1, 1));
   const ref = Math.abs(poleN.x) < 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
   const east = new THREE.Vector3().crossVectors(ref, poleN).normalize();
   if (east.lengthSq() < 1e-6) east.crossVectors(new THREE.Vector3(0, 0, 1), poleN).normalize();
   const north = new THREE.Vector3().crossVectors(poleN, east).normalize();
+  return { poleN, east, north };
+}
+
+function toLatLon(pos, pole = new THREE.Vector3(0, 1, 0)) {
+  const r = pos.length();
+  const { poleN, east, north } = getPoleBasis(pole);
+  const lat = Math.asin(THREE.MathUtils.clamp(pos.dot(poleN) / r, -1, 1));
   const lon = Math.atan2(pos.dot(east), pos.dot(north));
   return { lat, lon, r };
 }
 
 function latLonToWorld(lat, lon, r, pole = new THREE.Vector3(0, 1, 0)) {
-  const poleN = (pole ?? new THREE.Vector3(0, 1, 0)).clone().normalize();
-  const ref = Math.abs(poleN.x) < 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-  const east = new THREE.Vector3().crossVectors(ref, poleN).normalize();
-  if (east.lengthSq() < 1e-6) east.crossVectors(new THREE.Vector3(0, 0, 1), poleN).normalize();
-  const north = new THREE.Vector3().crossVectors(poleN, east).normalize();
+  const { poleN, east, north } = getPoleBasis(pole);
   const cosLat = Math.cos(lat);
   return new THREE.Vector3().addScaledVector(east, r * cosLat * Math.sin(lon)).addScaledVector(north, r * cosLat * Math.cos(lon)).addScaledVector(poleN, r * Math.sin(lat));
 }
@@ -447,19 +483,22 @@ function createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, e
 
 function edgeKey(id1, id2) { return id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`; }
 
-// 从解析好的蓝图数据重建 3D 场景、统计和发电量（不重新解析）
+// 从解析的蓝图数据重建 3D 场景、统计和发电量
 function renderFromParsed(parsed, isRecalc = false) {
   if (!isRecalc) lastParsedData = parsed;
 
+  const isSingleShell = parsed.body.typeId === 1;
   const cloud = parsed.body.dysonCloud;
-  const shell = parsed.body.dysonShell ?? (parsed.body.singleShell ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] } : null);
+  const shell = isSingleShell
+    ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
+    : (parsed.body.dysonShell ?? null);
+  // 计算最大轨道
   const shellOrbitRadii = shell?.orbitList?.filter(Boolean).map((o) => o.radius) ?? [];
   const cloudOrbitRadii = cloud?.orbits?.filter(Boolean).map((o) => o.radius) ?? [];
   const allRadii = shellOrbitRadii.concat(cloudOrbitRadii);
   const maxRadius = allRadii.length > 0 ? Math.max(1, ...allRadii) : (shell?.shells?.[0]?.nodes ? Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z))) : 1);
 
   const baseSphereRadius = 1;
-  rootGroup.add(new THREE.Mesh(new THREE.SphereGeometry(baseSphereRadius, 48, 32), new THREE.MeshStandardMaterial({ color: 0x112946, opacity: 0.0, transparent: true })));
 
   if (shell?.orbitList) {
     let hasFillGridWarning = false;
@@ -476,36 +515,19 @@ function renderFromParsed(parsed, isRecalc = false) {
   addStat('蓝图信息', '蓝图类型：'+(parsed.header.typeName || '未知')+'<br>'+'蓝图版本：'+parsed.header.version+'<br>'+'创建时间：'+parsed.header.createdAt);
 
   const radiusLabel = document.getElementById('radiusLabel');
-  const radiusInput = document.getElementById('shellRadiusInput');
-  const lumInput = document.getElementById('luminosityInput');
-  const isSingleShell = parsed.header.typeId === 1;
-
-  if (!isRecalc) {
-    if (isSingleShell) { radiusLabel.textContent = '半径'; radiusInput.value = 10000; }
-    else { radiusLabel.textContent = '最大半径'; radiusInput.value = maxRadius; }
-  } else {
-    radiusLabel.textContent = isSingleShell ? '半径' : '最大半径';
-  }
+  radiusLabel.textContent = isSingleShell ? '半径' : '最大半径';
+  if (!isRecalc) radiusInput.value = isSingleShell ? 10000 : maxRadius;
 
   const userRadius = parseFloat(radiusInput.value) || 10000;
-  currentScale = isSingleShell ? (1 / userRadius) : (1 / maxRadius);
+  currentScale = 1 / userRadius;
   const powerResult = computePoints(parsed, userRadius, isSingleShell ? null : userRadius);
-  const powerMain = document.getElementById('powerMain');
 
-  const fmtKW = (kw) => {
-    if (kw === 0) return '0 W';
-    if (kw >= 1e9) return (kw/1e9).toPrecision(3)+' TW';
-    if (kw >= 1e6) return (kw/1e6).toPrecision(3)+' GW';
-    if (kw >= 1e3) return (kw/1e3).toPrecision(3)+' MW';
-    return kw.toPrecision(3)+' kW';
-  };
-
-  if (!powerResult) { powerMain.textContent = '⚡ 0 W'; gPowerResult = null; gFmtKW = null; }
+  if (!powerResult) { powerMain.textContent = '⚡ 0 W'; gPowerResult = null; }
   else {
     const lum = parseFloat(lumInput.value) || 1.0;
     powerResult.totalPower = computePower(powerResult, lum);
     powerMain.textContent = '⚡ '+fmtKW(powerResult.totalPower);
-    gPowerResult = powerResult; gFmtKW = fmtKW;
+    gPowerResult = powerResult;
     updateSunColor(lum);
   }
 
@@ -525,6 +547,9 @@ function renderFromParsed(parsed, isRecalc = false) {
       const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), colorOpacity(e, 0.9));
       ring.name = 'cloud-orbit-'+idx; ring.visible = def;
       visObjects.set('cloud_'+orb.id, ring); rootGroup.add(ring);
+      const glow = createOrbitGlow(r, orb, toHexColor(e, 0xffcba6), 0.18);
+      glow.name = 'cloud-glow-'+idx; glow.visible = def;
+      visObjects.set('cloud_glow_'+orb.id, glow); rootGroup.add(glow);
     });
   }
 
@@ -535,7 +560,7 @@ function renderFromParsed(parsed, isRecalc = false) {
     let next = userRadius;
     for (const orbit of sorted) {
       const r = Math.min(orbit.radius, next); adjustedRadii.set(orbit.id, r);
-      next = r - 1000; if (next < 1000) next = 1000;
+      next = Math.max(r - 1000, 1000);
     }
   }
 
@@ -552,7 +577,7 @@ function renderFromParsed(parsed, isRecalc = false) {
       const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
       const def = gv;
       const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
-      if (parsed.header.typeId === 1) {
+      if (parsed.body.typeId === 1) {
         addStat('单层壳', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
       } else {
         const op = quaternionToOrbitParams(orbit);
@@ -628,9 +653,6 @@ function parseAndRender(blueprintText) {
   return parseBlueprintString(blueprintText).then((parsed) => {
     renderFromParsed(parsed, false);
   }).catch((error) => {
-    lastParsedData = null;
-    clearScene();
-    clearStats();
     addStat('❌ 解析失败', error.message);
   });
 }
@@ -652,7 +674,6 @@ document.getElementById('rotateToggle').addEventListener('change', (e) => { shel
 
 // 光度系数变化：即时更新功率和恒星颜色，无需重新解析
 let gPowerResult = null;
-let gFmtKW = null;
 const lumInput = document.getElementById('luminosityInput');
 lumInput.addEventListener('input', () => {
   const val = parseFloat(lumInput.value);
@@ -661,9 +682,9 @@ lumInput.addEventListener('input', () => {
   if (val > 10) lumInput.value = 10;
   const lum = parseFloat(lumInput.value) || 1.0;
   updateSunColor(lum);
-  if (gPowerResult && gFmtKW) {
+  if (gPowerResult) {
     gPowerResult.totalPower = computePower(gPowerResult, lum);
-    document.getElementById('powerMain').textContent = '⚡ '+gFmtKW(gPowerResult.totalPower);
+    powerMain.textContent = '⚡ '+fmtKW(gPowerResult.totalPower);
   }
 });
 
