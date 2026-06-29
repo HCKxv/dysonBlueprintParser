@@ -25,7 +25,7 @@
     .panel-right {min-width:0;}
     .panel-right h2 {margin:0 0 8px;font-size:1.0rem;flex-shrink:0;}
     .panel-right button {flex-shrink:0;}
-    .panel-center {display:flex;flex-direction:column;}
+    .panel-center {display:flex;flex-direction:column;min-width:500px;}
     .panel-center h2 {margin:0 0 8px;font-size:1.0rem;}
     .label {display:inline-block;width:4em;text-align-last:justify;text-align:justify;}
   </style>
@@ -553,14 +553,14 @@ function renderFromParsed(parsed, isRecalc = false) {
       const def = gv;
       const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
       if (parsed.header.typeId === 1) {
-        addStat('壳层', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
+        addStat('单层壳', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
       } else {
         const op = quaternionToOrbitParams(orbit);
         const adjR = layerData?.radius ?? orbit.radius;
         const origR = layerData?.originalRadius ?? orbit.radius;
         const radiusStr = (Math.abs(adjR - origR) > 0.5) ? '蓝图半径 '+origR.toFixed(0)+' → 实际半径 '+adjR.toFixed(0)+'<br>' : '半径 '+orbit.radius.toFixed(1)+' / ';
         const val = radiusStr+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0)+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
-        addStatToggle('shell_'+orbit.id, '壳轨道 '+orbit.id, val, def);
+        addStatToggle('shell_'+orbit.id, '壳层 '+orbit.id, val, def);
       }
       if (!shData) continue;
       const renderR = isSingleShell ? userRadius : (adjustedRadii.get(orbit.id) ?? orbit.radius);
