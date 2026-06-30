@@ -77,7 +77,6 @@ import * as THREE from 'three';
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 async function fetchTextFile(url) {
-  if (!url.toLowerCase().endsWith('.txt')) throw new Error(`仅支持 .txt 文件，当前参数：${url}`);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return await response.text();
@@ -90,11 +89,24 @@ const canvas = document.getElementById('canvas3d');
 const powerMain = document.getElementById('powerMain');
 
 const fmtKW = (kw) => {
+  if (kw <0) return '???';
   if (kw === 0) return '0 W';
-  if (kw >= 1e9) return (kw/1e9).toPrecision(3)+' TW';
-  if (kw >= 1e6) return (kw/1e6).toPrecision(3)+' GW';
-  if (kw >= 1e3) return (kw/1e3).toPrecision(3)+' MW';
-  return kw.toPrecision(3)+' kW';
+  if (kw < 1) return formatValue(kw*1000)+' W';
+  if (kw >= 1e12) return formatValue(kw/1e12)+' PW';
+  if (kw >= 1e9) return formatValue(kw/1e9)+' TW';
+  if (kw >= 1e6) return formatValue(kw/1e6)+' GW';
+  if (kw >= 1e3) return formatValue(kw/1e3)+' MW';
+  return formatValue(kw)+' kW';
+};
+
+const formatValue = (value) => {
+  if (value >= 100) {
+    return value.toFixed(0);
+  } else if (value >= 10) {
+    return value.toFixed(1);
+  } else {  // value >= 1
+    return value.toFixed(2);
+  }
 };
 
 (async () => {
@@ -103,6 +115,7 @@ const fmtKW = (kw) => {
   if (txtUrl) {
     try {
       const text = await fetchTextFile(txtUrl);
+      if (!text.trim().startsWith('DYBP:')) throw new Error('文件内容不以 DYBP: 开头，不是有效的蓝图字符串');
       blueprintInput.value = text;
       parseButton.click();
     } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }
@@ -518,19 +531,28 @@ function renderFromParsed(parsed, isRecalc = false) {
     if (hasFillGridWarning) addStat('<span style="color: #e6b800;">⚠ 蓝图含有网格涂色</span> ', '当前不支持蓝图的网格涂色，颜色不能正确显示');
   }
 
-  addStat('蓝图信息', '蓝图类型：'+(parsed.header.typeName || '未知')+'<br>'+'蓝图版本：'+parsed.header.version+'<br>'+'创建时间：'+parsed.header.createdAt);
+  addStat('蓝图信息', 
+          '蓝图类型：'+(parsed.header.typeName || '未知')+'<br>'
+         +'蓝图版本：'+parsed.header.version+'<br>'
+         +'创建时间：'+parsed.header.createdAt+'<br>'
+         +'应力系统等级需求：等级 '+(Math.min(6, Math.max(0, Math.ceil((parseInt(parsed.header.latLimit)||0)/15))))
+  );
 
   const radiusLabel = document.getElementById('radiusLabel');
   radiusLabel.textContent = isSingleShell ? '半径' : '最大半径';
   if (!isRecalc) radiusInput.value = isSingleShell ? 10000 : maxRadius;
 
-  const userRadius = parseFloat(radiusInput.value) || 10000;
+  let userRadius = parseFloat(radiusInput.value) || 10000;
+  if (isSingleShell && userRadius < 1000) { userRadius = 1000; radiusInput.value = 1000; }
+  if (!isSingleShell && userRadius < 10000) { userRadius = 10000; radiusInput.value = 10000; }
   currentScale = 1 / userRadius;
   const powerResult = computePoints(parsed, userRadius, isSingleShell ? null : userRadius);
 
   if (!powerResult) { powerMain.textContent = '⚡ 0 W'; gPowerResult = null; }
   else {
-    const lum = parseFloat(lumInput.value) || 1.0;
+    let lum = parseFloat(lumInput.value) || 1.0;
+    if (isNaN(lum) || lum <= 0) { lum = 0.1; lumInput.value = 0.1; }
+    if (lum > 10) { lum = 10; lumInput.value = 10; }
     powerResult.totalPower = computePower(powerResult, lum);
     powerMain.textContent = '⚡ '+fmtKW(powerResult.totalPower);
     gPowerResult = powerResult;
@@ -678,27 +700,26 @@ document.getElementById('gridToggle').addEventListener('change', (e) => {
 });
 document.getElementById('rotateToggle').addEventListener('change', (e) => { shellRotationEnabled = e.target.checked; });
 
-// 光度系数变化：即时更新功率和恒星颜色，无需重新解析
+// 光度系数变化：输入结束后约束并更新功率和恒星颜色
 let gPowerResult = null;
 const lumInput = document.getElementById('luminosityInput');
-lumInput.addEventListener('input', () => {
-  const val = parseFloat(lumInput.value);
-  if (isNaN(val)) return;
-  if (val <= 0) lumInput.value = 0.1;
-  if (val > 10) lumInput.value = 10;
-  const lum = parseFloat(lumInput.value) || 1.0;
-  updateSunColor(lum);
+lumInput.addEventListener('change', () => {
+  let val = parseFloat(lumInput.value);
+  if (isNaN(val)) { lumInput.value = 1.0; val = 1.0; }
+  if (val <= 0) { lumInput.value = 0.1; val = 0.1; }
+  if (val > 10) { lumInput.value = 10; val = 10; }
+  updateSunColor(val);
   if (gPowerResult) {
-    gPowerResult.totalPower = computePower(gPowerResult, lum);
+    gPowerResult.totalPower = computePower(gPowerResult, val);
     powerMain.textContent = '⚡ '+fmtKW(gPowerResult.totalPower);
   }
 });
 
 // 半径输入约束：最大半径≥10000，半径≥1000
 const radiusInput = document.getElementById('shellRadiusInput');
-radiusInput.addEventListener('input', () => {
-  const val = parseFloat(radiusInput.value);
-  if (isNaN(val)) return;
+radiusInput.addEventListener('change', () => {
+  let val = parseFloat(radiusInput.value);
+  if (isNaN(val)) val = 0;
   const labelText = document.getElementById('radiusLabel').textContent;
   if (labelText === '最大半径' && val < 10000) radiusInput.value = 10000;
   if (labelText === '半径' && val < 1000) radiusInput.value = 1000;
