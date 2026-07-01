@@ -212,7 +212,7 @@ function _generateShellGeometry(faceNodes, faceFrames, radius) {
  * @param {number} R - 壳层半径
  * @returns {number | null} 框架 SP，计算失败返回 null
  */
-export function computeFrameStructurePoints(fr, nodeMap, R) {
+function computeFrameStructurePoints(fr, nodeMap, R) {
   if (!fr) return null;
   const ndA = nodeMap.get(fr.structureRelation[0]);
   const ndB = nodeMap.get(fr.structureRelation[1]);
@@ -237,7 +237,7 @@ export function computeFrameStructurePoints(fr, nodeMap, R) {
  * @param {number} R - 壳层半径
  * @returns {number | null} 壳面 CP，计算失败返回 null
  */
-export function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
+function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
   if (!fc || !Array.isArray(fc.relation) || fc.relation.length < 3) return null;
 
   const faceNodes = [];
@@ -277,7 +277,7 @@ export function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
  * @param {number} [r0=10000] - 单层壳的用户输入半径（多层壳使用蓝图原始轨道半径）
  * @returns {object|null} 返回 { layers: [...], totalStructurePoints, totalCellPoints }，无壳数据时返回 null
  */
-export function computePoints(parsed, r0 = 10000) {
+function computePoints(parsed, r0 = 10000) {
   const isSingle = parsed.body.typeId === 1;
   let shell;
   if (isSingle) {
@@ -371,6 +371,8 @@ export function computePoints(parsed, r0 = 10000) {
  * @param {number} [luminosity=1.0] - 光度系数 dysonLumino
  * @returns {number} 发电量，单位 kW
  */
-export function computePower(points, luminosity = 1.0) {
+function computePower(points, luminosity = 1.0) {
   return ((points.totalStructurePoints || 0) * 96 + (points.totalCellPoints || 0) * 15) * luminosity;
 }
+
+export { computeFrameStructurePoints, computeShellCellPoints, computePoints, computePower };

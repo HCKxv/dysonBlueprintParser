@@ -27,6 +27,9 @@
     .panel-right button {flex-shrink:0;}
     .panel-center {min-width:500px;}
   </style>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/" } }
+  </script>
 </head>
 <body>
 <div class="app">
@@ -75,28 +78,35 @@
     <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
   </div>
 </div>
-
-<script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/" } }
-</script>
-
 <script type="module">
 import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dysonBlueprintParser.js';
 import { computePoints, computePower } from './dysonSpherePower.js';
 import * as THREE from 'three';
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-async function fetchTextFile(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return await response.text();
-}
-
 const blueprintInput = document.getElementById('blueprintInput');
 const parseButton = document.getElementById('parseButton');
 const statsElement = document.getElementById('stats');
 const canvas = document.getElementById('canvas3d');
 const powerMain = document.getElementById('powerMain');
+
+async function fetchTextFile(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return await response.text();
+}
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const txtUrl = params.get('txt');
+  if (txtUrl) {
+    try {
+      const text = await fetchTextFile(txtUrl);
+      if (!text.trim().startsWith('DYBP:')) throw new Error('文件内容不以 DYBP: 开头，不是有效的蓝图字符串');
+      blueprintInput.value = text;
+      parseButton.click();
+    } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }
+  }
+})();
 
 const fmtKW = (kw) => {
   if (kw < 0) return '???';
@@ -118,19 +128,6 @@ const formatValue = (value) => {
     return value.toFixed(2);
   }
 };
-
-(async () => {
-  const params = new URLSearchParams(window.location.search);
-  const txtUrl = params.get('txt');
-  if (txtUrl) {
-    try {
-      const text = await fetchTextFile(txtUrl);
-      if (!text.trim().startsWith('DYBP:')) throw new Error('文件内容不以 DYBP: 开头，不是有效的蓝图字符串');
-      blueprintInput.value = text;
-      parseButton.click();
-    } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }
-  }
-})();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x3F5C6A);
@@ -589,8 +586,8 @@ function renderFromParsed(parsed) {
       const op = quaternionToOrbitParams(orb);
       const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
       const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
-      const radStr = '半径 '+orb.radius.toFixed(1)+' / ';
-      const val = radStr+'倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
+      const radStr = '半径 '+orb.radius.toFixed(0)+' / ';
+      const val = radStr+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
       addStatToggle('cloud_'+orb.id, '云轨道 '+orb.id, val, gv);
       const r = orb.radius * currentScale;
       const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id-1] ?? cloud.colors?.[idx];
@@ -619,7 +616,7 @@ function renderFromParsed(parsed) {
         singleShellStatBox = addStat('单层壳', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
       } else {
         const op = quaternionToOrbitParams(orbit);
-        const val = '半径 '+orbit.radius.toFixed(1)+' / '+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0)+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
+        const val = '半径 '+orbit.radius.toFixed(0)+' / '+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0)+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
         addStatToggle('shell_'+orbit.id, '壳层 '+orbit.id, val, gv);
       }
       if (!shData) continue;
