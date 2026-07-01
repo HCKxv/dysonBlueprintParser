@@ -265,14 +265,18 @@ function resizeRenderer() {
 }
 window.addEventListener('resize', resizeRenderer);
 
+let shellSpeed = 0.05;
+document.getElementById('speedSelect').addEventListener('change', function () {
+  shellSpeed = parseFloat(this.value) || 0.05;
+});
+
 function render() {
   resizeRenderer();
   const dt = Math.min(clock.getDelta(), 0.1);
-  const speed = parseFloat(document.getElementById('speedSelect').value) || 0.05;
   if (shellRotationEnabled) {
     const maxR = currentScale > 0 ? 1 / currentScale : 1;
     for (const sg of shellGroups) {
-      const omega = speed * maxR / sg.radius;
+      const omega = shellSpeed * maxR / sg.radius;
       const rot = new THREE.Quaternion().setFromAxisAngle(sg.pole, omega * dt);
       sg.group.quaternion.premultiply(rot);
     }
@@ -311,8 +315,11 @@ function clearScene() {
   while (rootGroup.children.length) {
     const child = rootGroup.children[0];
     rootGroup.remove(child);
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) { if (Array.isArray(child.material)) child.material.forEach(m => m.dispose()); else child.material.dispose(); }
+    if (child.geometry && child.geometry !== _nodeGeom) child.geometry.dispose();
+    if (child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      for (const m of mats) m.dispose();
+    }
   }
 }
 
@@ -370,11 +377,13 @@ function createOrbitGlow(radius, orbit, color = 0xffcba6, opacity = 0.18) {
   return new THREE.Mesh(geometry, material);
 }
 
+const _nodeGeom = new THREE.SphereGeometry(1, 8, 8);
+
 function createNodeSphere(position, id, color = 0x44ffb8, opacity = 1) {
-  const geometry = new THREE.SphereGeometry(50 * currentScale, 8, 8);
   const material = new THREE.MeshStandardMaterial({ color, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6, transparent: opacity < 1, opacity });
-  const sphere = new THREE.Mesh(geometry, material);
+  const sphere = new THREE.Mesh(_nodeGeom, material);
   sphere.position.copy(position);
+  sphere.scale.setScalar(50 * currentScale);
   sphere.name = `node-${id}`;
   return sphere;
 }
@@ -441,7 +450,7 @@ function createGridArcPoints(from, to, segments = 18, pole = null) {
 function createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
   const points = (type === 1 && pole) ? createGridArcPoints(from, to, 18, pole) : createSphericalArcPoints(from, to, 18);
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+  const material = new THREE.LineBasicMaterial({ color});
   return new THREE.Line(geometry, material);
 }
 
