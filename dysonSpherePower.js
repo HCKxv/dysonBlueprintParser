@@ -1,4 +1,4 @@
-// ===== 内部：向量 (Vector3 / VectorLF3 等价) =====
+// 向量
 function _v(x, y, z) { return { x, y, z }; }
 function _len(v) { return Math.hypot(v.x, v.y, v.z); }
 function _norm(v) { const l = _len(v); return l < 1e-12 ? _v(0, 0, 0) : _v(v.x / l, v.y / l, v.z / l); }
@@ -10,7 +10,7 @@ function _scale(v, s) { return _v(v.x * s, v.y * s, v.z * s); }
 function _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function _sqrDist(a, b) { const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z; return dx * dx + dy * dy + dz * dz; }
 
-// ===== 内部：球面线性插值 (等价于 C# DysonFrame.Elerp) =====
+// 球面线性插值
 function _elerp(a, b, t) {
   const la = _len(a), lb = _len(b);
   if (la < 1e-6 || lb < 1e-6) {
@@ -34,7 +34,7 @@ function _elerp(a, b, t) {
   return _v(r * Math.cos(lon) * cosLat, r * Math.sin(lat), r * Math.sin(lon) * cosLat);
 }
 
-// ===== 内部：框架细分 (等价于 C# DysonFrame.GetSegments) =====
+// 框架细分
 function _getFrameSegments(nodeA, nodeB, euler) {
   if (!euler) {
     return [nodeA.pos, nodeB.pos];
@@ -69,7 +69,7 @@ function _getFrameSegments(nodeA, nodeB, euler) {
   return result;
 }
 
-// ===== 内部：壳面六边形几何生成 (等价于 C# DysonShell.GenerateGeometry) =====
+// 壳面六边形几何生成
 function _generateShellGeometry(faceNodes, faceFrames, radius) {
   const nNodes = faceNodes.length;
   if (nNodes < 3) return new Array(nNodes).fill(0);
@@ -99,7 +99,7 @@ function _generateShellGeometry(faceNodes, faceFrames, radius) {
   }
 
   // 2. 网格缩放因子
-  const gridScale = Math.max(1, Math.round(Math.pow(radius / 4000, 0.75) + 0.5));
+  const gridScale = Math.max(1, Math.round(Math.pow(radius / 4000, 0.75)));
   const gridSize = gridScale * 80;
   const cpPerVertex = gridScale * gridScale * 2;
 
@@ -200,29 +200,10 @@ function _generateShellGeometry(faceNodes, faceFrames, radius) {
     }
   }
 
-  // 8. 顶点分配至最近节点
-  const verts = Array.from(vmap.values());
-  const vertsCounts = new Array(nNodes).fill(0);
-  const middle = Math.floor(nNodes / 2);
-
-  for (let vi = 0; vi < verts.length; vi++) {
-    let bestDist = Infinity;
-    let bestIdx = 0;
-    const offset = vi + 479001600;
-    for (let j = 0; j < nNodes; j++) {
-      let idxDiff = Math.abs((offset % nNodes) - j);
-      if (idxDiff > middle) idxDiff = nNodes - idxDiff;
-      const sqrD = _sqrDist(verts[vi], faceNodes[j].pos) + idxDiff;
-      if (sqrD < bestDist) { bestDist = sqrD; bestIdx = j; }
-    }
-    vertsCounts[bestIdx]++;
-  }
-
-  // 9. 返回每个节点的细胞点数
-  return vertsCounts.map(c => c * cpPerVertex);
+  // 8. 返回总细胞点数 = 顶点数 × 每顶点CP
+  return vmap.size * cpPerVertex;
 }
 
-// ==================== 公有 API ====================
 
 /**
  * 计算单个框架的结构点数
@@ -285,8 +266,8 @@ export function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
   }
   if (!allValid || faceNodes.length < 3) return null;
 
-  const nodeCPs = _generateShellGeometry(faceNodes, faceFrames, R);
-  return nodeCPs.reduce((a, b) => a + b, 0);
+  const totalCP = _generateShellGeometry(faceNodes, faceFrames, R);
+  return totalCP;
 }
 
 /**
@@ -334,23 +315,21 @@ export function computePoints(parsed, r0 = 10000) {
       edgeMap.set(key, { type: fr.type ?? 0, euler: (fr.type ?? 0) === 1 });
     }
 
-    const validNodes = sh.nodes ? sh.nodes.filter(Boolean) : [];
-    const nCnt = validNodes.length;
-
-    // ---- 节点结构点：使用蓝图内置值 (C#: r.ReadInt32()) ----
-    let nodeSP = 0;
-    for (const nd of validNodes) {
-      nodeSP += nd.structurePoints ?? 30;
-    }
-
-    // ---- 框架结构点 ----
+    // ---- 结构点数 (节点 + 框架) ----
     const structures = [];
-    let frameSP = 0;
+    let totalSP = 0;
+    if (sh.nodes) for (const nd of sh.nodes) {
+      if (!nd) continue;
+      const sp = nd.structurePoints ?? 30;
+      totalSP += sp;
+      structures.push({ type: 'node', id: nd.id, structurePoints: sp });
+    }
     if (sh.frames) for (const fr of sh.frames) {
+      if (!fr) continue;
       const sp = computeFrameStructurePoints(fr, nodeMap, R);
       if (sp != null) {
-        frameSP += sp;
-        structures.push({ id: fr.id, structurePoints: sp });
+        totalSP += sp;
+        structures.push({ type: 'frame', id: fr.id, structurePoints: sp });
       }
     }
 
@@ -358,19 +337,21 @@ export function computePoints(parsed, r0 = 10000) {
     let cellPts = 0;
     const cells = [];
     if (sh.faces) for (const fc of sh.faces) {
+      if (!fc) continue;
       const cp = computeShellCellPoints(fc, nodeMap, edgeMap, R);
-      if (cp != null) { cellPts += cp; cells.push({ id: fc.id, cellPoints: cp }); }
+      if (cp != null) {
+        cellPts += cp;
+        cells.push({ id: fc.id, cellPoints: cp });
+      }
     }
 
-    const lSP = nodeSP + frameSP;
-    tSP += lSP;
+    tSP += totalSP;
     tCP += cellPts;
 
     layers.push({
-      orbitId: orbit.id, radius: R, nodeCount: nCnt,
-      nodeStructurePoints: nodeSP,
+      orbitId: orbit.id, radius: R,
       structures, cells,
-      totalStructurePoints: lSP, totalCellPoints: cellPts,
+      totalStructurePoints: totalSP, totalCellPoints: cellPts,
     });
   }
 

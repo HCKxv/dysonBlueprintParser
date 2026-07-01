@@ -252,7 +252,7 @@ function parseDysonShell(reader) {
   };
 }
 
-// 解析单层壳结构：版本号、节点/框架/壳面列表，以及可选填色网格
+// 解析单层壳结构：节点/框架/壳面列表，以及可选填色网格
 function parseSingleShell(reader) {
   const version = reader.readInt32();
   const nodes = parseComponentList(reader, parseNode);

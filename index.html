@@ -52,8 +52,19 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;"><input type="checkbox" id="rotateToggle" checked> 旋转</label>
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;"><input type="checkbox" id="gridToggle" checked> 刻度</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;">
+        <input type="checkbox" id="gridToggle" checked>
+        刻度
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;">
+        <input type="checkbox" id="rotateToggle" checked>
+        旋转
+      </label>
+      <select id="speedSelect" style="background:#1a2a44;color:#bcc8e0;border:1px solid #2d4a6e;border-radius:4px;padding:2px 4px;font-size:13px;">
+        <option value="0.01">慢</option>
+        <option value="0.05" selected>中</option>
+        <option value="0.20">快</option>
+      </select>
     </div>
     <h2>蓝图输入</h2>
     <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;align-items:center;">
@@ -88,9 +99,9 @@ const canvas = document.getElementById('canvas3d');
 const powerMain = document.getElementById('powerMain');
 
 const fmtKW = (kw) => {
-  if (kw <0) return '???';
+  if (kw < 0) return '???';
   if (kw === 0) return '0 W';
-  if (kw < 1) return formatValue(kw*1000)+' W';
+  if (kw < 1) return formatValue(kw*1000)+' W';  //
   if (kw >= 1e12) return formatValue(kw/1e12)+' PW';
   if (kw >= 1e9) return formatValue(kw/1e9)+' TW';
   if (kw >= 1e6) return formatValue(kw/1e6)+' GW';
@@ -124,7 +135,7 @@ const formatValue = (value) => {
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x3F5C6A);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
-camera.position.set(0, 1.5, 3.0);
+camera.position.set(0, 1.5, -3.0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -163,12 +174,13 @@ scene.add(gridGroup);
 const clock = new THREE.Clock();
 let shellGroups = [];
 let shellRotationEnabled = true;
-const SHELL_BASE_SPEED = 0.05;
 
 const axesHelper = new THREE.AxesHelper(0.05);
 axesHelper.material.depthTest = false;
 axesHelper.renderOrder = 2;
 scene.add(axesHelper);
+
+createLongitudeGrid(1.2);
 
 // 恒星
 const originSphere = new THREE.Mesh(
@@ -193,29 +205,47 @@ function createLongitudeGrid(radius) {
     if (child.material) child.material.dispose();
   }
   const tickLen = radius * 0.08;
+  const midTickLen = radius * 0.05;
+  const minorTickLen = radius * 0.03;
   const fontSize = radius * 0.04;
-  for (let deg = 0; deg < 360; deg += 30) {
+  for (let deg = 0; deg < 360; deg++) {
     const rad = THREE.MathUtils.degToRad(deg + 180);
     const dir = new THREE.Vector3(Math.sin(rad), 0, Math.cos(rad));
-    const start = dir.clone().multiplyScalar(radius);
-    const end = dir.clone().multiplyScalar(radius + tickLen);
-    const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const mat = new THREE.LineBasicMaterial({ color: 0xffdd99 });
-    gridGroup.add(new THREE.Line(geom, mat));
-    const labelCanvas = document.createElement('canvas');
-    labelCanvas.width = 64; labelCanvas.height = 32;
-    const ctx = labelCanvas.getContext('2d');
-    ctx.fillStyle = '#ffdd99';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${deg}°`, 32, 24);
-    const texture = new THREE.CanvasTexture(labelCanvas);
-    texture.minFilter = THREE.LinearFilter;
-    const spriteMat = new THREE.SpriteMaterial({ map: texture, depthWrite: false });
-    const sprite = new THREE.Sprite(spriteMat);
-    sprite.position.copy(dir.clone().multiplyScalar(radius + tickLen * 1.8));
-    sprite.scale.set(fontSize * 2, fontSize, 1);
-    gridGroup.add(sprite);
+    const isMajor = deg % 10 === 0;
+    const isMid = !isMajor && deg % 5 === 0;
+    if (isMajor) {
+      const start = dir.clone().multiplyScalar(radius);
+      const end = dir.clone().multiplyScalar(radius + tickLen);
+      const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
+      const mat = new THREE.LineBasicMaterial({ color: 0xffdd99 });
+      gridGroup.add(new THREE.Line(geom, mat));
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 64; labelCanvas.height = 32;
+      const ctx = labelCanvas.getContext('2d');
+      ctx.fillStyle = '#ffdd99';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${deg}°`, 32, 24);
+      const texture = new THREE.CanvasTexture(labelCanvas);
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({ map: texture, depthWrite: false });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.position.copy(dir.clone().multiplyScalar(radius + tickLen * 1.8));
+      sprite.scale.set(fontSize * 2, fontSize, 1);
+      gridGroup.add(sprite);
+    } else if (isMid) {
+      const start = dir.clone().multiplyScalar(radius);
+      const end = dir.clone().multiplyScalar(radius + midTickLen);
+      const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
+      const mat = new THREE.LineBasicMaterial({ color: 0xaabbcc });
+      gridGroup.add(new THREE.Line(geom, mat));
+    } else {
+      const start = dir.clone().multiplyScalar(radius);
+      const end = dir.clone().multiplyScalar(radius + minorTickLen);
+      const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
+      const mat = new THREE.LineBasicMaterial({ color: 0x8899bb });
+      gridGroup.add(new THREE.Line(geom, mat));
+    }
   }
   const ringPts = [];
   for (let i = 0; i <= 128; i++) {
@@ -225,7 +255,6 @@ function createLongitudeGrid(radius) {
   const ringGeom = new THREE.BufferGeometry().setFromPoints(ringPts);
   const ringMat = new THREE.LineBasicMaterial({ color: 0x556688 });
   gridGroup.add(new THREE.Line(ringGeom, ringMat));
-  gridGroup.visible = document.getElementById('gridToggle').checked;
 }
 
 function resizeRenderer() {
@@ -239,10 +268,11 @@ window.addEventListener('resize', resizeRenderer);
 function render() {
   resizeRenderer();
   const dt = Math.min(clock.getDelta(), 0.1);
+  const speed = parseFloat(document.getElementById('speedSelect').value) || 0.05;
   if (shellRotationEnabled) {
     const maxR = currentScale > 0 ? 1 / currentScale : 1;
     for (const sg of shellGroups) {
-      const omega = SHELL_BASE_SPEED * maxR / sg.radius;
+      const omega = speed * maxR / sg.radius;
       const rot = new THREE.Quaternion().setFromAxisAngle(sg.pole, omega * dt);
       sg.group.quaternion.premultiply(rot);
     }
@@ -506,8 +536,6 @@ function renderFromParsed(parsed) {
   const allRadii = shellOrbitRadii.concat(cloudOrbitRadii);
   const maxRadius = allRadii.length > 0 ? Math.max(1, ...allRadii) : (shell?.shells?.[0]?.nodes ? Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z))) : 1);
 
-  const baseSphereRadius = 1;
-
   if (shell?.orbitList) {
     let hasFillGridWarning = false;
     for (const orbit of shell.orbitList) {
@@ -517,7 +545,7 @@ function renderFromParsed(parsed) {
         for (const cc of shData.fillGrid.colors) { if (cc && cc.a) { hasFillGridWarning = true; break; } }
       }
     }
-    if (hasFillGridWarning) addStat('<span style="color: #e6b800;">⚠ 蓝图含有网格涂色</span> ', '当前不支持蓝图的网格涂色，颜色不能正确显示');
+    if (hasFillGridWarning) addStat('<span style="color: #e6b800;">⚠ 蓝图含有网格涂色</span> ', '不支持蓝图的网格涂色，颜色不能正确显示');
   }
 
   addStat('蓝图信息', 
@@ -639,8 +667,7 @@ function renderFromParsed(parsed) {
     }
   }
 
-  createLongitudeGrid(baseSphereRadius * 1.2);
-  camera.position.set(0, baseSphereRadius * 2.2, baseSphereRadius * 3.2);
+  camera.position.set(0, 2.2, -3.2);
   controls.target.set(0, 0, 0);
   controls.update();
 }
@@ -658,7 +685,9 @@ document.getElementById('gridToggle').addEventListener('change', (e) => {
   gridGroup.visible = e.target.checked;
   axesHelper.visible = e.target.checked;
 });
-document.getElementById('rotateToggle').addEventListener('change', (e) => { shellRotationEnabled = e.target.checked; });
+document.getElementById('rotateToggle').addEventListener('change', (e) => {
+  shellRotationEnabled = e.target.checked;
+});
 
 // 光度系数变化：输入结束后约束并更新功率和恒星颜色
 let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
