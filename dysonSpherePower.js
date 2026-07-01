@@ -293,11 +293,10 @@ export function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
  * 计算戴森球蓝图的结构点 SP 和细胞点 CP
  *
  * @param {object} parsed - parseBlueprintString 的解析结果
- * @param {number} [r0=10000] - 单层壳的用户输入半径 / 多层壳的蓝图最大半径
- * @param {number|null} [maxRadius=null] - 最大半径（多层壳时逐层递减1000）
+ * @param {number} [r0=10000] - 单层壳的用户输入半径（多层壳使用蓝图原始轨道半径）
  * @returns {object|null} 返回 { layers: [...], totalStructurePoints, totalCellPoints }，无壳数据时返回 null
  */
-export function computePoints(parsed, r0 = 10000, maxRadius = null) {
+export function computePoints(parsed, r0 = 10000) {
   const isSingle = parsed.body.typeId === 1;
   let shell;
   if (isSingle) {
@@ -309,21 +308,6 @@ export function computePoints(parsed, r0 = 10000, maxRadius = null) {
   }
   if (!shell.orbitList || !shell.shells) return null;
 
-  // 根据最大半径调整壳层轨道半径（仅多层壳，最小间距 1000，云轨道不受限）
-  const adjustedRadii = new Map();
-  if (!isSingle && maxRadius != null && maxRadius > 0) {
-    const validOrbits = shell.orbitList.filter(o => o && shell.shells[o.id]);
-    // 按原始半径从大到小排序
-    const sorted = [...validOrbits].sort((a, b) => b.radius - a.radius);
-    let nextMax = maxRadius;
-    for (const orbit of sorted) {
-      const r = Math.min(orbit.radius, nextMax);
-      adjustedRadii.set(orbit.id, r);
-      nextMax = r - 1000; // 下一层至少比当前层小 1000
-      if (nextMax < 1000) nextMax = 1000;
-    }
-  }
-
   const layers = [];
   let tSP = 0, tCP = 0;
 
@@ -331,9 +315,7 @@ export function computePoints(parsed, r0 = 10000, maxRadius = null) {
     if (!orbit) continue;
     const sh = shell.shells[orbit.id];
     if (!sh) continue;
-    const originalR = orbit.radius;
-    // 单层壳使用输入半径 r0，多层壳使用调整后半径
-    const R = isSingle ? r0 : (adjustedRadii.get(orbit.id) ?? orbit.radius);
+    const R = orbit.radius;
 
     // 节点映射
     const nodeMap = new Map();
@@ -385,7 +367,7 @@ export function computePoints(parsed, r0 = 10000, maxRadius = null) {
     tCP += cellPts;
 
     layers.push({
-      orbitId: orbit.id, radius: R, originalRadius: originalR, nodeCount: nCnt,
+      orbitId: orbit.id, radius: R, nodeCount: nCnt,
       nodeStructurePoints: nodeSP,
       structures, cells,
       totalStructurePoints: lSP, totalCellPoints: cellPts,

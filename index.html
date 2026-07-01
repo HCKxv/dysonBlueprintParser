@@ -10,6 +10,7 @@
     .app {display:grid;grid-template-columns:320px 1fr 380px;gap:12px;padding:10px;height:100vh;width:100%;}
     .col {display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
     * {box-sizing:border-box;}
+    .input-dark {padding:4px 8px;border-radius:6px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:13px;text-align:center;}
     textarea {width:100%;flex:1;min-height:0;padding:14px;border-radius:14px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:14px;resize:none;}
     button {width:fit-content;padding:12px 18px;border:none;border-radius:12px;background:#4364eb;color:white;font-size:15px;cursor:pointer;}
     button:disabled {opacity:0.55;cursor:default;}
@@ -25,14 +26,13 @@
     .panel-right {min-width:0;}
     .panel-right button {flex-shrink:0;}
     .panel-center {min-width:500px;}
-    .label {display:inline-block;width:4em;text-align-last:justify;text-align:justify;}
   </style>
 </head>
 <body>
 <div class="app">
   <div style="grid-column:1/-1;background:#0f1628;border:1px solid #243556;border-radius:12px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:1.2rem;font-weight:bold;flex-shrink:0;">
     <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0i5Zu+5bGCXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeD0iMHB4IiB5PSIwcHgiDQoJIHZpZXdCb3g9IjAgMCA1NjYuOTMgNTY2LjkzIiBmaWxsPSIjZTdlYmZmIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA1NjYuOTMgNTY2LjkzOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8cGF0aCBkPSJNMjgyLjQ3LDQ5My44OGMtMzQuOTYsMC02Ni43Ni0xNC4wMi05MC41MS0zNi45NEwyOC4zNSw1MDAuNzdsMTIxLjMtMTM3LjgyYy0wLjEyLTIuNDItMC4xOC00Ljg1LTAuMTgtNy4zDQoJYzAtNTYuMTgsMzIuMjUtMTA0LjUzLDc4LjU3LTEyNi4xNWw1NS4wMS0xOTEuN2w1NS4xOSwxOTIuMzNjNDUuNiwyMS45Miw3Ny4yNSw2OS44Nyw3Ny4yNSwxMjUuNTJjMCwxLjY4LTAuMDQsMy4zNS0wLjEsNS4wMQ0KCWwxMjMuMiwxNDAuMTFsLTE2NS4xOC00NC4yNkMzNDkuNjIsNDc5LjY4LDMxNy42NCw0OTMuODgsMjgyLjQ3LDQ5My44OHogTTM1MS45Myw0MjguNTdsMTI0LjA5LDMzLjI1TDM4Mi44OSwzNTUuOQ0KCWMwLjA5LTEuMTksMC4xNi0yLjM5LDAuMjItMy42MWMtMS41Ni00OC4xNi0yNi40Ny03OS45My01OC4yNS05NC41NmwtNDEuNzEtMTQ1LjM1bC00MS40NywxNDQuNQ0KCWMtMzEuNzMsMTQuMDEtNTYuOSw0NS41Ni01OS4zNiw5NS40MWMwLjA2LDEuODEsMC4xNiwzLjU5LDAuMjgsNS4zNUw5MC45LDQ2MS44MmwxMjMuMTItMzIuOTkNCglDMjUxLjc3LDQ2NC45MywzMTQuMzYsNDY1LjYzLDM1MS45Myw0MjguNTd6Ii8+DQo8cGF0aCBkPSJNMzM2LjEsNDExbDk1LjM5LDI1LjU2bC03MS42LTgxLjQzYzAuMDctMC45MiwwLjEzLTEuODQsMC4xNy0yLjc3Yy0xLjItMzcuMDItMjAuMzUtNjEuNDUtNDQuNzgtNzIuNjlsLTMyLjA3LTExMS43Mw0KCWwtMzEuODgsMTExLjA4Yy0yNC4zOSwxMC43Ny00My43NCwzNS4wMi00NS42Myw3My4zNWMwLjA1LDEuMzksMC4xMiwyLjc2LDAuMjIsNC4xMWwtNzAuNDksODAuMDlsOTQuNjQtMjUuMzYNCglDMjU5LjEsNDM4Ljk1LDMwNy4yMSw0MzkuNDgsMzM2LjEsNDExeiIvPg0KPC9zdmc+DQo=" style="height:24px;width:auto;">
-    戴森球蓝图预览 V1.0
+    戴森球蓝图预览 V1.1
     <span style="margin-left:auto;font-weight:normal;font-size:12px;opacity:0.55;">by.氢碳钾xv</span>
   </div>
   <div class="col panel panel-left">
@@ -47,9 +47,8 @@
     <div id="powerPanel" style="text-align:center;padding:12px 0;border-bottom:1px solid #243556;margin-bottom:8px;">
       <div id="powerMain" style="font-size:2.2rem;font-weight:700;color:#ffd866;line-height:1.2;">⚡ 0&thinsp;W</div>
       <div style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:#bcc8e0;flex-wrap:wrap;">
-        <span id="radiusLabel" class="label">半径</span> <input type="number" id="shellRadiusInput" value="10000" step="100" min="1000" style="width:80px;padding:4px 8px;border-radius:6px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:13px;text-align:center;">
-        光度系数 <input type="number" id="luminosityInput" value="1.0" step="0.1" min="0.1" style="width:70px;padding:4px 8px;border-radius:6px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:13px;text-align:center;">
-        <button id="recalcButton" disabled style="padding:4px 10px;font-size:12px;border-radius:6px;">重新计算</button>
+        <span id="radiusLabel" style="display:none;">半径</span> <input type="number" id="shellRadiusInput" value="10000" step="100" min="4000" class="input-dark" style="display:none;width:80px;">
+        光度系数 <input type="number" id="luminosityInput" value="1.0" step="0.1" min="0.1" class="input-dark" style="width:70px;">
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
@@ -260,6 +259,7 @@ function addStat(label, value) {
   box.className = 'stat-box';
   box.innerHTML = `<strong>${label}</strong><br>${value}`;
   statsElement.appendChild(box);
+  return box;
 }
 function addStatToggle(key, label, value, defChecked) {
   const box = document.createElement('div');
@@ -273,6 +273,7 @@ function addStatToggle(key, label, value, defChecked) {
   span.innerHTML = `<strong>${label}</strong><br>${value}`;
   box.appendChild(span);
   statsElement.appendChild(box);
+  return box;
 }
 function clearStats() { statsElement.innerHTML = ''; }
 function clearScene() {
@@ -313,14 +314,7 @@ function toHexColor(color, defaultColor) {
   return defaultColor;
 }
 
-function colorOpacity(color, defaultOpacity = 1) {
-  if (!colorIsValid(color)) return defaultOpacity;
-  if (typeof color.r === 'number') { if (color.a === 0 || typeof color.a !== 'number') return defaultOpacity; return Math.max(0, Math.min(1, color.a / 255)); }
-  if (typeof color.h === 'number') { if (color.a === 0 || typeof color.a !== 'number') return defaultOpacity; return Math.max(0, Math.min(1, color.a)); }
-  return defaultOpacity;
-}
-
-function createOrbitRing(radius, orbit, color = 0x00b7ff, opacity = 0.9) {
+function buildOrbitPoints(radius, orbit) {
   const q = normalizeQuaternion(orbit);
   const points = [];
   for (let i = 0; i <= 128; i++) {
@@ -329,22 +323,19 @@ function createOrbitRing(radius, orbit, color = 0x00b7ff, opacity = 0.9) {
     point.applyQuaternion(q);
     points.push(convertBlueprintPosition(point));
   }
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  return points;
+}
+
+function createOrbitRing(radius, orbit, color = 0xffcba6, opacity = 0.9) {
+  const geometry = new THREE.BufferGeometry().setFromPoints(buildOrbitPoints(radius, orbit));
   const material = new THREE.LineBasicMaterial({ color, opacity, transparent: opacity < 1 });
   return new THREE.LineLoop(geometry, material);
 }
 
 function createOrbitGlow(radius, orbit, color = 0xffcba6, opacity = 0.18) {
-  const q = normalizeQuaternion(orbit);
-  const points = [];
-  for (let i = 0; i <= 128; i++) {
-    const theta = (i / 128) * Math.PI * 2;
-    const point = new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
-    point.applyQuaternion(q);
-    points.push(convertBlueprintPosition(point));
-  }
+  const points = buildOrbitPoints(radius, orbit);
   const curve = new THREE.CatmullRomCurve3(points, true);
-  const geometry = new THREE.TubeGeometry(curve, 100, 0.006, 8, true);
+  const geometry = new THREE.TubeGeometry(curve, 100, 0.008, 8, true);
   const material = new THREE.MeshBasicMaterial({ color, opacity, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
   return new THREE.Mesh(geometry, material);
 }
@@ -503,9 +494,7 @@ function createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, e
 function edgeKey(id1, id2) { return id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`; }
 
 // 从解析的蓝图数据重建 3D 场景、统计和发电量
-function renderFromParsed(parsed, isRecalc = false) {
-  if (!isRecalc) lastParsedData = parsed;
-
+function renderFromParsed(parsed) {
   const isSingleShell = parsed.body.typeId === 1;
   const cloud = parsed.body.dysonCloud;
   const shell = isSingleShell
@@ -538,23 +527,21 @@ function renderFromParsed(parsed, isRecalc = false) {
          +'应力系统等级需求：等级 '+(Math.min(6, Math.max(0, Math.ceil((parseInt(parsed.header.latLimit)||0)/15))))
   );
 
-  const radiusLabel = document.getElementById('radiusLabel');
-  radiusLabel.textContent = isSingleShell ? '半径' : '最大半径';
-  if (!isRecalc) radiusInput.value = isSingleShell ? 10000 : maxRadius;
+  document.getElementById('radiusLabel').style.display = isSingleShell ? '' : 'none';
+  radiusInput.style.display = isSingleShell ? '' : 'none';
 
-  let userRadius = parseFloat(radiusInput.value) || 10000;
-  if (isSingleShell && userRadius < 1000) { userRadius = 1000; radiusInput.value = 1000; }
-  if (!isSingleShell && userRadius < 10000) { userRadius = 10000; radiusInput.value = 10000; }
-  currentScale = 1 / userRadius;
-  const powerResult = computePoints(parsed, userRadius, isSingleShell ? null : userRadius);
+  if (isSingleShell) radiusInput.value = 10000;
+
+  const userRadius = 10000;
+  currentScale = 1 / maxRadius;
+  const powerResult = computePoints(parsed, isSingleShell ? userRadius : null);
 
   if (!powerResult) { powerMain.textContent = '⚡ 0 W'; gPowerResult = null; }
   else {
     let lum = parseFloat(lumInput.value) || 1.0;
     if (isNaN(lum) || lum <= 0) { lum = 0.1; lumInput.value = 0.1; }
     if (lum > 10) { lum = 10; lumInput.value = 10; }
-    powerResult.totalPower = computePower(powerResult, lum);
-    powerMain.textContent = '⚡ '+fmtKW(powerResult.totalPower);
+    powerMain.textContent = '⚡ '+fmtKW(computePower(powerResult, lum));
     gPowerResult = powerResult;
     updateSunColor(lum);
   }
@@ -562,34 +549,21 @@ function renderFromParsed(parsed, isRecalc = false) {
   if (cloud?.orbits) {
     cloud.orbits.forEach((orb, idx) => {
       if (!orb) return;
-      const adjCloudR = Math.min(orb.radius, userRadius);
       const op = quaternionToOrbitParams(orb);
       const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
       const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
-      const def = gv;
-      const radStr = (Math.abs(adjCloudR - orb.radius) > 0.5) ? '蓝图半径 '+orb.radius.toFixed(0)+' → 实际半径 '+adjCloudR.toFixed(0)+'<br>' : '半径 '+orb.radius.toFixed(1)+' / ';
+      const radStr = '半径 '+orb.radius.toFixed(1)+' / ';
       const val = radStr+'倾角 '+op.inclination.toFixed(0)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
-      addStatToggle('cloud_'+orb.id, '云轨道 '+orb.id, val, def);
-      const r = adjCloudR * currentScale;
+      addStatToggle('cloud_'+orb.id, '云轨道 '+orb.id, val, gv);
+      const r = orb.radius * currentScale;
       const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id-1] ?? cloud.colors?.[idx];
-      const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), colorOpacity(e, 0.9));
-      ring.name = 'cloud-orbit-'+idx; ring.visible = def;
+      const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), 0.9);
+      ring.name = 'cloud-orbit-'+idx; ring.visible = gv;
       visObjects.set('cloud_'+orb.id, ring); rootGroup.add(ring);
       const glow = createOrbitGlow(r, orb, toHexColor(e, 0xffcba6), 0.18);
-      glow.name = 'cloud-glow-'+idx; glow.visible = def;
+      glow.name = 'cloud-glow-'+idx; glow.visible = gv;
       visObjects.set('cloud_glow_'+orb.id, glow); rootGroup.add(glow);
     });
-  }
-
-  const adjustedRadii = new Map();
-  if (!isSingleShell && shell) {
-    const validOrbits = shell.orbitList.filter(o => o && shell.shells[o.id]);
-    const sorted = [...validOrbits].sort((a, b) => b.radius - a.radius);
-    let next = userRadius;
-    for (const orbit of sorted) {
-      const r = Math.min(orbit.radius, next); adjustedRadii.set(orbit.id, r);
-      next = Math.max(r - 1000, 1000);
-    }
   }
 
   shellGroups = [];
@@ -603,20 +577,16 @@ function renderFromParsed(parsed, isRecalc = false) {
       const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
       const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
       const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
-      const def = gv;
       const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
       if (parsed.body.typeId === 1) {
-        addStat('单层壳', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
+        singleShellStatBox = addStat('单层壳', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
       } else {
         const op = quaternionToOrbitParams(orbit);
-        const adjR = layerData?.radius ?? orbit.radius;
-        const origR = layerData?.originalRadius ?? orbit.radius;
-        const radiusStr = (Math.abs(adjR - origR) > 0.5) ? '蓝图半径 '+origR.toFixed(0)+' → 实际半径 '+adjR.toFixed(0)+'<br>' : '半径 '+orbit.radius.toFixed(1)+' / ';
-        const val = radiusStr+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0)+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
-        addStatToggle('shell_'+orbit.id, '壳层 '+orbit.id, val, def);
+        const val = '半径 '+orbit.radius.toFixed(1)+' / '+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0)+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
+        addStatToggle('shell_'+orbit.id, '壳层 '+orbit.id, val, gv);
       }
       if (!shData) continue;
-      const renderR = isSingleShell ? userRadius : (adjustedRadii.get(orbit.id) ?? orbit.radius);
+      const renderR = orbit.radius;
       const shQuat = normalizeQuaternion(orbit);
       const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
       const shPole = convertBlueprintPosition(poleRaw);
@@ -631,7 +601,7 @@ function renderFromParsed(parsed, isRecalc = false) {
           d.applyQuaternion(shQuat);
           const pos = convertBlueprintPosition(d).multiplyScalar(renderR * currentScale);
           nodeMap.set(nd.id, pos);
-          shellGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), colorOpacity(nd.color, 1)));
+          shellGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), 1));
         }
       }
       const renderedEdges = new Set();
@@ -659,11 +629,11 @@ function renderFromParsed(parsed, isRecalc = false) {
           const pts = rel.map(nid => nodeMap.get(nid));
           if (pts.some(p => !p)) return;
           const edgeTypes = rel.map((_, j) => ftMap.get(edgeKey(rel[j], rel[(j+1)%rel.length])) ?? 0);
-          const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), colorOpacity(fc.color, 1), shPole, edgeTypes);
+          const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes);
           if (m) shellGroup.add(m);
         });
       }
-      shellGroup.visible = def;
+      shellGroup.visible = gv;
       visObjects.set('shell_'+orbit.id, shellGroup);
       rootGroup.add(shellGroup);
     }
@@ -673,16 +643,6 @@ function renderFromParsed(parsed, isRecalc = false) {
   camera.position.set(0, baseSphereRadius * 2.2, baseSphereRadius * 3.2);
   controls.target.set(0, 0, 0);
   controls.update();
-}
-
-function parseAndRender(blueprintText) {
-  clearScene();
-  clearStats();
-  return parseBlueprintString(blueprintText).then((parsed) => {
-    renderFromParsed(parsed, false);
-  }).catch((error) => {
-    addStat('❌ 解析失败', error.message);
-  });
 }
 
 document.getElementById('pasteButton').addEventListener('click', async () => {
@@ -701,7 +661,7 @@ document.getElementById('gridToggle').addEventListener('change', (e) => {
 document.getElementById('rotateToggle').addEventListener('change', (e) => { shellRotationEnabled = e.target.checked; });
 
 // 光度系数变化：输入结束后约束并更新功率和恒星颜色
-let gPowerResult = null;
+let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
 const lumInput = document.getElementById('luminosityInput');
 lumInput.addEventListener('change', () => {
   let val = parseFloat(lumInput.value);
@@ -710,49 +670,49 @@ lumInput.addEventListener('change', () => {
   if (val > 10) { lumInput.value = 10; val = 10; }
   updateSunColor(val);
   if (gPowerResult) {
-    gPowerResult.totalPower = computePower(gPowerResult, val);
-    powerMain.textContent = '⚡ '+fmtKW(gPowerResult.totalPower);
+    powerMain.textContent = '⚡ '+fmtKW(computePower(gPowerResult, val));
   }
 });
 
-// 半径输入约束：最大半径≥10000，半径≥1000
+// 半径变化：约束并重算功率（仅单层壳生效）
 const radiusInput = document.getElementById('shellRadiusInput');
 radiusInput.addEventListener('change', () => {
   let val = parseFloat(radiusInput.value);
-  if (isNaN(val)) val = 0;
-  const labelText = document.getElementById('radiusLabel').textContent;
-  if (labelText === '最大半径' && val < 10000) radiusInput.value = 10000;
-  if (labelText === '半径' && val < 1000) radiusInput.value = 1000;
-});
-
-// 重新计算按钮：跳过解析，直接从 lastParsedData 重新构建
-let lastParsedData = null;
-const recalcButton = document.getElementById('recalcButton');
-recalcButton.addEventListener('click', () => {
-  if (!lastParsedData) return;
-  recalcButton.disabled = true;
-  parseButton.disabled = true;
-  parseButton.textContent = '重新计算中...';
-  // 延迟执行让浏览器渲染按钮禁用状态
-  setTimeout(() => {
-    clearScene();
-    clearStats();
-    renderFromParsed(lastParsedData, true);
-    recalcButton.disabled = false;
-    parseButton.disabled = false;
-    parseButton.textContent = '解析并预览';
-  }, 0);
+  if (isNaN(val) || val < 4000) { radiusInput.value = 4000; val = 4000; }
+  if (!gPowerResult || !lastParsed) return;
+  const powerResult = computePoints(lastParsed, val);
+  if (!powerResult) return;
+  const lum = parseFloat(lumInput.value) || 1.0;
+  const totalPower = computePower(powerResult, lum > 0 ? lum : 0.1);
+  powerMain.textContent = '⚡ '+fmtKW(totalPower);
+  gPowerResult = powerResult;
+  // 更新单层壳统计
+  const layer = powerResult.layers[0];
+  if (layer) {
+    const sh = lastParsed.body.singleShell;
+    const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
+    const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
+    const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
+    const box = singleShellStatBox;
+    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点'+nCnt+' 框架'+fCnt+' 壳面'+fcCnt+'<br>结构点数'+(layer.totalStructurePoints||0)+' / 细胞点数'+(layer.totalCellPoints||0);
+  }
 });
 
 parseButton.addEventListener('click', async () => {
   const text = blueprintInput.value.trim();
   if (!text) return;
-  lastParsedData = null;
   parseButton.disabled = true;
   parseButton.textContent = '解析中...';
-  recalcButton.disabled = true;
-  await parseAndRender(text);
-  if (lastParsedData) recalcButton.disabled = false;
+  clearScene(); clearStats();
+  gPowerResult = lastParsed = singleShellStatBox = null;
+  powerMain.textContent = '⚡ 0 W';
+  try {
+    const parsed = await parseBlueprintString(text);
+    renderFromParsed(parsed);
+    lastParsed = parsed;
+  } catch (error) {
+    addStat('❌ 解析失败', error.message);
+  }
   parseButton.disabled = false;
   parseButton.textContent = '解析并预览';
 });
