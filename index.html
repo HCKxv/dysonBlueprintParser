@@ -571,7 +571,7 @@ function renderFromParsed(parsed) {
         for (const cc of shData.fillGrid.colors) { if (cc && cc.a) { hasFillGridWarning = true; break; } }
       }
     }
-    if (hasFillGridWarning) addStat('<span style="color: #e6b800;">⚠ 蓝图含有网格涂色</span> ', '不支持蓝图的网格涂色，颜色不能正确显示');
+    if (hasFillGridWarning) addStat('<span style="color: #e6b800;">⚠ 此蓝图含有网格涂色</span> ', '当前不支持网格涂色，颜色不能正确显示');
   }
 
   addStat('蓝图信息', 
