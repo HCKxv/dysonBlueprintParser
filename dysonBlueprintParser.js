@@ -348,7 +348,7 @@ function parseFrame(reader) {
     id: itemId,
     style,
     type,
-    structureRelation: [nodeA, nodeB],
+    relation: [nodeA, nodeB],
     structurePoints,
     color,
   };

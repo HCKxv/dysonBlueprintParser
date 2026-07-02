@@ -207,15 +207,15 @@ function _generateShellGeometry(faceNodes, faceFrames, radius) {
 
 /**
  * 计算单个框架的结构点数
- * @param {object} fr - 框架数据 (含 structureRelation)
+ * @param {object} fr - 框架数据 (含 relation)
  * @param {Map<number, object>} nodeMap - 节点映射
  * @param {number} R - 壳层半径
  * @returns {number | null} 框架 SP，计算失败返回 null
  */
 function computeFrameStructurePoints(fr, nodeMap, R) {
   if (!fr) return null;
-  const ndA = nodeMap.get(fr.structureRelation[0]);
-  const ndB = nodeMap.get(fr.structureRelation[1]);
+  const ndA = nodeMap.get(fr.relation[0]);
+  const ndB = nodeMap.get(fr.relation[1]);
   if (!ndA || !ndB) return null;
 
   const posA = _v(ndA.coordinate.x, ndA.coordinate.y, ndA.coordinate.z);
@@ -310,7 +310,7 @@ function computePoints(body, r0 = 10000) {
     const edgeMap = new Map();
     if (sh.frames) for (const fr of sh.frames) {
       if (!fr) continue;
-      const [a, b] = fr.structureRelation;
+      const [a, b] = fr.relation;
       const key = a < b ? a + '-' + b : b + '-' + a;
       edgeMap.set(key, { type: fr.type ?? 0, euler: (fr.type ?? 0) === 1 });
     }

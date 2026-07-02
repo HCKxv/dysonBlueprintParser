@@ -2,8 +2,6 @@
  * DysonSpherePreview — 戴森球蓝图 3D 预览模块
  *
  *
- * ── 对外接口 ────────────────────────────────────────────────
- *
  *  预览实例:  new DysonSpherePreview()
  *
  *   1. init(canvas)                  初始化场景（相机、渲染器、光照、控制器、刻度网格）
@@ -35,7 +33,11 @@
  *      }
  *    }
  *
- *   其中 color = { r,g,b,a } | { h,s,v,a }
+ *   其中
+ *   color: { r,g,b,a } | { h,s,v,a }
+ *   节点 node:  { id, coordinate: { x, y, z }, color, style? }
+ *   框架 frame: { id, relation: [nodeId, nodeId], color, type, style? }     type: 0=测地线  1=经纬线
+ *   壳面 face:  { id, relation: [nodeId, nodeId, ...], color, pattern? }    有序节点 ID 列表构成多边形
  */
 
 import * as THREE from 'three';
@@ -468,9 +470,9 @@ class DysonSpherePreview {
         if (shData.frames) {
           shData.frames.forEach(fr => {
             if (!fr) return;
-            const k = _edgeKey(fr.structureRelation[0], fr.structureRelation[1]);
+            const k = _edgeKey(fr.relation[0], fr.relation[1]);
             ftMap.set(k, fr.type);
-            re(fr.structureRelation[0], fr.structureRelation[1], _toHexColor(fr.color, 0x175473), fr.type);
+            re(fr.relation[0], fr.relation[1], _toHexColor(fr.color, 0x175473), fr.type);
           });
         }
         if (shData.faces) {
