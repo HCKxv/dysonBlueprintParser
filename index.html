@@ -10,24 +10,33 @@
   <style>
     body {margin:0;min-height:100vh;background:#090b14;color:#e7ebff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
     .app {display:grid;grid-template-columns:320px 1fr 380px;gap:12px;padding:10px;height:100vh;width:100%;}
-    .col {display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+    .col {display:flex;flex-direction:column;gap:10px;}
     * {box-sizing:border-box;}
     .input-dark {padding:4px 8px;border-radius:6px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:13px;text-align:center;}
     textarea {width:100%;flex:1;min-height:0;padding:14px;border-radius:14px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:14px;resize:none;}
     button {width:fit-content;padding:12px 18px;border:none;border-radius:12px;background:#4364eb;color:white;font-size:15px;cursor:pointer;}
     button:disabled {opacity:0.55;cursor:default;}
-    .panel {background:#0f1628;border:1px solid #243556;border-radius:16px;padding:14px;}
+    .panel {background:#0f1628;border:1px solid #243556;border-radius:16px;padding:14px;overflow:hidden;}
     .canvas-container {flex:1;position:relative;width:100%;min-height:0;border-radius:16px;overflow:hidden;background:#05080e;}
     canvas {width:100%;height:100%;display:block;}
     .stat-grid {display:flex;flex-direction:column;gap:6px;}
     .stat-box {padding:8px 12px;background:#111926;border:1px solid #1e3657;border-radius:10px;font-size:13px;line-height:1.4;}
     .panel-left h2, .panel-right h2, .panel-center h2 {margin:0 0 8px;font-size:1.0rem;}
     .panel-right h2 {flex-shrink:0;}
-    textarea::-webkit-scrollbar, .col::-webkit-scrollbar {width:6px;}
-    textarea::-webkit-scrollbar-thumb, .col::-webkit-scrollbar-thumb {background:#334;border-radius:3px;}
+    textarea::-webkit-scrollbar, .col::-webkit-scrollbar, .scroll-y::-webkit-scrollbar {width:6px;}
+    textarea::-webkit-scrollbar-thumb, .col::-webkit-scrollbar-thumb, .scroll-y::-webkit-scrollbar-thumb {background:#334;border-radius:3px;}
     .panel-right {min-width:0;}
     .panel-right button {flex-shrink:0;}
     .panel-center {min-width:500px;}
+    .panel-left {padding-right:10px;}
+    .scroll-y {overflow-y:auto;flex:1;min-height:0;padding-right:4px;}
+    .stat-section {display:flex;flex-direction:column;gap:2px;}
+    .stat-section-header {padding:6px 12px;background:#111926;border:1px solid #1e3657;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;}
+    .stat-section-header:hover {background:#162032;}
+    .stat-section-header .arrow {font-size:10px;transition:transform 0.2s;display:inline-block;}
+    .stat-section-header.collapsed .arrow {transform:rotate(-90deg);}
+    .stat-section-body {display:flex;flex-direction:column;gap:4px;padding-left:6px;}
+    .stat-section-body.collapsed {display:none;}
   </style>
   <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/" } }
@@ -37,12 +46,14 @@
 <div class="app">
   <div style="grid-column:1/-1;background:#0f1628;border:1px solid #243556;border-radius:12px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:1.2rem;font-weight:bold;flex-shrink:0;">
     <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0i5Zu+5bGCXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeD0iMHB4IiB5PSIwcHgiDQoJIHZpZXdCb3g9IjAgMCA1NjYuOTMgNTY2LjkzIiBmaWxsPSIjZTdlYmZmIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA1NjYuOTMgNTY2LjkzOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8cGF0aCBkPSJNMjgyLjQ3LDQ5My44OGMtMzQuOTYsMC02Ni43Ni0xNC4wMi05MC41MS0zNi45NEwyOC4zNSw1MDAuNzdsMTIxLjMtMTM3LjgyYy0wLjEyLTIuNDItMC4xOC00Ljg1LTAuMTgtNy4zDQoJYzAtNTYuMTgsMzIuMjUtMTA0LjUzLDc4LjU3LTEyNi4xNWw1NS4wMS0xOTEuN2w1NS4xOSwxOTIuMzNjNDUuNiwyMS45Miw3Ny4yNSw2OS44Nyw3Ny4yNSwxMjUuNTJjMCwxLjY4LTAuMDQsMy4zNS0wLjEsNS4wMQ0KCWwxMjMuMiwxNDAuMTFsLTE2NS4xOC00NC4yNkMzNDkuNjIsNDc5LjY4LDMxNy42NCw0OTMuODgsMjgyLjQ3LDQ5My44OHogTTM1MS45Myw0MjguNTdsMTI0LjA5LDMzLjI1TDM4Mi44OSwzNTUuOQ0KCWMwLjA5LTEuMTksMC4xNi0yLjM5LDAuMjItMy42MWMtMS41Ni00OC4xNi0yNi40Ny03OS45My01OC4yNS05NC41NmwtNDEuNzEtMTQ1LjM1bC00MS40NywxNDQuNQ0KCWMtMzEuNzMsMTQuMDEtNTYuOSw0NS41Ni01OS4zNiw5NS40MWMwLjA2LDEuODEsMC4xNiwzLjU5LDAuMjgsNS4zNUw5MC45LDQ2MS44MmwxMjMuMTItMzIuOTkNCglDMjUxLjc3LDQ2NC45MywzMTQuMzYsNDY1LjYzLDM1MS45Myw0MjguNTd6Ii8+DQo8cGF0aCBkPSJNMzM2LjEsNDExbDk1LjM5LDI1LjU2bC03MS42LTgxLjQzYzAuMDctMC45MiwwLjEzLTEuODQsMC4xNy0yLjc3Yy0xLjItMzcuMDItMjAuMzUtNjEuNDUtNDQuNzgtNzIuNjlsLTMyLjA3LTExMS43Mw0KCWwtMzEuODgsMTExLjA4Yy0yNC4zOSwxMC43Ny00My43NCwzNS4wMi00NS42Myw3My4zNWMwLjA1LDEuMzksMC4xMiwyLjc2LDAuMjIsNC4xMWwtNzAuNDksODAuMDlsOTQuNjQtMjUuMzYNCglDMjU5LjEsNDM4Ljk1LDMwNy4yMSw0MzkuNDgsMzM2LjEsNDExeiIvPg0KPC9zdmc+DQo=" style="height:24px;width:auto;">
-    戴森球蓝图预览 V1.1
+    戴森球蓝图预览 V1.2
     <span style="margin-left:auto;font-weight:normal;font-size:12px;opacity:0.55;">by.氢碳钾xv</span>
   </div>
   <div class="col panel panel-left">
     <h2>蓝图信息</h2>
-    <div class="stat-grid" id="stats"><div class="stat-box">请输入蓝图字符串并点击解析</div></div>
+    <div class="scroll-y">
+      <div class="stat-grid" id="stats"><div class="stat-box">请输入蓝图字符串并点击解析</div></div>
+    </div>
   </div>
   <div class="col panel panel-center">
     <h2>蓝图预览</h2>
@@ -125,15 +136,15 @@ const formatValue = (value) => {
 // ═══════════════════════════════════════════════════════════════
 // 统计面板
 // ═══════════════════════════════════════════════════════════════
-function addStat(label, value) {
+function addStat(label, value, parent) {
   const box = document.createElement('div');
   box.className = 'stat-box';
   box.innerHTML = `<strong>${label}</strong><br>${value}`;
-  statsElement.appendChild(box);
+  (parent || statsElement).appendChild(box);
   return box;
 }
 
-function addStatToggle(layerType, id, label, value, defChecked) {
+function addStatToggle(layerType, id, label, value, defChecked, parent) {
   const box = document.createElement('div');
   box.className = 'stat-box';
   const cb = document.createElement('input');
@@ -144,8 +155,26 @@ function addStatToggle(layerType, id, label, value, defChecked) {
   const span = document.createElement('span');
   span.innerHTML = `<strong>${label}</strong><br>${value}`;
   box.appendChild(span);
-  statsElement.appendChild(box);
+  (parent || statsElement).appendChild(box);
   return box;
+}
+
+function addCollapsibleSection(title, count) {
+  const section = document.createElement('div');
+  section.className = 'stat-section';
+  const header = document.createElement('div');
+  header.className = 'stat-section-header collapsed';
+  header.innerHTML = `<span class="arrow">▼</span> ${title} (${count})`;
+  const body = document.createElement('div');
+  body.className = 'stat-section-body collapsed';
+  header.addEventListener('click', () => {
+    header.classList.toggle('collapsed');
+    body.classList.toggle('collapsed');
+  });
+  section.appendChild(header);
+  section.appendChild(body);
+  statsElement.appendChild(section);
+  return body;
 }
 
 function clearStats() { statsElement.innerHTML = ''; }
@@ -266,33 +295,42 @@ function renderFromParsed(parsed) {
 
   // ── 云轨道统计 ──
   if (cloud?.orbits) {
-    cloud.orbits.forEach((orb) => {
-      if (!orb) return;
+    const sortedOrbits = cloud.orbits.filter(Boolean).sort((a, b) => a.id - b.id);
+    const body = addCollapsibleSection('云轨道', sortedOrbits.length);
+    sortedOrbits.forEach((orb) => {
       const op = quaternionToOrbitParams(orb);
       const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
       const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
       const val = '半径 ' + orb.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
-      addStatToggle('cloud', orb.id, '云轨道 ' + orb.id, val, gv);
+      addStatToggle('cloud', orb.id, '云轨道 ' + orb.id, val, gv, body);
     });
   }
 
   // ── 壳层统计 ──
   if (shell?.orbitList) {
-    for (const orbit of shell.orbitList) {
-      if (!orbit) continue;
-      const shData = shell.shells?.[orbit.id] ?? null;
-      const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
-      const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
-      const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
-      const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
-      const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
-      const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
-      if (parsed.body.typeId === 1) {
+    const sortedOrbits = shell.orbitList.filter(Boolean).sort((a, b) => a.id - b.id);
+    if (parsed.body.typeId === 1) {
+      for (const orbit of sortedOrbits) {
+        const shData = shell.shells?.[orbit.id] ?? null;
+        const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
+        const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
+        const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
+        const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
         singleShellStatBox = addStat('单层壳', '节点' + nodeCnt + ' 框架' + frameCnt + ' 壳面' + faceCnt + '<br>结构点数' + (layerData?.totalStructurePoints || 0) + ' / 细胞点数' + (layerData?.totalCellPoints || 0));
-      } else {
+      }
+    } else {
+      const body = addCollapsibleSection('壳层', sortedOrbits.length);
+      for (const orbit of sortedOrbits) {
+        const shData = shell.shells?.[orbit.id] ?? null;
+        const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
+        const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
+        const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
+        const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
+        const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
+        const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
         const op = quaternionToOrbitParams(orbit);
         const val = '半径 ' + orbit.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt + '<br>结构点数' + (layerData?.totalStructurePoints || 0) + ' / 细胞点数' + (layerData?.totalCellPoints || 0) + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
-        addStatToggle('shell', orbit.id, '壳层 ' + orbit.id, val, gv);
+        addStatToggle('shell', orbit.id, '壳层 ' + orbit.id, val, gv, body);
       }
     }
   }
