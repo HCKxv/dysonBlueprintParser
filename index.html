@@ -83,228 +83,48 @@
 <script type="module">
 import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dysonBlueprintParser.js';
 import { computePoints, computePower } from './dysonSpherePower.js';
-import * as THREE from 'three';
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { DysonSpherePreview } from './DysonSpherePreview.js';
 
+// ═══════════════════════════════════════════════════════════════
+// DOM 引用
+// ═══════════════════════════════════════════════════════════════
 const blueprintInput = document.getElementById('blueprintInput');
 const parseButton = document.getElementById('parseButton');
 const statsElement = document.getElementById('stats');
 const canvas = document.getElementById('canvas3d');
 const powerMain = document.getElementById('powerMain');
+const radiusInput = document.getElementById('shellRadiusInput');
+const lumInput = document.getElementById('luminosityInput');
 
-async function fetchTextFile(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return await response.text();
-}
-(async () => {
-  const params = new URLSearchParams(window.location.search);
-  const txtUrl = params.get('txt');
-  if (txtUrl) {
-    try {
-      const text = await fetchTextFile(txtUrl);
-      if (!text.trim().startsWith('DYBP:')) throw new Error('文件内容不以 DYBP: 开头，不是有效的蓝图字符串');
-      blueprintInput.value = text;
-      parseButton.click();
-    } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }
-  }
-})();
+// ═══════════════════════════════════════════════════════════════
+// 3D 预览模块
+// ═══════════════════════════════════════════════════════════════
+const preview = new DysonSpherePreview();
+preview.init(canvas);
 
+// ═══════════════════════════════════════════════════════════════
+// 工具函数
+// ═══════════════════════════════════════════════════════════════
 const fmtKW = (kw) => {
   if (kw < 0) return '???';
   if (kw === 0) return '0 W';
-  if (kw < 1) return formatValue(kw*1000)+' W';  //
-  if (kw >= 1e12) return formatValue(kw/1e12)+' PW';
-  if (kw >= 1e9) return formatValue(kw/1e9)+' TW';
-  if (kw >= 1e6) return formatValue(kw/1e6)+' GW';
-  if (kw >= 1e3) return formatValue(kw/1e3)+' MW';
-  return formatValue(kw)+' kW';
+  if (kw < 1) return formatValue(kw * 1000) + ' W';  // 一般也不太有可能出现小数
+  if (kw >= 1e12) return formatValue(kw / 1e12) + ' PW';
+  if (kw >= 1e9) return formatValue(kw / 1e9) + ' TW';
+  if (kw >= 1e6) return formatValue(kw / 1e6) + ' GW';
+  if (kw >= 1e3) return formatValue(kw / 1e3) + ' MW';
+  return formatValue(kw) + ' kW';
 };
 
 const formatValue = (value) => {
-  if (value >= 100) {
-    return value.toFixed(0);
-  } else if (value >= 10) {
-    return value.toFixed(1);
-  } else {  // value >= 1
-    return value.toFixed(2);
-  }
+  if (value >= 100) return value.toFixed(0);
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 };
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x3F5C6A);
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
-camera.position.set(0, 1.8, -3.2);
-
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.enablePan = false;
-controls.minDistance = 0.8;
-controls.maxDistance = 20;
-// 中键转动视角，滚轮缩放，禁止平移
-controls.mouseButtons = {
-  LEFT: null,
-  MIDDLE: THREE.MOUSE.ROTATE,
-  RIGHT: null
-};
-
-// 兜底：指针捕获意外丢失时强制结束拖拽状态
-canvas.addEventListener('lostpointercapture', (e) => {
-  canvas.dispatchEvent(new PointerEvent('pointerup', { pointerId: e.pointerId }));
-});
-window.addEventListener('blur', () => {
-  // 窗口失焦时也可能丢失 pointerup，重置所有指针
-  for (let i = 0; i < 10; i++) {
-    canvas.dispatchEvent(new PointerEvent('pointerup', { pointerId: i }));
-  }
-});
-
-const pointLight = new THREE.PointLight(0xffdd55, 1.2, 0, 0);
-pointLight.position.set(0, 0, 0);
-scene.add(pointLight);
-
-function updateSunColor(luminosity) {
-  const lum = Math.max(0.01, Math.min(10, luminosity));
-  let color;
-  if (lum <= 0.8) color = new THREE.Color(0xff8855);
-  else if (lum < 1.3) color = new THREE.Color(0xffdd55);
-  else if (lum < 1.8) color = new THREE.Color(0xf0f4ff);
-  else color = new THREE.Color(0x5588ff);
-  pointLight.color.copy(color);
-  originSphere.material.color.copy(color);
-  starGlowInner.material.color.copy(color);
-}
-
-scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-
-const rootGroup = new THREE.Group();
-scene.add(rootGroup);
-
-const gridGroup = new THREE.Group();
-gridGroup.name = 'longitudeGrid';
-scene.add(gridGroup);
-
-const clock = new THREE.Clock();
-let shellGroups = [];
-let shellRotationEnabled = true;
-
-const axesHelper = new THREE.AxesHelper(0.05);
-axesHelper.material.depthTest = false;
-axesHelper.renderOrder = 2;
-scene.add(axesHelper);
-
-createLongitudeGrid(1.2);
-
-// 恒星
-const originSphere = new THREE.Mesh(
-  new THREE.SphereGeometry(0.05, 48, 24),
-  new THREE.MeshBasicMaterial({ color: 0xffdd55 })
-);
-scene.add(originSphere);
-// 恒星光晕
-const starGlowInner = new THREE.Mesh(
-  new THREE.SphereGeometry(0.068, 32, 16),
-  new THREE.MeshBasicMaterial({ color: 0xffdd55, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
-);
-scene.add(starGlowInner);
-
-let currentScale = 1;
-
-function createLongitudeGrid(radius) {
-  while (gridGroup.children.length) {
-    const child = gridGroup.children[0];
-    gridGroup.remove(child);
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) child.material.dispose();
-  }
-  const tickLen = radius * 0.08;
-  const midTickLen = radius * 0.05;
-  const minorTickLen = radius * 0.03;
-  const fontSize = radius * 0.04;
-  for (let deg = 0; deg < 360; deg++) {
-    const rad = THREE.MathUtils.degToRad(deg + 180);
-    const dir = new THREE.Vector3(Math.sin(rad), 0, Math.cos(rad));
-    const isMajor = deg % 10 === 0;
-    const isMid = !isMajor && deg % 5 === 0;
-    if (isMajor) {
-      const start = dir.clone().multiplyScalar(radius);
-      const end = dir.clone().multiplyScalar(radius + tickLen);
-      const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
-      const mat = new THREE.LineBasicMaterial({ color: 0xffdd99 });
-      gridGroup.add(new THREE.Line(geom, mat));
-      const labelCanvas = document.createElement('canvas');
-      labelCanvas.width = 64; labelCanvas.height = 32;
-      const ctx = labelCanvas.getContext('2d');
-      ctx.fillStyle = '#ffdd99';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${deg}°`, 32, 24);
-      const texture = new THREE.CanvasTexture(labelCanvas);
-      texture.minFilter = THREE.LinearFilter;
-      const spriteMat = new THREE.SpriteMaterial({ map: texture, depthWrite: false });
-      const sprite = new THREE.Sprite(spriteMat);
-      sprite.position.copy(dir.clone().multiplyScalar(radius + tickLen * 1.8));
-      sprite.scale.set(fontSize * 2, fontSize, 1);
-      gridGroup.add(sprite);
-    } else if (isMid) {
-      const start = dir.clone().multiplyScalar(radius);
-      const end = dir.clone().multiplyScalar(radius + midTickLen);
-      const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
-      const mat = new THREE.LineBasicMaterial({ color: 0xaabbcc });
-      gridGroup.add(new THREE.Line(geom, mat));
-    } else {
-      const start = dir.clone().multiplyScalar(radius);
-      const end = dir.clone().multiplyScalar(radius + minorTickLen);
-      const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
-      const mat = new THREE.LineBasicMaterial({ color: 0x8899bb });
-      gridGroup.add(new THREE.Line(geom, mat));
-    }
-  }
-  const ringPts = [];
-  for (let i = 0; i <= 128; i++) {
-    const a = (i / 128) * Math.PI * 2;
-    ringPts.push(new THREE.Vector3(Math.sin(a) * radius, 0, Math.cos(a) * radius));
-  }
-  const ringGeom = new THREE.BufferGeometry().setFromPoints(ringPts);
-  const ringMat = new THREE.LineBasicMaterial({ color: 0x556688 });
-  gridGroup.add(new THREE.Line(ringGeom, ringMat));
-}
-
-function resizeRenderer() {
-  const width = canvas.clientWidth, height = canvas.clientHeight;
-  if (canvas.width !== width || canvas.height !== height) renderer.setSize(width, height, false);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-}
-window.addEventListener('resize', resizeRenderer);
-
-let shellSpeed = 0.05;
-document.getElementById('speedSelect').addEventListener('change', function () {
-  shellSpeed = parseFloat(this.value) || 0.05;
-});
-
-function render() {
-  resizeRenderer();
-  const dt = Math.min(clock.getDelta(), 0.1);
-  if (shellRotationEnabled) {
-    const maxR = currentScale > 0 ? 1 / currentScale : 1;
-    for (const sg of shellGroups) {
-      const omega = shellSpeed * maxR / sg.radius;
-      const rot = new THREE.Quaternion().setFromAxisAngle(sg.pole, omega * dt);
-      sg.group.quaternion.premultiply(rot);
-    }
-  }
-  controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(render);
-}
-requestAnimationFrame(render);
-
-const visObjects = new Map();
+// ═══════════════════════════════════════════════════════════════
+// 统计面板
+// ═══════════════════════════════════════════════════════════════
 function addStat(label, value) {
   const box = document.createElement('div');
   box.className = 'stat-box';
@@ -312,13 +132,14 @@ function addStat(label, value) {
   statsElement.appendChild(box);
   return box;
 }
-function addStatToggle(key, label, value, defChecked) {
+
+function addStatToggle(layerType, id, label, value, defChecked) {
   const box = document.createElement('div');
   box.className = 'stat-box';
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.checked = defChecked;
   cb.style.cssText = 'margin-right:4px;vertical-align:middle;';
-  cb.addEventListener('change', () => { const obj = visObjects.get(key); if (obj) obj.visible = cb.checked; const glow = visObjects.get(key.replace(/^cloud_/, 'cloud_glow_')); if (glow) glow.visible = cb.checked; });
+  cb.addEventListener('change', () => preview.setLayerVisible(layerType, id, cb.checked));
   box.appendChild(cb);
   const span = document.createElement('span');
   span.innerHTML = `<strong>${label}</strong><br>${value}`;
@@ -326,242 +147,83 @@ function addStatToggle(key, label, value, defChecked) {
   statsElement.appendChild(box);
   return box;
 }
+
 function clearStats() { statsElement.innerHTML = ''; }
-function clearScene() {
-  shellGroups.length = 0;
-  while (rootGroup.children.length) {
-    const child = rootGroup.children[0];
-    rootGroup.remove(child);
-    if (child.geometry && child.geometry !== _nodeGeom) child.geometry.dispose();
-    if (child.material) {
-      const mats = Array.isArray(child.material) ? child.material : [child.material];
-      for (const m of mats) m.dispose();
-    }
+
+// ═══════════════════════════════════════════════════════════════
+// 控制按钮事件
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('gridToggle').addEventListener('change', (e) => {
+  preview.setGridVisible(e.target.checked);
+});
+document.getElementById('rotateToggle').addEventListener('change', (e) => {
+  preview.setRotationEnabled(e.target.checked);
+});
+document.getElementById('speedSelect').addEventListener('change', function () {
+  preview.setRotationSpeed(parseFloat(this.value) || 0.05);
+});
+
+document.getElementById('pasteButton').addEventListener('click', async () => {
+  try { blueprintInput.value = await navigator.clipboard.readText(); } catch { alert('无法读取剪贴板，请手动粘贴'); }
+});
+document.getElementById('copyButton').addEventListener('click', async () => {
+  const text = blueprintInput.value.trim();
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); alert('成功复制到剪贴板'); } catch { alert('无法复制到剪贴板'); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 光度系数 & 半径
+// ═══════════════════════════════════════════════════════════════
+let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
+
+lumInput.addEventListener('change', () => {
+  let val = parseFloat(lumInput.value);
+  if (isNaN(val)) { lumInput.value = 1.0; val = 1.0; }
+  if (val <= 0) { lumInput.value = 0.1; val = 0.1; }
+  if (val > 10) { lumInput.value = 10; val = 10; }
+  preview.setSunColor(val);
+  if (gPowerResult) {
+    powerMain.textContent = '⚡ ' + fmtKW(computePower(gPowerResult, val));
   }
-}
+});
 
-function convertBlueprintPosition(coord) { return new THREE.Vector3(coord.x, coord.y, -coord.z); }
-
-function normalizeQuaternion(orbit) { const q = new THREE.Quaternion(orbit.x, orbit.y, orbit.z, orbit.w); q.normalize(); return q; }
-
-function colorIsValid(color) { if (!color) return false; return typeof color.r === 'number' || typeof color.h === 'number'; }
-
-function toHexColor(color, defaultColor) {
-  if (!colorIsValid(color)) return defaultColor;
-  if (typeof color.r === 'number') { if (color.a === 0) return defaultColor; return (color.r << 16) | (color.g << 8) | color.b; }
-  if (typeof color.h === 'number') {
-    if (color.a === 0) return defaultColor;
-    const h = color.h, s = color.s;
-    const hAngle = (h * 360) % 360;
-    const c = s;
-    const x = c * (1 - Math.abs((hAngle / 60) % 2 - 1));
-    let r = 0, g = 0, b = 0;
-    if (hAngle < 60) { r = c; g = x; }
-    else if (hAngle < 120) { r = x; g = c; }
-    else if (hAngle < 180) { g = c; b = x; }
-    else if (hAngle < 240) { g = x; b = c; }
-    else if (hAngle < 300) { r = x; b = c; }
-    else { r = c; b = x; }
-    const m = 1 - c;
-    return (Math.round((r+m)*255)<<16) | (Math.round((g+m)*255)<<8) | Math.round((b+m)*255);
+radiusInput.addEventListener('change', () => {
+  if (!gPowerResult || !lastParsed) return;
+  let val = parseFloat(radiusInput.value);
+  if (isNaN(val) || val < 4000) { radiusInput.value = 4000; val = 4000; }
+  const powerResult = computePoints(lastParsed, val);
+  if (!powerResult) return;
+  const lum = parseFloat(lumInput.value) || 1.0;
+  powerMain.textContent = '⚡ ' + fmtKW(computePower(powerResult, lum > 0 ? lum : 0.1));
+  gPowerResult = powerResult;
+  // 仅单层壳更新统计面板
+  if (lastParsed.typeId !== 1) return
+  const layer = powerResult.layers[0];
+  if (layer) {
+    const sh = lastParsed.singleShell;
+    const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
+    const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
+    const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
+    const box = singleShellStatBox;
+    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点' + nCnt + ' 框架' + fCnt + ' 壳面' + fcCnt + '<br>结构点数' + (layer.totalStructurePoints || 0) + ' / 细胞点数' + (layer.totalCellPoints || 0);
   }
-  return defaultColor;
-}
+});
 
-function buildOrbitPoints(radius, orbit) {
-  const q = normalizeQuaternion(orbit);
-  const points = [];
-  for (let i = 0; i <= 128; i++) {
-    const theta = (i / 128) * Math.PI * 2;
-    const point = new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
-    point.applyQuaternion(q);
-    points.push(convertBlueprintPosition(point));
-  }
-  return points;
-}
-
-function createOrbitRing(radius, orbit, color = 0xffcba6, opacity = 0.9) {
-  const geometry = new THREE.BufferGeometry().setFromPoints(buildOrbitPoints(radius, orbit));
-  const material = new THREE.LineBasicMaterial({ color, opacity, transparent: opacity < 1 });
-  return new THREE.LineLoop(geometry, material);
-}
-
-function createOrbitGlow(radius, orbit, color = 0xffcba6, opacity = 0.18) {
-  const points = buildOrbitPoints(radius, orbit);
-  const curve = new THREE.CatmullRomCurve3(points, true);
-  const geometry = new THREE.TubeGeometry(curve, 100, 0.008, 8, true);
-  const material = new THREE.MeshBasicMaterial({ color, opacity, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-  return new THREE.Mesh(geometry, material);
-}
-
-const _nodeGeom = new THREE.SphereGeometry(1, 8, 8);
-
-function createNodeSphere(position, id, color = 0x44ffb8, opacity = 1) {
-  const material = new THREE.MeshStandardMaterial({ color, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6, transparent: opacity < 1, opacity });
-  const sphere = new THREE.Mesh(_nodeGeom, material);
-  sphere.position.copy(position);
-  sphere.scale.setScalar(50 * currentScale);
-  sphere.name = `node-${id}`;
-  return sphere;
-}
-
-function createSphericalArcPoints(from, to, segments = 36) {
-  const radius = (from.length() + to.length()) / 2;
-  const fromN = from.clone().normalize();
-  const toN = to.clone().normalize();
-  const dot = THREE.MathUtils.clamp(fromN.dot(toN), -1, 1);
-  const angle = Math.acos(dot);
-  const axis = new THREE.Vector3().crossVectors(fromN, toN);
-  if (axis.lengthSq() < 1e-6) {
-    const points = [];
-    for (let i = 0; i <= segments; i++) points.push(fromN.clone().lerp(toN, i / segments).normalize().multiplyScalar(radius));
-    return points;
-  }
-  axis.normalize();
-  const points = [];
-  for (let i = 0; i <= segments; i++) points.push(fromN.clone().applyAxisAngle(axis, angle * i / segments).multiplyScalar(radius));
-  return points;
-}
-
-function getPoleBasis(pole) {
-  const poleN = (pole ?? new THREE.Vector3(0, 1, 0)).clone().normalize();
-  const ref = Math.abs(poleN.x) < 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-  const east = new THREE.Vector3().crossVectors(ref, poleN).normalize();
-  if (east.lengthSq() < 1e-6) east.crossVectors(new THREE.Vector3(0, 0, 1), poleN).normalize();
-  const north = new THREE.Vector3().crossVectors(poleN, east).normalize();
-  return { poleN, east, north };
-}
-
-function toLatLon(pos, pole = new THREE.Vector3(0, 1, 0)) {
-  const r = pos.length();
-  const { poleN, east, north } = getPoleBasis(pole);
-  const lat = Math.asin(THREE.MathUtils.clamp(pos.dot(poleN) / r, -1, 1));
-  const lon = Math.atan2(pos.dot(east), pos.dot(north));
-  return { lat, lon, r };
-}
-
-function latLonToWorld(lat, lon, r, pole = new THREE.Vector3(0, 1, 0)) {
-  const { poleN, east, north } = getPoleBasis(pole);
-  const cosLat = Math.cos(lat);
-  return new THREE.Vector3().addScaledVector(east, r * cosLat * Math.sin(lon)).addScaledVector(north, r * cosLat * Math.cos(lon)).addScaledVector(poleN, r * Math.sin(lat));
-}
-
-function createGridArcPoints(from, to, segments = 18, pole = null) {
-  const safePole = pole ?? new THREE.Vector3(0, 1, 0);
-  const a = toLatLon(from, safePole);
-  const b = toLatLon(to, safePole);
-  const nearPoleThreshold = Math.PI / 2 - 1e-3;
-  if (Math.abs(a.lat) > nearPoleThreshold) a.lon = b.lon;
-  if (Math.abs(b.lat) > nearPoleThreshold) b.lon = a.lon;
-  let dLon = b.lon - a.lon;
-  dLon -= Math.floor(dLon / (2 * Math.PI)) * (2 * Math.PI);
-  if (dLon > Math.PI) dLon -= 2 * Math.PI;
-  const points = [];
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    points.push(latLonToWorld(a.lat + t * (b.lat - a.lat), a.lon + t * dLon, a.r + t * (b.r - a.r), safePole));
-  }
-  return points;
-}
-
-function createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
-  const points = (type === 1 && pole) ? createGridArcPoints(from, to, 18, pole) : createSphericalArcPoints(from, to, 18);
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color});
-  return new THREE.Line(geometry, material);
-}
-
-function createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null) {
-  if (points.length < 3) return null;
-  const spherePoints = points.map((p) => p.clone());
-  if (edgeTypes) {
-    const geoSegs = 3, gridSegs = 5;
-    const refined = [];
-    for (let i = 0; i < points.length; i++) {
-      const from = points[i], to = points[(i+1) % points.length];
-      const sub = edgeTypes[i] === 1 && pole ? createGridArcPoints(from, to, gridSegs, pole) : createSphericalArcPoints(from, to, geoSegs);
-      for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
-    }
-    return createFaceMesh(refined, color, opacity, pole, null);
-  }
-  const vertices = [], indices = [];
-  const addVertex = (vertex) => { vertices.push(vertex.x, vertex.y, vertex.z); return (vertices.length / 3) - 1; };
-  const subdivideTriangleSpherical = (a, b, c, divisions = 3) => {
-    const ra = a.length(), rb = b.length(), rc = c.length();
-    const rowIndices = [];
-    for (let i = 0; i <= divisions; i++) {
-      const row = [];
-      for (let j = 0; j <= divisions - i; j++) {
-        const k = divisions - i - j;
-        const tA = i / divisions, tB = j / divisions, tC = k / divisions;
-        const r = tA * ra + tB * rb + tC * rc;
-        const point = new THREE.Vector3().addScaledVector(a, tA).addScaledVector(b, tB).addScaledVector(c, tC).normalize().multiplyScalar(r);
-        row.push(addVertex(point));
-      }
-      rowIndices.push(row);
-    }
-    for (let i = 0; i < rowIndices.length - 1; i++) {
-      const current = rowIndices[i], next = rowIndices[i + 1];
-      for (let j = 0; j < current.length - 1; j++) {
-        indices.push(current[j], current[j+1], next[j]);
-        if (j < current.length - 2) indices.push(current[j+1], next[j+1], next[j]);
-      }
-    }
-  };
-  function earClipFlat(polygon) {
-    const triangles = [], remaining = polygon.slice();
-    function signedArea(a, b, c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); }
-    function isConvex(prev, curr, next) { return signedArea(prev, curr, next) > 0; }
-    function pointInTriangle(pt, a, b, c) { const d1 = signedArea(pt, a, b), d2 = signedArea(pt, b, c), d3 = signedArea(pt, c, a); return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)); }
-    while (remaining.length > 3) {
-      let earFound = false;
-      for (let i = 0; i < remaining.length; i++) {
-        const prev = remaining[(i-1+remaining.length)%remaining.length], curr = remaining[i], next = remaining[(i+1)%remaining.length];
-        if (!isConvex(prev, curr, next)) continue;
-        let isEar = true;
-        for (let j = 0; j < remaining.length; j++) { if (j === (i-1+remaining.length)%remaining.length || j === i || j === (i+1)%remaining.length) continue; if (pointInTriangle(remaining[j], prev, curr, next)) { isEar = false; break; } }
-        if (isEar) { triangles.push([prev.idx, curr.idx, next.idx]); remaining.splice(i, 1); earFound = true; break; }
-      }
-      if (!earFound) { const base = remaining[0]; for (let i = 1; i < remaining.length - 1; i++) triangles.push([base.idx, remaining[i].idx, remaining[i+1].idx]); break; }
-    }
-    if (remaining.length === 3) triangles.push([remaining[0].idx, remaining[1].idx, remaining[2].idx]);
-    return triangles;
-  }
-  const faceNormal = new THREE.Vector3();
-  for (let i = 0; i < spherePoints.length; i++) { const curr = spherePoints[i], next = spherePoints[(i+1)%spherePoints.length]; faceNormal.x += (curr.y - next.y)*(curr.z + next.z); faceNormal.y += (curr.z - next.z)*(curr.x + next.x); faceNormal.z += (curr.x - next.x)*(curr.y + next.y); }
-  faceNormal.normalize();
-  const refX = Math.abs(faceNormal.x) < 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-  const axisU = new THREE.Vector3().crossVectors(refX, faceNormal).normalize();
-  const axisV = new THREE.Vector3().crossVectors(faceNormal, axisU).normalize();
-  const centroid3D = spherePoints.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1/spherePoints.length);
-  const flatPoints = spherePoints.map((p) => { const d = p.clone().sub(centroid3D); return { x: d.dot(axisU), y: d.dot(axisV) }; });
-  const polygon = flatPoints.map((p, idx) => ({ x: p.x, y: p.y, idx }));
-  const triangles_2d = earClipFlat(polygon);
-  triangles_2d.forEach(([aIdx, bIdx, cIdx]) => { if (aIdx < spherePoints.length && bIdx < spherePoints.length && cIdx < spherePoints.length) subdivideTriangleSpherical(spherePoints[aIdx], spherePoints[bIdx], spherePoints[cIdx], 3); });
-  if (triangles_2d.length === 0) return null;
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({ color, opacity, transparent: opacity < 1, side: THREE.DoubleSide, depthWrite: true });
-  return new THREE.Mesh(geometry, material);
-}
-
-function edgeKey(id1, id2) { return id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`; }
-
-// 从解析的蓝图数据重建 3D 场景、统计和发电量
+// ═══════════════════════════════════════════════════════════════
+// 蓝图解析 & 渲染
+// ═══════════════════════════════════════════════════════════════
 function renderFromParsed(parsed) {
+  // ── 3D 渲染 ──
+  preview.render(parsed.body);
+
   const isSingleShell = parsed.body.typeId === 1;
   const cloud = parsed.body.dysonCloud;
   const shell = isSingleShell
     ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
     : (parsed.body.dysonShell ?? null);
-  // 计算最大轨道
-  const shellOrbitRadii = shell?.orbitList?.filter(Boolean).map((o) => o.radius) ?? [];
-  const cloudOrbitRadii = cloud?.orbits?.filter(Boolean).map((o) => o.radius) ?? [];
-  const allRadii = shellOrbitRadii.concat(cloudOrbitRadii);
-  const maxRadius = allRadii.length > 0 ? Math.max(1, ...allRadii) : (shell?.shells?.[0]?.nodes ? Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z))) : 1);
 
+  // ── 填充网格警告 ──
   if (shell?.orbitList) {
     let hasFillGridWarning = false;
     for (const orbit of shell.orbitList) {
@@ -574,56 +236,49 @@ function renderFromParsed(parsed) {
     if (hasFillGridWarning) addStat('<span style="color: #e6b800;">⚠ 此蓝图含有网格涂色</span> ', '当前不支持网格涂色，颜色不能正确显示');
   }
 
-  addStat('蓝图信息', 
-          '蓝图类型：'+(parsed.header.typeName || '未知')+'<br>'
-         +'蓝图版本：'+parsed.header.version+'<br>'
-         +'创建时间：'+parsed.header.createdAt+'<br>'
-         +'应力系统等级需求：等级 '+(Math.min(6, Math.max(0, Math.ceil((parseInt(parsed.header.latLimit)||0)/15))))
+  // ── 蓝图信息 ──
+  addStat('蓝图信息',
+    '蓝图类型：' + (parsed.header.typeName || '未知') + '<br>' +
+    '蓝图版本：' + parsed.header.version + '<br>' +
+    '创建时间：' + parsed.header.createdAt + '<br>' +
+    '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parseInt(parsed.header.latLimit) || 0) / 15))))
   );
 
+  // ── 单层/多层 UI ──
   document.getElementById('radiusLabel').style.display = isSingleShell ? '' : 'none';
   radiusInput.style.display = isSingleShell ? '' : 'none';
-
   if (isSingleShell) radiusInput.value = 10000;
 
+  // ── 发电量 ──
   const userRadius = 10000;
-  currentScale = 1 / maxRadius;
-  const powerResult = computePoints(parsed, isSingleShell ? userRadius : null);
-
-  if (!powerResult) { powerMain.textContent = '⚡ 0 W'; gPowerResult = null; }
-  else {
+  const powerResult = computePoints(parsed.body, isSingleShell ? userRadius : null);
+  if (!powerResult) {
+    powerMain.textContent = '⚡ 0 W';
+    gPowerResult = null;
+  } else {
     let lum = parseFloat(lumInput.value) || 1.0;
     if (isNaN(lum) || lum <= 0) { lum = 0.1; lumInput.value = 0.1; }
     if (lum > 10) { lum = 10; lumInput.value = 10; }
-    powerMain.textContent = '⚡ '+fmtKW(computePower(powerResult, lum));
+    powerMain.textContent = '⚡ ' + fmtKW(computePower(powerResult, lum));
     gPowerResult = powerResult;
-    updateSunColor(lum);
+    preview.setSunColor(lum);
   }
 
+  // ── 云轨道统计 ──
   if (cloud?.orbits) {
-    cloud.orbits.forEach((orb, idx) => {
+    cloud.orbits.forEach((orb) => {
       if (!orb) return;
       const op = quaternionToOrbitParams(orb);
       const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
       const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
-      const radStr = '半径 '+orb.radius.toFixed(0)+' / ';
-      const val = radStr+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
-      addStatToggle('cloud_'+orb.id, '云轨道 '+orb.id, val, gv);
-      const r = orb.radius * currentScale;
-      const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id-1] ?? cloud.colors?.[idx];
-      const ring = createOrbitRing(r, orb, toHexColor(e, 0xffcba6), 0.9);
-      ring.name = 'cloud-orbit-'+idx; ring.visible = gv;
-      visObjects.set('cloud_'+orb.id, ring); rootGroup.add(ring);
-      const glow = createOrbitGlow(r, orb, toHexColor(e, 0xffcba6), 0.18);
-      glow.name = 'cloud-glow-'+idx; glow.visible = gv;
-      visObjects.set('cloud_glow_'+orb.id, glow); rootGroup.add(glow);
+      const val = '半径 ' + orb.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
+      addStatToggle('cloud', orb.id, '云轨道 ' + orb.id, val, gv);
     });
   }
 
-  shellGroups = [];
+  // ── 壳层统计 ──
   if (shell?.orbitList) {
-    for (let i = 0; i < shell.orbitList.length; i++) {
-      const orbit = shell.orbitList[i];
+    for (const orbit of shell.orbitList) {
       if (!orbit) continue;
       const shData = shell.shells?.[orbit.id] ?? null;
       const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
@@ -633,144 +288,52 @@ function renderFromParsed(parsed) {
       const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
       const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
       if (parsed.body.typeId === 1) {
-        singleShellStatBox = addStat('单层壳', '节点'+nodeCnt+' 框架'+frameCnt+' 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0));
+        singleShellStatBox = addStat('单层壳', '节点' + nodeCnt + ' 框架' + frameCnt + ' 壳面' + faceCnt + '<br>结构点数' + (layerData?.totalStructurePoints || 0) + ' / 细胞点数' + (layerData?.totalCellPoints || 0));
       } else {
         const op = quaternionToOrbitParams(orbit);
-        const val = '半径 '+orbit.radius.toFixed(0)+' / '+'倾角 '+op.inclination.toFixed(1)+'° / 升交点 '+op.ascendingNode.toFixed(1)+'°'+'<br>节点'+nodeCnt+' / 框架'+frameCnt+' / 壳面'+faceCnt+'<br>结构点数'+(layerData?.totalStructurePoints||0)+' / 细胞点数'+(layerData?.totalCellPoints||0)+'<br>编辑器'+(ed?'显示':'不显示')+' / 游戏内'+(gv?'显示':'不显示');
-        addStatToggle('shell_'+orbit.id, '壳层 '+orbit.id, val, gv);
+        const val = '半径 ' + orbit.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt + '<br>结构点数' + (layerData?.totalStructurePoints || 0) + ' / 细胞点数' + (layerData?.totalCellPoints || 0) + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
+        addStatToggle('shell', orbit.id, '壳层 ' + orbit.id, val, gv);
       }
-      if (!shData) continue;
-      const renderR = orbit.radius;
-      const shQuat = normalizeQuaternion(orbit);
-      const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
-      const shPole = convertBlueprintPosition(poleRaw);
-      const shellGroup = new THREE.Group();
-      shellGroups.push({ group: shellGroup, pole: shPole.clone().normalize(), radius: renderR });
-      const nodeMap = new Map();
-      if (shData.nodes) {
-        for (let ni = 1; ni < shData.nodes.length; ni++) {
-          const nd = shData.nodes[ni];
-          if (!nd) continue;
-          const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
-          d.applyQuaternion(shQuat);
-          const pos = convertBlueprintPosition(d).multiplyScalar(renderR * currentScale);
-          nodeMap.set(nd.id, pos);
-          shellGroup.add(createNodeSphere(pos, nd.id, toHexColor(nd.color, 0x60D6FD), 1));
-        }
-      }
-      const renderedEdges = new Set();
-      const ftMap = new Map();
-      const re = (id1, id2, color, type = 0) => {
-        const k = id1 < id2 ? id1+"-"+id2 : id2+"-"+id1;
-        if (renderedEdges.has(k)) return;
-        renderedEdges.add(k);
-        const f = nodeMap.get(id1), t = nodeMap.get(id2);
-        if (f && t) shellGroup.add(createLineSegment(f, t, color, type, shPole));
-      };
-      if (shData.frames) {
-        shData.frames.forEach((fr) => {
-          if (!fr) return;
-          const k = edgeKey(fr.structureRelation[0], fr.structureRelation[1]);
-          ftMap.set(k, fr.type);
-          re(fr.structureRelation[0], fr.structureRelation[1], toHexColor(fr.color, 0x175473), fr.type);
-        });
-      }
-      if (shData.faces) {
-        shData.faces.forEach((fc) => {
-          if (!fc || !Array.isArray(fc.relation) || fc.relation.length < 3) return;
-          if (fc.relation.some(nid => !nodeMap.has(nid))) return;
-          const rel = fc.relation.slice();
-          const pts = rel.map(nid => nodeMap.get(nid));
-          if (pts.some(p => !p)) return;
-          const edgeTypes = rel.map((_, j) => ftMap.get(edgeKey(rel[j], rel[(j+1)%rel.length])) ?? 0);
-          const m = createFaceMesh(pts, toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes);
-          if (m) shellGroup.add(m);
-        });
-      }
-      shellGroup.visible = gv;
-      visObjects.set('shell_'+orbit.id, shellGroup);
-      rootGroup.add(shellGroup);
     }
   }
-
-  camera.position.set(0, 1.8, -3.2);
-  controls.target.set(0, 0, 0);
-  controls.update();
 }
-
-document.getElementById('pasteButton').addEventListener('click', async () => {
-  try { blueprintInput.value = await navigator.clipboard.readText(); } catch { alert('无法读取剪贴板，请手动粘贴'); }
-});
-document.getElementById('copyButton').addEventListener('click', async () => {
-  const text = blueprintInput.value.trim();
-  if (!text) return;
-  try { await navigator.clipboard.writeText(text); alert('成功复制到剪贴板'); } catch { alert('无法复制到剪贴板'); }
-});
-
-document.getElementById('gridToggle').addEventListener('change', (e) => {
-  gridGroup.visible = e.target.checked;
-  axesHelper.visible = e.target.checked;
-});
-document.getElementById('rotateToggle').addEventListener('change', (e) => {
-  shellRotationEnabled = e.target.checked;
-});
-
-// 光度系数变化：输入结束后约束并更新功率和恒星颜色
-let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
-const lumInput = document.getElementById('luminosityInput');
-lumInput.addEventListener('change', () => {
-  let val = parseFloat(lumInput.value);
-  if (isNaN(val)) { lumInput.value = 1.0; val = 1.0; }
-  if (val <= 0) { lumInput.value = 0.1; val = 0.1; }
-  if (val > 10) { lumInput.value = 10; val = 10; }
-  updateSunColor(val);
-  if (gPowerResult) {
-    powerMain.textContent = '⚡ '+fmtKW(computePower(gPowerResult, val));
-  }
-});
-
-// 半径变化：约束并重算功率（仅单层壳生效）
-const radiusInput = document.getElementById('shellRadiusInput');
-radiusInput.addEventListener('change', () => {
-  let val = parseFloat(radiusInput.value);
-  if (isNaN(val) || val < 4000) { radiusInput.value = 4000; val = 4000; }
-  if (!gPowerResult || !lastParsed) return;
-  const powerResult = computePoints(lastParsed, val);
-  if (!powerResult) return;
-  const lum = parseFloat(lumInput.value) || 1.0;
-  const totalPower = computePower(powerResult, lum > 0 ? lum : 0.1);
-  powerMain.textContent = '⚡ '+fmtKW(totalPower);
-  gPowerResult = powerResult;
-  // 更新单层壳统计
-  const layer = powerResult.layers[0];
-  if (layer) {
-    const sh = lastParsed.body.singleShell;
-    const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
-    const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
-    const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
-    const box = singleShellStatBox;
-    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点'+nCnt+' 框架'+fCnt+' 壳面'+fcCnt+'<br>结构点数'+(layer.totalStructurePoints||0)+' / 细胞点数'+(layer.totalCellPoints||0);
-  }
-});
 
 parseButton.addEventListener('click', async () => {
   const text = blueprintInput.value.trim();
   if (!text) return;
   parseButton.disabled = true;
   parseButton.textContent = '解析中...';
-  clearScene(); clearStats();
+  clearStats();
   gPowerResult = lastParsed = singleShellStatBox = null;
   powerMain.textContent = '⚡ 0 W';
   try {
     const parsed = await parseBlueprintString(text);
     renderFromParsed(parsed);
-    lastParsed = parsed;
+    lastParsed = parsed.body;
   } catch (error) {
     addStat('❌ 解析失败', error.message);
   }
   parseButton.disabled = false;
   parseButton.textContent = '解析并预览';
 });
+
+// ═══════════════════════════════════════════════════════════════
+// URL 参数加载
+// ═══════════════════════════════════════════════════════════════
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const txtUrl = params.get('txt');
+  if (txtUrl) {
+    try {
+      const response = await fetch(txtUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      if (!text.trim().startsWith('DYBP:')) throw new Error('文件内容不以 DYBP: 开头，不是有效的蓝图字符串');
+      blueprintInput.value = text;
+      parseButton.click();
+    } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }
+  }
+})();
 </script>
 </body>
 </html>
