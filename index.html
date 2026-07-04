@@ -13,7 +13,11 @@
     .col {display:flex;flex-direction:column;gap:10px;}
     * {box-sizing:border-box;}
     .input-dark {padding:4px 8px;border-radius:6px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:13px;text-align:center;}
-    textarea {width:100%;flex:1;min-height:0;padding:14px;border-radius:14px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:14px;resize:none;}
+    textarea {width:100%;flex:1;min-height:0;padding:14px;border-radius:14px;border:1px solid #23334f;background:#101624;color:#eef2ff;font-size:14px;resize:none;transition:border-color 0.2s,box-shadow 0.2s;}
+    .textarea-wrapper {position:relative;flex:1;min-height:0;display:flex;}
+    .textarea-wrapper textarea.drag-over {border-color:#4364eb;box-shadow:0 0 12px rgba(67,100,235,0.4);}
+    .textarea-wrapper .drop-hint {position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;font-size:16px;font-weight:bold;color:#eef2ff;opacity:0;transition:opacity 0.2s;text-align:center;background:rgba(16,22,36,0.88);padding:16px 28px;border-radius:12px;border:2px dashed #4364eb;white-space:nowrap;}
+    .textarea-wrapper .drop-hint.show {opacity:1;}
     button {width:fit-content;padding:12px 18px;border:none;border-radius:12px;background:#4364eb;color:white;font-size:15px;cursor:pointer;}
     button:disabled {opacity:0.55;cursor:default;}
     .panel {background:#0f1628;border:1px solid #243556;border-radius:16px;padding:14px;overflow:hidden;}
@@ -88,7 +92,10 @@
       <button id="pasteButton">粘贴</button>
       <button id="copyButton">复制</button>
     </div>
-    <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串"></textarea>
+    <div class="textarea-wrapper">
+      <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串&#10;或拖放蓝图文件到此处"></textarea>
+      <div class="drop-hint" id="dropHint">📂 释放文件以加载蓝图</div>
+    </div>
   </div>
 </div>
 <script type="module">
@@ -96,6 +103,13 @@ import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dyso
 import { computePoints, computePower } from './dysonSpherePower.js';
 import { DysonSpherePreview } from './DysonSpherePreview.js';
 //import { stringifyBlueprint } from './dysonBlueprintEncoder.js';
+
+// ═══════════════════════════════════════════════════════════════
+// 全局拖放拦截
+// ═══════════════════════════════════════════════════════════════
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach((evt) => {
+  document.body.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
+});
 
 // ═══════════════════════════════════════════════════════════════
 // DOM 引用
@@ -201,6 +215,57 @@ document.getElementById('copyButton').addEventListener('click', async () => {
   if (!text) return;
   try { await navigator.clipboard.writeText(text); alert('成功复制到剪贴板'); } catch { alert('无法复制到剪贴板'); }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// 拖放蓝图文件
+// ═══════════════════════════════════════════════════════════════
+const dropHint = document.getElementById('dropHint');
+const textareaWrapper = blueprintInput.parentElement;
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = 'copy';
+  blueprintInput.classList.add('drag-over');
+  dropHint.classList.add('show');
+}
+
+function handleDragLeave(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  // 仅在真正离开 wrapper 时移除样式
+  if (!textareaWrapper.contains(e.relatedTarget)) {
+    blueprintInput.classList.remove('drag-over');
+    dropHint.classList.remove('show');
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  blueprintInput.classList.remove('drag-over');
+  dropHint.classList.remove('show');
+
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const text = ev.target.result.trim();
+    if (!text) { alert('文件为空'); return; }
+    if (!text.startsWith('DYBP:')) { alert('文件不是有效的蓝图文件'); return; }
+    blueprintInput.value = text;
+    // 自动触发解析
+    parseButton.click();
+  };
+  reader.onerror = () => { alert('读取文件失败'); };
+  reader.readAsText(file);
+}
+
+textareaWrapper.addEventListener('dragover', handleDragOver);
+textareaWrapper.addEventListener('dragenter', handleDragOver);
+textareaWrapper.addEventListener('dragleave', handleDragLeave);
+textareaWrapper.addEventListener('drop', handleDrop);
 
 // ═══════════════════════════════════════════════════════════════
 // 光度系数 & 半径
@@ -346,6 +411,7 @@ parseButton.addEventListener('click', async () => {
   gPowerResult = lastParsed = singleShellStatBox = null;
   powerMain.textContent = '⚡ 0 W';
   try {
+    preview.clearScene()
     const parsed = await parseBlueprintString(text);
     renderFromParsed(parsed);
     lastParsed = parsed;
