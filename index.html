@@ -95,6 +95,7 @@
 import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dysonBlueprintParser.js';
 import { computePoints, computePower } from './dysonSpherePower.js';
 import { DysonSpherePreview } from './DysonSpherePreview.js';
+//import { stringifyBlueprint } from './dysonBlueprintEncoder.js';
 
 // ═══════════════════════════════════════════════════════════════
 // DOM 引用
@@ -221,16 +222,16 @@ radiusInput.addEventListener('change', () => {
   if (!gPowerResult || !lastParsed) return;
   let val = parseFloat(radiusInput.value);
   if (isNaN(val) || val < 4000) { radiusInput.value = 4000; val = 4000; }
-  const powerResult = computePoints(lastParsed, val);
+  const powerResult = computePoints(lastParsed.body, val);
   if (!powerResult) return;
   const lum = parseFloat(lumInput.value) || 1.0;
   powerMain.textContent = '⚡ ' + fmtKW(computePower(powerResult, lum > 0 ? lum : 0.1));
   gPowerResult = powerResult;
   // 仅单层壳更新统计面板
-  if (lastParsed.typeId !== 1) return
+  if (lastParsed.body.typeId !== 1) return
   const layer = powerResult.layers[0];
   if (layer) {
-    const sh = lastParsed.singleShell;
+    const sh = lastParsed.body.singleShell;
     const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
     const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
     const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
@@ -270,7 +271,7 @@ function renderFromParsed(parsed) {
     '蓝图类型：' + (parsed.header.typeName || '未知') + '<br>' +
     '蓝图版本：' + parsed.header.version + '<br>' +
     '创建时间：' + parsed.header.createdAt + '<br>' +
-    '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parseInt(parsed.header.latLimit) || 0) / 15))))
+    '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.header.latLimit || 0) / 15))))
   );
 
   // ── 单层/多层 UI ──
@@ -347,7 +348,7 @@ parseButton.addEventListener('click', async () => {
   try {
     const parsed = await parseBlueprintString(text);
     renderFromParsed(parsed);
-    lastParsed = parsed.body;
+    lastParsed = parsed;
   } catch (error) {
     addStat('❌ 解析失败', error.message);
   }

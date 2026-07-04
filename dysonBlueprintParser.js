@@ -126,6 +126,7 @@ function parseHeader(headerString) {
 
   const ticks = values[1].trim();
   const typeId = Number(values[3]);
+  const latLimit = Number(values[4]);
 
   return {
     raw: headerString,
@@ -134,7 +135,7 @@ function parseHeader(headerString) {
     version: values[2].trim(),
     typeId,
     typeName: BlueprintType.getName(typeId),
-    latLimit: values[4].trim(),
+    latLimit,
   };
 }
 
@@ -549,3 +550,37 @@ export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParam
 // import { parseBlueprintString } from './dysonBlueprintParser.js';
 // const blueprint = await parseBlueprintString('DYBP:0,637709952000000000,1,4,0"..."ABC');
 // console.log(JSON.stringify(blueprint, null, 2));
+
+/**
+ * parseBlueprintString 返回值结构
+ *
+ * {
+ *   header: {
+ *     raw: string,          // 原始头部
+ *     createdTicks: string, // .NET ticks
+ *     createdAt: string,    // 格式化时间
+ *     version: string,      // 游戏版本号
+ *     typeId: number,       // 1-4
+ *     typeName: string,     // 中文类型名
+ *     latLimit: number,     // 纬度限制
+ *   },
+ *   body: {
+ *     typeId, typeName,
+ *     singleShell?, // typeId=1   — { nodes: (Node|null)[], frames: (Frame|null)[], faces: (Face|null)[], fillGrid: FillGrid|null }
+ *     dysonShell?,  // typeId=2,4 — { visibility, orbitList: (Orbit|null)[], shells: (SingleShell|null)[] }
+ *     dysonCloud?,  // typeId=3,4 — { visibility, orbits: (Orbit|null)[20], colors: HSVA[] }
+ *   }
+ * }
+ *
+ * Node   { id, style, coordinate: {x,y,z}, structurePoints, color: RGBA? }
+ * Frame  { id, style, type, relation: [nodeA,nodeB], structurePoints, color: RGBA? }
+ * Face   { id, pattern, relation: nodeId[], color: RGBA? }
+ * Orbit  { id, radius, x, y, z, w }  // 四元数旋转
+ * FillGrid { gridType, colors: RGBA[]? }
+ *
+ * Visibility = { editor: number, inGame: number }  // 掩码
+ * RGBA       = { r, g, b, a }  // 0-255
+ * HSVA       = { h, s, v, a }  // 0-1
+ *
+ * Nodes/Frames/Faces/orbitList 数组均为稀疏数组（下标即 id，null 为空位）
+ */
