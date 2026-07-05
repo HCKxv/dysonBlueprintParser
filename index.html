@@ -430,10 +430,19 @@ parseButton.addEventListener('click', async () => {
   const txtUrl = params.get('txt');
   if (txtUrl) {
     try {
-      const response = await fetch(txtUrl);
+      const resolved = new URL(txtUrl, window.location.href);
+      const whitelist = [];
+      const isWhitelist = whitelist.includes(resolved.hostname);
+      const isSameOrigin = resolved.hostname === window.location.hostname;
+      if (!isSameOrigin && !isWhitelist) {
+        return;
+        //throw new Error('安全限制：不允许加载外部蓝图文件');
+      }
+
+      const response = await fetch(resolved.href);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const text = await response.text();
-      if (!text.trim().startsWith('DYBP:')) throw new Error('文件内容不以 DYBP: 开头，不是有效的蓝图字符串');
+      if (!text.trim().startsWith('DYBP:')) throw new Error('文件不是有效的蓝图文件');
       blueprintInput.value = text;
       parseButton.click();
     } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }

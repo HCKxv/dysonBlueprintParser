@@ -1,6 +1,6 @@
 // 与 dysonBlueprintParser.js 配对使用：parseBlueprintString 解析，stringifyBlueprint 编码
 
-import { digest } from './js/md5.js';
+import { digest } from './js/DSP-md5.js';
 
 // 二进制写入器，用于按小端序写入各种基础类型到 Uint8Array
 class BinaryWriter {

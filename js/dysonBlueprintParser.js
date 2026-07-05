@@ -582,5 +582,5 @@ export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParam
  * RGBA       = { r, g, b, a }  // 0-255
  * HSVA       = { h, s, v, a }  // 0-1
  *
- * Nodes/Frames/Faces/orbitList 数组均为稀疏数组（下标即 id，null 为空位）
+ * Nodes/Frames/Faces 数组均为稀疏数组（下标即 id，null 为空位）
  */
