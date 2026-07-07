@@ -308,7 +308,7 @@ radiusInput.addEventListener('change', () => {
     const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
     const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
     const box = singleShellStatBox;
-    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点' + nCnt + ' 框架' + fCnt + ' 壳面' + fcCnt + '<br>结构点数' + (layer.totalStructurePoints || 0) + ' / 细胞点数' + (layer.totalCellPoints || 0);
+    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点' + nCnt + ' 框架' + fCnt + ' 壳面' + fcCnt + '<br>结构点数' + ((layer?.totalNodeSP || 0) + (layer?.totalFrameSP || 0)) + ' / 细胞点数' + (layer?.totalCP || 0);
   }
 });
 
