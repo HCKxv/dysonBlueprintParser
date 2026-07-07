@@ -274,7 +274,7 @@ function writeFrame(writer, frame) {
   writer.writeInt32(frame.relation[0]);
   writer.writeInt32(frame.relation[1]);
   writer.writeUInt8(frame.type);
-  writer.writeInt32(frame.structurePoints);
+  writer.writeInt32(0);
   writeRGBColor(writer, frame.color); // version >= 1
 }
 

@@ -350,7 +350,6 @@ function parseFrame(reader) {
     style,
     type,
     relation: [nodeA, nodeB],
-    structurePoints,
     color,
   };
 }
@@ -360,7 +359,7 @@ function parseFace(reader) {
   const version = reader.readInt32();
   const itemId = reader.readInt32();
   const pattern = reader.readInt32();
-  reader.readInt32();
+  reader.readInt32();  // 每顶点细胞点数
 
   let color = null;
   if (version >= 2) {
@@ -573,7 +572,7 @@ export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParam
  * }
  *
  * Node   { id, style, coordinate: {x,y,z}, structurePoints, color: RGBA? }
- * Frame  { id, style, type, relation: [nodeA,nodeB], structurePoints, color: RGBA? }
+ * Frame  { id, style, type, relation: [nodeA,nodeB], color: RGBA? }
  * Face   { id, pattern, relation: nodeId[], color: RGBA? }
  * Orbit  { id, radius, x, y, z, w }  // 四元数旋转
  * FillGrid { gridType, colors: RGBA[]? }

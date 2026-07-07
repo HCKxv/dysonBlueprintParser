@@ -18,8 +18,9 @@
     .textarea-wrapper textarea.drag-over {border-color:#4364eb;box-shadow:0 0 12px rgba(67,100,235,0.4);}
     .textarea-wrapper .drop-hint {position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;font-size:16px;font-weight:bold;color:#eef2ff;opacity:0;transition:opacity 0.2s;text-align:center;background:rgba(16,22,36,0.88);padding:16px 28px;border-radius:12px;border:2px dashed #4364eb;white-space:nowrap;}
     .textarea-wrapper .drop-hint.show {opacity:1;}
-    button {width:fit-content;padding:12px 18px;border:none;border-radius:12px;background:#4364eb;color:white;font-size:15px;cursor:pointer;}
+    button {width:fit-content;border:none;background:#4364eb;color:white;cursor:pointer;}
     button:disabled {opacity:0.55;cursor:default;}
+    .btn {padding:10px 16px;border-radius:12px;font-size:15px;}
     .panel {background:#0f1628;border:1px solid #243556;border-radius:16px;padding:14px;overflow:hidden;}
     .canvas-container {flex:1;position:relative;width:100%;min-height:0;border-radius:16px;overflow:hidden;background:#05080e;}
     canvas {width:100%;height:100%;display:block;}
@@ -37,10 +38,20 @@
     .stat-section {display:flex;flex-direction:column;gap:3px;}
     .stat-section-header {padding:6px 12px;background:#111926;border:1px solid #1e3657;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;}
     .stat-section-header:hover {background:#162032;}
-    .stat-section-header .arrow {font-size:10px;transition:transform 0.2s;display:inline-block;}
-    .stat-section-header.collapsed .arrow {transform:rotate(-90deg);}
+    .arrow {font-size:10px;transition:transform 0.2s;display:inline-block;}
+    .collapsed .arrow {transform:rotate(-90deg);}
     .stat-section-body {display:flex;flex-direction:column;gap:3px;}
     .stat-section-body.collapsed {display:none;}
+    label {display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;}
+    .menu {display:flex;align-items:center;gap:6px;font-size:13px;color:#bcc8e0;flex-wrap:wrap;}
+    .menu-header {padding:6px 0;color:#bcc8e0;font-size:13px;font-weight:bold;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;width: fit-content;}
+    .menu-header:hover {color:#eef2ff;}
+    .menu-div {text-align:center;display:flex;flex-direction:column;gap:6px;}
+    .menu-div.collapsed{display:none}
+    .input-group {display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;border-top:1px solid #243556;}
+    .input-header {display:flex;align-items:center;gap:8px;font-size:13px;color:#bcc8e0;flex-shrink:0;padding:8px 12px 0 12px;}
+    .input-header span {font-size:1.0rem;font-weight:bold;color:#e7ebff;}
+    .input-header .btn-sm {padding:4px 10px;border-radius:8px;font-size:12px;}
   </style>
   <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/" } }
@@ -50,7 +61,7 @@
 <div class="app">
   <div style="grid-column:1/-1;background:#0f1628;border:1px solid #243556;border-radius:12px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:1.2rem;font-weight:bold;flex-shrink:0;">
     <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0i5Zu+5bGCXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeD0iMHB4IiB5PSIwcHgiDQoJIHZpZXdCb3g9IjAgMCA1NjYuOTMgNTY2LjkzIiBmaWxsPSIjZTdlYmZmIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA1NjYuOTMgNTY2LjkzOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8cGF0aCBkPSJNMjgyLjQ3LDQ5My44OGMtMzQuOTYsMC02Ni43Ni0xNC4wMi05MC41MS0zNi45NEwyOC4zNSw1MDAuNzdsMTIxLjMtMTM3LjgyYy0wLjEyLTIuNDItMC4xOC00Ljg1LTAuMTgtNy4zDQoJYzAtNTYuMTgsMzIuMjUtMTA0LjUzLDc4LjU3LTEyNi4xNWw1NS4wMS0xOTEuN2w1NS4xOSwxOTIuMzNjNDUuNiwyMS45Miw3Ny4yNSw2OS44Nyw3Ny4yNSwxMjUuNTJjMCwxLjY4LTAuMDQsMy4zNS0wLjEsNS4wMQ0KCWwxMjMuMiwxNDAuMTFsLTE2NS4xOC00NC4yNkMzNDkuNjIsNDc5LjY4LDMxNy42NCw0OTMuODgsMjgyLjQ3LDQ5My44OHogTTM1MS45Myw0MjguNTdsMTI0LjA5LDMzLjI1TDM4Mi44OSwzNTUuOQ0KCWMwLjA5LTEuMTksMC4xNi0yLjM5LDAuMjItMy42MWMtMS41Ni00OC4xNi0yNi40Ny03OS45My01OC4yNS05NC41NmwtNDEuNzEtMTQ1LjM1bC00MS40NywxNDQuNQ0KCWMtMzEuNzMsMTQuMDEtNTYuOSw0NS41Ni01OS4zNiw5NS40MWMwLjA2LDEuODEsMC4xNiwzLjU5LDAuMjgsNS4zNUw5MC45LDQ2MS44MmwxMjMuMTItMzIuOTkNCglDMjUxLjc3LDQ2NC45MywzMTQuMzYsNDY1LjYzLDM1MS45Myw0MjguNTd6Ii8+DQo8cGF0aCBkPSJNMzM2LjEsNDExbDk1LjM5LDI1LjU2bC03MS42LTgxLjQzYzAuMDctMC45MiwwLjEzLTEuODQsMC4xNy0yLjc3Yy0xLjItMzcuMDItMjAuMzUtNjEuNDUtNDQuNzgtNzIuNjlsLTMyLjA3LTExMS43Mw0KCWwtMzEuODgsMTExLjA4Yy0yNC4zOSwxMC43Ny00My43NCwzNS4wMi00NS42Myw3My4zNWMwLjA1LDEuMzksMC4xMiwyLjc2LDAuMjIsNC4xMWwtNzAuNDksODAuMDlsOTQuNjQtMjUuMzYNCglDMjU5LjEsNDM4Ljk1LDMwNy4yMSw0MzkuNDgsMzM2LjEsNDExeiIvPg0KPC9zdmc+DQo=" style="height:24px;width:auto;">
-    戴森球蓝图预览 V1.2
+    戴森球蓝图预览 V1.3
     <span style="margin-left:auto;font-weight:normal;font-size:12px;opacity:0.55;">by.氢碳钾xv</span>
   </div>
   <div class="col panel panel-left">
@@ -66,35 +77,57 @@
   <div class="col panel panel-right">
     <div id="powerPanel" style="text-align:center;padding:12px 0;border-bottom:1px solid #243556;margin-bottom:8px;">
       <div id="powerMain" style="font-size:2.2rem;font-weight:700;color:#ffd866;line-height:1.2;">⚡ 0&thinsp;W</div>
-      <div style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:#bcc8e0;flex-wrap:wrap;">
-        <span id="radiusLabel" style="display:none;">半径</span> <input type="number" id="shellRadiusInput" value="10000" step="100" min="4000" class="input-dark" style="display:none;width:80px;">
-        光度系数 <input type="number" id="luminosityInput" value="1.0" step="0.1" min="0.1" class="input-dark" style="width:70px;">
+    </div>
+    <div>
+      <div id="menuButton" class="menu-header collapsed"><span class="arrow">▼</span>设置</div>
+      <div id="powerMenu" class="menu-div collapsed">
+        <div class="menu">
+          <span id="radiusLabel" style="display:none;">半径</span> <input type="number" id="shellRadiusInput" value="10000" step="100" min="4000" class="input-dark" style="display:none;width:80px;">
+          光度系数 <input type="number" id="luminosityInput" value="1.0" step="0.1" min="0.1" class="input-dark" style="width:70px;">
+        </div>
+        <div class="menu">
+          <span>发电量计算:</span>
+          <label>
+            <input id="isNode" type="checkbox" checked> 节点
+          </label>
+          <label>
+            <input id="isFrame" type="checkbox" checked> 框架
+          </label>
+          <label>
+            <input id="isFaces" type="checkbox" checked> 壳面
+          </label>
+        </div>
+        <div class="menu">
+          显示:
+          <label>
+            <input type="checkbox" id="gridToggle" checked>
+            刻度
+          </label>
+          <label>
+            <input type="checkbox" id="rotateToggle" checked>
+            旋转
+          </label>
+          <select id="speedSelect" style="background:#1a2a44;color:#bcc8e0;border:1px solid #2d4a6e;border-radius:4px;padding:0 4px;font-size:13px;">
+            <option value="0.01">慢</option>
+            <option value="0.05" selected>中</option>
+            <option value="0.20">快</option>
+          </select>
+        </div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;">
-        <input type="checkbox" id="gridToggle" checked>
-        刻度
-      </label>
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:#bcc8e0;">
-        <input type="checkbox" id="rotateToggle" checked>
-        旋转
-      </label>
-      <select id="speedSelect" style="background:#1a2a44;color:#bcc8e0;border:1px solid #2d4a6e;border-radius:4px;padding:2px 4px;font-size:13px;">
-        <option value="0.01">慢</option>
-        <option value="0.05" selected>中</option>
-        <option value="0.20">快</option>
-      </select>
-    </div>
-    <h2>蓝图输入</h2>
-    <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;align-items:center;">
-      <button id="parseButton">解析并预览</button>
-      <button id="pasteButton">粘贴</button>
-      <button id="copyButton">复制</button>
-    </div>
-    <div class="textarea-wrapper">
-      <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串&#10;或拖放蓝图文件到此处"></textarea>
-      <div class="drop-hint" id="dropHint">📂 释放文件以加载蓝图</div>
+    <div class="input-group">
+      <div class="input-header">
+        <span>蓝图输入</span>
+        <div style="margin-left:auto;">
+          <button id="parseButton" class="btn-sm">解析并预览</button>
+          <button id="pasteButton" class="btn-sm">粘贴</button>
+          <button id="copyButton" class="btn-sm">复制</button>
+        </div>
+      </div>
+      <div class="textarea-wrapper">
+        <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串&#10;或拖动蓝图文件到此处"></textarea>
+        <div class="drop-hint" id="dropHint">📂 释放文件以加载蓝图</div>
+      </div>
     </div>
   </div>
 </div>
@@ -127,26 +160,6 @@ const lumInput = document.getElementById('luminosityInput');
 // ═══════════════════════════════════════════════════════════════
 const preview = new DysonSpherePreview();
 preview.init(canvas);
-
-// ═══════════════════════════════════════════════════════════════
-// 工具函数
-// ═══════════════════════════════════════════════════════════════
-const fmtKW = (kw) => {
-  if (kw < 0) return '???';
-  if (kw === 0) return '0 W';
-  if (kw < 1) return formatValue(kw * 1000) + ' W';  // 一般也不太有可能出现小数
-  if (kw >= 1e12) return formatValue(kw / 1e12) + ' PW';
-  if (kw >= 1e9) return formatValue(kw / 1e9) + ' TW';
-  if (kw >= 1e6) return formatValue(kw / 1e6) + ' GW';
-  if (kw >= 1e3) return formatValue(kw / 1e3) + ' MW';
-  return formatValue(kw) + ' kW';
-};
-
-const formatValue = (value) => {
-  if (value >= 100) return value.toFixed(0);
-  if (value >= 10) return value.toFixed(1);
-  return value.toFixed(2);
-};
 
 // ═══════════════════════════════════════════════════════════════
 // 统计面板
@@ -195,6 +208,26 @@ function addCollapsibleSection(title, count) {
 function clearStats() { statsElement.innerHTML = ''; }
 
 // ═══════════════════════════════════════════════════════════════
+// 工具函数
+// ═══════════════════════════════════════════════════════════════
+const fmtKW = (kw) => {
+  if (kw < 0) return '???';
+  if (kw === 0) return '0 W';
+  if (kw < 1) return formatValue(kw * 1000) + ' W';  // 一般也不太有可能出现小数
+  if (kw >= 1e12) return formatValue(kw / 1e12) + ' PW';
+  if (kw >= 1e9) return formatValue(kw / 1e9) + ' TW';
+  if (kw >= 1e6) return formatValue(kw / 1e6) + ' GW';
+  if (kw >= 1e3) return formatValue(kw / 1e3) + ' MW';
+  return formatValue(kw) + ' kW';
+};
+
+const formatValue = (value) => {
+  if (value >= 100) return value.toFixed(0);
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+};
+
+// ═══════════════════════════════════════════════════════════════
 // 控制按钮事件
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('gridToggle').addEventListener('change', (e) => {
@@ -214,6 +247,73 @@ document.getElementById('copyButton').addEventListener('click', async () => {
   const text = blueprintInput.value.trim();
   if (!text) return;
   try { await navigator.clipboard.writeText(text); alert('成功复制到剪贴板'); } catch { alert('无法复制到剪贴板'); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 设置菜单
+// ═══════════════════════════════════════════════════════════════
+const btn = document.getElementById('menuButton');
+const menu = document.getElementById('powerMenu');
+
+
+// 切换菜单显示/隐藏
+btn.addEventListener('click', (e) => {
+  btn.classList.toggle('collapsed');
+  menu.classList.toggle('collapsed');
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 更新功率
+// ═══════════════════════════════════════════════════════════════
+const isNode = document.getElementById('isNode');
+const isFrame = document.getElementById('isFrame');
+const isFaces = document.getElementById('isFaces');
+let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
+// 刷新功率
+const refreshPower = () => {
+  if (!gPowerResult) return;
+  powerMain.textContent = '⚡ ' + fmtKW(computePower(
+    gPowerResult,
+    parseFloat(lumInput.value) || 1.0,
+    isNode.checked ?? true,
+    isFrame.checked ?? true,
+    isFaces.checked ?? true,
+  ));
+}
+
+lumInput.addEventListener('change', () => {;
+  let val = parseFloat(lumInput.value);
+  if (isNaN(val)) val = 1.0; 
+  if (val <= 0) val = 0.1; 
+  if (val > 10) val = 10;
+  lumInput.value = val;
+  preview.setSunColor(val);
+  refreshPower();
+});
+
+radiusInput.addEventListener('change', () => {
+  if (lastParsed?.body.typeId !== 1) return
+  let val = parseFloat(radiusInput.value);
+  if (isNaN(val) || val < 4000) val = 4000;
+  radiusInput.value = val;
+  const powerResult = computePoints(lastParsed.body, val);
+  if (!powerResult) return;
+  gPowerResult = powerResult;
+  refreshPower();
+  // 更新统计面板
+  const layer = powerResult.layers[0];
+  if (layer) {
+    const sh = lastParsed.body.singleShell;
+    const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
+    const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
+    const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
+    const box = singleShellStatBox;
+    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点' + nCnt + ' 框架' + fCnt + ' 壳面' + fcCnt + '<br>结构点数' + (layer.totalStructurePoints || 0) + ' / 细胞点数' + (layer.totalCellPoints || 0);
+  }
+});
+
+[isNode, isFrame, isFaces].forEach((e) => {
+  e.addEventListener('change', refreshPower);
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -268,44 +368,6 @@ textareaWrapper.addEventListener('dragleave', handleDragLeave);
 textareaWrapper.addEventListener('drop', handleDrop);
 
 // ═══════════════════════════════════════════════════════════════
-// 光度系数 & 半径
-// ═══════════════════════════════════════════════════════════════
-let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
-
-lumInput.addEventListener('change', () => {
-  let val = parseFloat(lumInput.value);
-  if (isNaN(val)) { lumInput.value = 1.0; val = 1.0; }
-  if (val <= 0) { lumInput.value = 0.1; val = 0.1; }
-  if (val > 10) { lumInput.value = 10; val = 10; }
-  preview.setSunColor(val);
-  if (gPowerResult) {
-    powerMain.textContent = '⚡ ' + fmtKW(computePower(gPowerResult, val));
-  }
-});
-
-radiusInput.addEventListener('change', () => {
-  if (!gPowerResult || !lastParsed) return;
-  let val = parseFloat(radiusInput.value);
-  if (isNaN(val) || val < 4000) { radiusInput.value = 4000; val = 4000; }
-  const powerResult = computePoints(lastParsed.body, val);
-  if (!powerResult) return;
-  const lum = parseFloat(lumInput.value) || 1.0;
-  powerMain.textContent = '⚡ ' + fmtKW(computePower(powerResult, lum > 0 ? lum : 0.1));
-  gPowerResult = powerResult;
-  // 仅单层壳更新统计面板
-  if (lastParsed.body.typeId !== 1) return
-  const layer = powerResult.layers[0];
-  if (layer) {
-    const sh = lastParsed.body.singleShell;
-    const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
-    const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
-    const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
-    const box = singleShellStatBox;
-    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点' + nCnt + ' 框架' + fCnt + ' 壳面' + fcCnt + '<br>结构点数' + (layer.totalStructurePoints || 0) + ' / 细胞点数' + (layer.totalCellPoints || 0);
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════
 // 蓝图解析 & 渲染
 // ═══════════════════════════════════════════════════════════════
 function renderFromParsed(parsed) {
@@ -342,7 +404,7 @@ function renderFromParsed(parsed) {
   // ── 单层/多层 UI ──
   document.getElementById('radiusLabel').style.display = isSingleShell ? '' : 'none';
   radiusInput.style.display = isSingleShell ? '' : 'none';
-  if (isSingleShell) radiusInput.value = 10000;
+  //if (isSingleShell) radiusInput.value = 10000;
 
   // ── 发电量 ──
   const userRadius = 10000;
@@ -382,7 +444,7 @@ function renderFromParsed(parsed) {
         const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
         const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
         const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
-        singleShellStatBox = addStat('单层壳', '节点' + nodeCnt + ' 框架' + frameCnt + ' 壳面' + faceCnt + '<br>结构点数' + (layerData?.totalStructurePoints || 0) + ' / 细胞点数' + (layerData?.totalCellPoints || 0));
+        singleShellStatBox = addStat('单层壳', '节点' + nodeCnt + ' 框架' + frameCnt + ' 壳面' + faceCnt + '<br>结构点数' + ((layerData?.totalNodeSP || 0) + (layerData?.totalFrameSP || 0)) + ' / 细胞点数' + (layerData?.totalCP || 0));
       }
     } else {
       const body = addCollapsibleSection('壳层', sortedOrbits.length);
@@ -395,7 +457,7 @@ function renderFromParsed(parsed) {
         const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
         const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
         const op = quaternionToOrbitParams(orbit);
-        const val = '半径 ' + orbit.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt + '<br>结构点数' + (layerData?.totalStructurePoints || 0) + ' / 细胞点数' + (layerData?.totalCellPoints || 0) + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
+        const val = '半径 ' + orbit.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt + '<br>结构点数' + ((layerData?.totalNodeSP || 0) + (layerData?.totalFrameSP || 0)) + ' / 细胞点数' + (layerData?.totalCP || 0) + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
         addStatToggle('shell', orbit.id, '壳层 ' + orbit.id, val, gv, body);
       }
     }
@@ -410,8 +472,9 @@ parseButton.addEventListener('click', async () => {
   clearStats();
   gPowerResult = lastParsed = singleShellStatBox = null;
   powerMain.textContent = '⚡ 0 W';
+  preview.clearScene()
+  await new Promise(resolve => requestAnimationFrame(resolve));
   try {
-    preview.clearScene()
     const parsed = await parseBlueprintString(text);
     renderFromParsed(parsed);
     lastParsed = parsed;
@@ -436,7 +499,6 @@ parseButton.addEventListener('click', async () => {
       const isSameOrigin = resolved.hostname === window.location.hostname;
       if (!isSameOrigin && !isWhitelist) {
         return;
-        //throw new Error('安全限制：不允许加载外部蓝图文件');
       }
 
       const response = await fetch(resolved.href);

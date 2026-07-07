@@ -275,7 +275,7 @@ function computeShellCellPoints(fc, nodeMap, edgeMap, R) {
  *
  * @param {object} body - 解析后的蓝图数据中的 body 部分（parsed.body）
  * @param {number} [r0=10000] - 单层壳的用户输入半径（多层壳使用蓝图原始轨道半径）
- * @returns {object|null} 返回 { layers: [...], totalStructurePoints, totalCellPoints }，无壳数据时返回 null
+ * @returns {object|null} 返回 { layers: [...], totalNodeSP, totalFrameSP, totalCP }，无壳数据时返回 null
  */
 function computePoints(body, r0 = 10000) {
   const isSingle = body.typeId === 1;
@@ -290,7 +290,7 @@ function computePoints(body, r0 = 10000) {
   if (!shell.orbitList || !shell.shells) return null;
 
   const layers = [];
-  let tSP = 0, tCP = 0;
+  let tNSP = 0, tFSP = 0, tCP = 0;
 
   for (const orbit of shell.orbitList) {
     if (!orbit) continue;
@@ -316,49 +316,51 @@ function computePoints(body, r0 = 10000) {
     }
 
     // ---- 结构点数 (节点 + 框架) ----
-    const structures = [];
-    let totalSP = 0;
+    const nodeStructures = [];
+    let totalNSP = 0;
     if (sh.nodes) for (const nd of sh.nodes) {
       if (!nd) continue;
       const sp = nd.structurePoints ?? 30;
-      totalSP += sp;
-      structures.push({ type: 'node', id: nd.id, structurePoints: sp });
+      totalNSP += sp;
+      nodeStructures.push({id: nd.id, structurePoints: sp });
     }
+    const frameStructures = [];
+    let totalFSP = 0;
     if (sh.frames) for (const fr of sh.frames) {
       if (!fr) continue;
-      const sp = computeFrameStructurePoints(fr, nodeMap, R);
-      if (sp != null) {
-        totalSP += sp;
-        structures.push({ type: 'frame', id: fr.id, structurePoints: sp });
-      }
+      const sp = computeFrameStructurePoints(fr, nodeMap, R) ?? 0;
+      totalFSP += sp;
+      frameStructures.push({id: fr.id, structurePoints: sp });
     }
 
     // ---- 细胞点数 ----
-    let cellPts = 0;
+    let totalCP = 0;
     const cells = [];
     if (sh.faces) for (const fc of sh.faces) {
       if (!fc) continue;
       const cp = computeShellCellPoints(fc, nodeMap, edgeMap, R);
       if (cp != null) {
-        cellPts += cp;
+        totalCP += cp;
         cells.push({ id: fc.id, cellPoints: cp });
       }
     }
 
-    tSP += totalSP;
-    tCP += cellPts;
+    tNSP += totalNSP;
+    tFSP += totalFSP
+    tCP += totalCP;
 
     layers.push({
       orbitId: orbit.id, radius: R,
-      structures, cells,
-      totalStructurePoints: totalSP, totalCellPoints: cellPts,
+      nodeStructures, frameStructures, cells,
+      totalNodeSP: totalNSP, totalFrameSP: totalFSP, totalCP: totalCP,
     });
   }
 
   return {
-    layers: layers.filter(l => l.totalStructurePoints > 0 || l.totalCellPoints > 0),
-    totalStructurePoints: tSP,
-    totalCellPoints: tCP,
+    layers: layers,
+    totalNodeSP: tNSP,
+    totalFrameSP: tFSP,
+    totalCP: tCP,
   };
 }
 
@@ -367,12 +369,17 @@ function computePoints(body, r0 = 10000) {
  *
  * 游戏内公式: (CpMax*250 + SpMax*1600)*60 * luminosity / 1000
  *
- * @param {object} points - computePoints 的返回值（含 totalStructurePoints, totalCellPoints）
+ * @param {object} points - computePoints 的返回值（含 totalNodeSP, totalFrameSP, totalCP）
  * @param {number} [luminosity=1.0] - 光度系数 dysonLumino
  * @returns {number} 发电量，单位 kW
  */
-function computePower(points, luminosity = 1.0) {
-  return ((points.totalStructurePoints || 0) * 96 + (points.totalCellPoints || 0) * 15) * luminosity;
+function computePower(points, luminosity = 1.0, isNode = true, isFrame = true, isFaces = true) {
+  let kw = 0
+  if (isNode) kw += (points.totalNodeSP || 0) * 96;
+  if (isFrame) kw += (points.totalFrameSP || 0) * 96;
+  if (isFaces) kw += (points.totalCP || 0) * 15;
+  kw *= luminosity;
+  return kw;
 }
 
 export { computeFrameStructurePoints, computeShellCellPoints, computePoints, computePower };
