@@ -151,6 +151,12 @@ import { DysonSpherePreview } from './js/DysonSpherePreview.js';
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((evt) => {
   document.body.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
 });
+// 阻止整个页面的中键自动滚动
+document.addEventListener('mousedown', function(e) {
+  if (e.button === 1) {
+    e.preventDefault();
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 // DOM 引用
