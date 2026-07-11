@@ -166,10 +166,11 @@ async function parseBlueprintString(blueprintString) {
 
   const header = parseHeader(headerString);
 
-  if (compareVersion(header.version, '0.9.25') < 0) {
-    throw new Error(`蓝图版本过低：${header.version}，仅支持 0.9.25 及以上版本的蓝图`);
-  }
-  const body = await parseBlueprintBody(bodyString, header.typeId);
+  // 版本 <= 0.9.24.11286 使用旧版格式
+  const isOldFormat = compareVersion(header.version, '0.9.24.11286') <= 0;
+  const body = isOldFormat
+    ? await parseOldBlueprintBody(bodyString, header.typeId)
+    : await parseBlueprintBody(bodyString, header.typeId);
 
   return {
     header,
@@ -183,8 +184,7 @@ async function parseBlueprintBody(bodyString, typeId) {
   const decoded = await decodeBase64Gzip(bodyString);
   const reader = new BinaryReader(decoded);
 
-  // Ignore initial int32 placeholder
-  reader.readInt32();
+  reader.readInt32();  //version?
 
   const body = {
     typeId,
@@ -197,6 +197,34 @@ async function parseBlueprintBody(bodyString, typeId) {
 
   if (typeId === 2 || typeId === 4) {
     body.dysonShell = parseDysonShell(reader);
+  }
+
+  if (typeId === 1) {
+    body.singleShell = parseSingleShell(reader);
+  }
+
+  return body;
+}
+
+// 旧版蓝图主体解析（版本 <= 0.9.24.11286）
+// 与新版的主要区别：无初始 int32 占位符、轨道无版本前缀、无太阳帆颜色数据
+async function parseOldBlueprintBody(bodyString, typeId) {
+  const decoded = await decodeBase64Gzip(bodyString);
+  const reader = new BinaryReader(decoded);
+
+  // 旧版格式没有初始 int32(0) 占位符
+
+  const body = {
+    typeId,
+    typeName: BlueprintType.getName(typeId),
+  };
+
+  if (typeId === 3 || typeId === 4) {
+    body.dysonCloud = parseOldDysonCloud(reader);
+  }
+
+  if (typeId === 2 || typeId === 4) {
+    body.dysonShell = parseOldDysonShell(reader);
   }
 
   if (typeId === 1) {
@@ -227,6 +255,23 @@ function parseDysonCloud(reader) {
   };
 }
 
+// 旧版戴森云解析：可见性 + 20 路轨道（无版本前缀），无颜色数据
+function parseOldDysonCloud(reader) {
+  const visibility = parseVisibility(reader);
+  const orbits = [];
+  for (let i = 0; i < 20; i += 1) {
+    orbits.push(parseOldOrbit(reader));
+  }
+
+  // 旧版没有太阳帆颜色数据
+
+  return {
+    visibility,
+    orbits,
+    colors: [],
+  };
+}
+
 // 解析戴森壳部分：可见性、轨道列表和单层壳列表
 function parseDysonShell(reader) {
   const visibility = parseVisibility(reader);
@@ -235,6 +280,32 @@ function parseDysonShell(reader) {
   for (let i = 0; i < orbitCount; i += 1) {
     if (reader.readBool()) {
       orbitList[i] = parseOrbit(reader);
+    }
+  }
+
+  const shellCount = reader.readInt32();
+  const shells = new Array(shellCount).fill(null);
+  for (let i = 0; i < shellCount; i += 1) {
+    if (reader.readBool()) {
+      shells[i] = parseSingleShell(reader);
+    }
+  }
+
+  return {
+    visibility,
+    orbitList,
+    shells,
+  };
+}
+
+// 旧版戴森壳解析
+function parseOldDysonShell(reader) {
+  const visibility = parseVisibility(reader);
+  const orbitCount = reader.readInt32();
+  const orbitList = new Array(orbitCount).fill(null);
+  for (let i = 0; i < orbitCount; i += 1) {
+    if (reader.readBool()) {
+      orbitList[i] = parseOldOrbit(reader);
     }
   }
 
@@ -425,6 +496,30 @@ function parseOrbit(reader) {
 
   return {
     //version,
+    id,
+    radius,
+    x,
+    y,
+    z,
+    w,
+  };
+}
+
+// 旧版轨道解析
+function parseOldOrbit(reader) {
+  const id = reader.readInt32();
+  const radius = reader.readFloat32();
+  const x = reader.readFloat32();
+  const y = reader.readFloat32();
+  const z = reader.readFloat32();
+  const w = reader.readFloat32();
+  const hasOrbit = reader.readBool();
+
+  if (!hasOrbit) {
+    return null;
+  }
+
+  return {
     id,
     radius,
     x,
