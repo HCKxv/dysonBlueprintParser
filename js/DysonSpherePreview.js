@@ -188,11 +188,11 @@ function _gridArcPoints(from, to, segments = 18, pole = null) {
 function _createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
   const pts = (type === 1 && pole) ? _gridArcPoints(from, to, 18, pole) : _sphericalArcPoints(from, to, 18);
   const geom = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({ color });
+  const mat = new THREE.LineBasicMaterial({ color, opacity: 0.5, transparent: true });
   return new THREE.Line(geom, mat);
 }
 
-function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null) {
+function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null, backMaterial = null) {
   if (points.length < 3) return null;
   const spherePoints = points.map(p => p.clone());
   if (edgeTypes) {
@@ -204,7 +204,7 @@ function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, 
         : _sphericalArcPoints(from, to, 3);
       for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
     }
-    return _createFaceMesh(refined, color, opacity, pole, null);
+    return _createFaceMesh(refined, color, opacity, pole, null, backMaterial);
   }
   const vertices = [], indices = [];
   const addVertex = (v) => { vertices.push(v.x, v.y, v.z); return (vertices.length / 3) - 1; };
@@ -265,8 +265,39 @@ function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, 
   geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geom.setIndex(indices);
   geom.computeVertexNormals();
+  // 确保法线统一朝外
+  if (backMaterial) {
+    const posAttr = geom.getAttribute('position');
+    const normAttr = geom.getAttribute('normal');
+    let avgDot = 0;
+    for (let i = 0; i < posAttr.count; i++) {
+      avgDot += posAttr.getX(i) * normAttr.getX(i) + posAttr.getY(i) * normAttr.getY(i) + posAttr.getZ(i) * normAttr.getZ(i);
+    }
+    if (avgDot < 0) {
+      // 翻转法线
+      for (let i = 0; i < normAttr.count; i++) {
+        normAttr.setXYZ(i, -normAttr.getX(i), -normAttr.getY(i), -normAttr.getZ(i));
+      }
+      // 翻转三角形绕序
+      const idxArr = geom.getIndex().array;
+      for (let i = 0; i < idxArr.length; i += 3) {
+        const tmp = idxArr[i + 1];
+        idxArr[i + 1] = idxArr[i + 2];
+        idxArr[i + 2] = tmp;
+      }
+      geom.getIndex().needsUpdate = true;
+    }
+  }
   const mat = new THREE.MeshStandardMaterial({ color, opacity, transparent: opacity < 1, side: THREE.DoubleSide, depthWrite: true });
-  return new THREE.Mesh(geom, mat);
+  if (!backMaterial) {
+    return new THREE.Mesh(geom, mat);
+  }
+  // 正反两面
+  mat.side = THREE.FrontSide;
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(geom, mat));
+  group.add(new THREE.Mesh(geom, backMaterial));
+  return group;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -284,7 +315,6 @@ class DysonSpherePreview {
     this._rootGroup = null;
     this._gridGroup = null;
     this._axesHelper = null;
-    this._pointLight = null;
     this._originSphere = null;
     this._starGlowInner = null;
 
@@ -297,6 +327,7 @@ class DysonSpherePreview {
 
     this._visObjects = new Map();
     this._nodeGeom = new THREE.SphereGeometry(1, 8, 8);
+    this._sharedBackMaterial = new THREE.MeshBasicMaterial({ color: 0xB2A886, opacity: 1, transparent: true, side: THREE.BackSide, depthWrite: true });
 
     // 绑定的事件回调引用，用于 dispose
     this._onResize = null;
@@ -341,10 +372,7 @@ class DysonSpherePreview {
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize);
 
-    // 灯光
-    this._pointLight = new THREE.PointLight(0xffdd55, 1.2, 0, 0);
-    this._pointLight.position.set(0, 0, 0);
-    this._scene.add(this._pointLight);
+    // 光照
     this._scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 
     // 根组
@@ -367,14 +395,14 @@ class DysonSpherePreview {
     // 恒星
     this._originSphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.05, 48, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffdd55 })
+      new THREE.MeshBasicMaterial({ color: 0xFFED2A })
     );
     this._scene.add(this._originSphere);
 
     // 光晕
     this._starGlowInner = new THREE.Mesh(
       new THREE.SphereGeometry(0.068, 32, 16),
-      new THREE.MeshBasicMaterial({ color: 0xffdd55, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0xFFED2A, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
     );
     this._scene.add(this._starGlowInner);
 
@@ -483,7 +511,7 @@ class DysonSpherePreview {
             const pts = rel.map(nid => nodeMap.get(nid));
             if (pts.some(p => !p)) return;
             const edgeTypes = rel.map((_, j) => ftMap.get(_edgeKey(rel[j], rel[(j + 1) % rel.length])) ?? 0);
-            const m = _createFaceMesh(pts, _toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes);
+            const m = _createFaceMesh(pts, _toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes, this._sharedBackMaterial);
             if (m) shellGroup.add(m);
           });
         }
@@ -551,13 +579,39 @@ class DysonSpherePreview {
   setSunColor(luminosity) {
     const lum = Math.max(0.01, Math.min(10, luminosity));
     let color;
-    if (lum <= 0.8) color = new THREE.Color(0xff8855);
-    else if (lum < 1.3) color = new THREE.Color(0xffdd55);
-    else if (lum < 1.8) color = new THREE.Color(0xf0f4ff);
-    else color = new THREE.Color(0x5588ff);
-    if (this._pointLight) this._pointLight.color.copy(color);
-    if (this._originSphere) this._originSphere.material.color.copy(color);
-    if (this._starGlowInner) this._starGlowInner.material.color.copy(color);
+    let run
+    if (lum < 0.9) {                        // M 型
+      color = new THREE.Color(0xB28174);
+      run = new THREE.Color(0xFF4032);
+    }
+    else if (lum < 0.98) {                    // K 型
+      color = new THREE.Color(0xB29886);
+      run = new THREE.Color(0xFF7842);
+    }
+    else if (lum < 1.1) {                    // G 型
+      color = new THREE.Color(0xB2A886);
+      run = new THREE.Color(0xFFED2A);
+    }
+    else if (lum < 1.3) {                    // F 型
+      color = new THREE.Color(0xB1B29D);
+      run = new THREE.Color(0xF9FF99);
+    }
+    else if (lum < 1.55) {                    // A 型
+      color = new THREE.Color(0xAAB0B2);
+      run = new THREE.Color(0xFFFFFF);
+    }
+    else if (lum < 2.0) {                     // B 型
+      color = new THREE.Color(0x8198B2);
+      run = new THREE.Color(0x55A2FF);
+    }
+    else {                                    // O 型
+      color = new THREE.Color(0x748BB2);
+      run = new THREE.Color(0x2E47FF);
+    }
+
+    if (this._originSphere) this._originSphere.material.color.copy(run);
+    if (this._starGlowInner) this._starGlowInner.material.color.copy(run);
+    this._sharedBackMaterial.color.copy(color);
   }
 
   // ─── 辅助 ──────────────────────────────────────────────────
@@ -612,6 +666,7 @@ class DysonSpherePreview {
     window.removeEventListener('resize', this._onResize);
     window.removeEventListener('blur', this._onBlur);
     this.clearScene();
+    if (this._sharedBackMaterial) { this._sharedBackMaterial.dispose(); this._sharedBackMaterial = null; }
     if (this._renderer) { this._renderer.dispose(); this._renderer = null; }
     if (this._controls) { this._controls.dispose(); this._controls = null; }
     if (this._nodeGeom) { this._nodeGeom.dispose(); this._nodeGeom = null; }
