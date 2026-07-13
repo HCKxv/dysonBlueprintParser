@@ -588,11 +588,11 @@ class DysonSpherePreview {
       color = new THREE.Color(0xB29886);
       run = new THREE.Color(0xFF7842);
     }
-    else if (lum < 1.1) {                    // G 型
+    else if (lum < 1.08) {                    // G 型
       color = new THREE.Color(0xB2A886);
       run = new THREE.Color(0xFFED2A);
     }
-    else if (lum < 1.3) {                    // F 型
+    else if (lum < 1.25) {                    // F 型
       color = new THREE.Color(0xB1B29D);
       run = new THREE.Color(0xF9FF99);
     }
