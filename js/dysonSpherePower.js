@@ -382,4 +382,23 @@ function computePower(points, luminosity = 1.0, isNode = true, isFrame = true, i
   return kw;
 }
 
-export { computeFrameStructurePoints, computeShellCellPoints, computePoints, computePower };
+// 格式化小数位数
+function formatValue(value) {
+  if (value >= 100) return value.toFixed(0);
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
+// 格式化发电量（输入单位 kW，与 computePower 输出一致）
+function fmtKW(kw) {
+  if (kw < 0) return '???';
+  if (kw === 0) return '0 W';
+  if (kw < 1) return formatValue(kw * 1000) + ' W';
+  if (kw >= 1e12) return formatValue(kw / 1e12) + ' PW';
+  if (kw >= 1e9) return formatValue(kw / 1e9) + ' TW';
+  if (kw >= 1e6) return formatValue(kw / 1e6) + ' GW';
+  if (kw >= 1e3) return formatValue(kw / 1e3) + ' MW';
+  return formatValue(kw) + ' kW';
+}
+
+export { computeFrameStructurePoints, computeShellCellPoints, computePoints, computePower, fmtKW };

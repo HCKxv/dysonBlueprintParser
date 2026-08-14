@@ -1,6 +1,8 @@
-import { parseBlueprintString, quaternionToOrbitParams, isVisible } from './dysonBlueprintParser.js';
-import { computePoints, computePower } from './dysonSpherePower.js';
+import { parseBlueprintString } from './dysonBlueprintParser.js';
+import { computePoints, computePower, fmtKW } from './dysonSpherePower.js';
 import { DysonSpherePreview } from './DysonSpherePreview.js';
+import { createStatsPanel } from './statsPanel.js';
+import { initChangelog } from './changelog.js';
 //import { stringifyBlueprint } from './dysonBlueprintEncoder.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -34,70 +36,9 @@ const preview = new DysonSpherePreview();
 preview.init(canvas);
 
 // ═══════════════════════════════════════════════════════════════
-// 统计面板
+// 左侧信息面板
 // ═══════════════════════════════════════════════════════════════
-function addStat(label, value, parent) {
-  const box = document.createElement('div');
-  box.className = 'stat-box';
-  box.innerHTML = `<strong>${label}</strong><br>${value}`;
-  (parent || statsElement).appendChild(box);
-  return box;
-}
-
-function addStatToggle(layerType, id, label, value, defChecked, parent) {
-  const box = document.createElement('div');
-  box.className = 'stat-box';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox'; cb.checked = defChecked;
-  cb.className = 'stat-checkbox';
-  cb.addEventListener('change', () => preview.setLayerVisible(layerType, id, cb.checked));
-  box.appendChild(cb);
-  const span = document.createElement('span');
-  span.innerHTML = `<strong>${label}</strong><br>${value}`;
-  box.appendChild(span);
-  (parent || statsElement).appendChild(box);
-  return box;
-}
-
-function addCollapsibleSection(title, count) {
-  const section = document.createElement('div');
-  section.className = 'stat-section';
-  const header = document.createElement('div');
-  header.className = 'stat-section-header collapsed';
-  header.innerHTML = `<span class="arrow">▼</span> ${title} (${count})`;
-  const body = document.createElement('div');
-  body.className = 'stat-section-body collapsed';
-  header.addEventListener('click', () => {
-    header.classList.toggle('collapsed');
-    body.classList.toggle('collapsed');
-  });
-  section.appendChild(header);
-  section.appendChild(body);
-  statsElement.appendChild(section);
-  return body;
-}
-
-function clearStats() { statsElement.innerHTML = ''; }
-
-// ═══════════════════════════════════════════════════════════════
-// 工具函数
-// ═══════════════════════════════════════════════════════════════
-const fmtKW = (kw) => {
-  if (kw < 0) return '???';
-  if (kw === 0) return '0 W';
-  if (kw < 1) return formatValue(kw * 1000) + ' W';  // 一般也有可能不太出现小数
-  if (kw >= 1e12) return formatValue(kw / 1e12) + ' PW';
-  if (kw >= 1e9) return formatValue(kw / 1e9) + ' TW';
-  if (kw >= 1e6) return formatValue(kw / 1e6) + ' GW';
-  if (kw >= 1e3) return formatValue(kw / 1e3) + ' MW';
-  return formatValue(kw) + ' kW';
-};
-
-const formatValue = (value) => {
-  if (value >= 100) return value.toFixed(0);
-  if (value >= 10) return value.toFixed(1);
-  return value.toFixed(2);
-};
+const { renderInfoPanel, clearStats, showMessageBox } = createStatsPanel(statsElement, preview);
 
 // ═══════════════════════════════════════════════════════════════
 // 控制按钮事件
@@ -127,7 +68,6 @@ document.getElementById('copyButton').addEventListener('click', async () => {
 const btn = document.getElementById('menuButton');
 const menu = document.getElementById('powerMenu');
 
-
 // 切换菜单显示/隐藏
 btn.addEventListener('click', (e) => {
   btn.classList.toggle('collapsed');
@@ -135,12 +75,25 @@ btn.addEventListener('click', (e) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// 更新日志弹窗
+// ═══════════════════════════════════════════════════════════════
+initChangelog(document.getElementById('changelogBody'));
+const changelogModal = document.getElementById('changelogModal');
+const closeChangelog = () => changelogModal.classList.add('hidden');
+document.getElementById('changelogLink').addEventListener('click', (e) => {
+  e.preventDefault();
+  changelogModal.classList.remove('hidden');
+});
+document.getElementById('changelogClose').addEventListener('click', closeChangelog);
+document.getElementById('changelogBackdrop').addEventListener('click', closeChangelog);
+
+// ═══════════════════════════════════════════════════════════════
 // 更新功率
 // ═══════════════════════════════════════════════════════════════
 const isNode = document.getElementById('isNode');
 const isFrame = document.getElementById('isFrame');
 const isFaces = document.getElementById('isFaces');
-let gPowerResult = null, lastParsed = null, singleShellStatBox = null;
+let gPowerResult = null, lastParsed = null;
 // 刷新功率
 const refreshPower = () => {
   if (!gPowerResult) return;
@@ -164,26 +117,18 @@ lumInput.addEventListener('change', () => {;
 });
 
 radiusInput.addEventListener('change', () => {
-  if (lastParsed?.body.typeId !== 1) return
   let val = parseFloat(radiusInput.value);
   if (isNaN(val) || val < 4000) {
     val = 4000;
     radiusInput.value = val;
   }
+  if (lastParsed?.body.typeId !== 1) return
   const powerResult = computePoints(lastParsed.body, val);
   if (!powerResult) return;
   gPowerResult = powerResult;
   refreshPower();
-  // 更新统计面板
-  const layer = powerResult.layers[0];
-  if (layer) {
-    const sh = lastParsed.body.singleShell;
-    const nCnt = sh?.nodes ? sh.nodes.filter(Boolean).length : 0;
-    const fCnt = sh?.frames ? sh.frames.filter(Boolean).length : 0;
-    const fcCnt = sh?.faces ? sh.faces.filter(Boolean).length : 0;
-    const box = singleShellStatBox;
-    if (box) box.innerHTML = '<strong>单层壳</strong><br>节点' + nCnt + ' 框架' + fCnt + ' 壳面' + fcCnt + '<br>结构点数' + ((layer?.totalNodeSP || 0) + (layer?.totalFrameSP || 0)) + ' / 细胞点数' + (layer?.totalCP || 0);
-  }
+  // 重渲染信息面板（结构/细胞点数随半径变化）
+  renderInfoPanel(lastParsed, powerResult);
 });
 
 [isNode, isFrame, isFaces].forEach((e) => {
@@ -249,28 +194,10 @@ function renderFromParsed(parsed) {
   preview.render(parsed.body);
 
   const isSingleShell = parsed.body.typeId === 1;
-  const cloud = parsed.body.dysonCloud;
-  const shell = isSingleShell
-    ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
-    : (parsed.body.dysonShell ?? null);
-
-  // ── 填充网格警告 ──
-  if (shell?.orbitList) {
-    let hasFillGridWarning = false;
-    for (const orbit of shell.orbitList) {
-      if (!orbit) continue;
-      const shData = shell.shells?.[orbit.id] ?? null;
-      if (!hasFillGridWarning && shData?.fillGrid?.colors) {
-        for (const cc of shData.fillGrid.colors) { if (cc && cc.a) { hasFillGridWarning = true; break; } }
-      }
-    }
-    if (hasFillGridWarning) addStat('<span class="text-warning">⚠ 此蓝图含有网格涂色</span> ', '当前不支持网格涂色，颜色可能无法正确显示');
-  }
 
   // ── 单层/多层 UI ──
   document.getElementById('radiusLabel').classList.toggle('hidden', !isSingleShell);
   radiusInput.classList.toggle('hidden', !isSingleShell);
-  //if (isSingleShell) radiusInput.value = 10000;
 
   // ── 发电量 ──
   const userRadius = radiusInput.value || 10000;
@@ -287,62 +214,8 @@ function renderFromParsed(parsed) {
     preview.setSunColor(lum);
   }
 
-  // ── 蓝图信息 ──
-  addStat('蓝图信息',
-    '蓝图类型：' + (parsed.header.typeName || '未知') + '<br>' +
-    '蓝图版本：' + parsed.header.version + '<br>' +
-    '创建时间：' + parsed.header.createdAt + '<br>' +
-    '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.header.latLimit || 0) / 15))))
-  );
-
-  if (! isSingleShell){
-    addStat('建造',
-      '总结构点数：' + ((powerResult?.totalNodeSP || 0) + (powerResult?.totalFrameSP || 0)) + '<br>' +
-      '总细胞点数：' + (powerResult?.totalCP || 0)
-    )
-  }
-
-  // ── 云轨道统计 ──
-  if (cloud?.orbits) {
-    const sortedOrbits = cloud.orbits.filter(Boolean).sort((a, b) => a.id - b.id);
-    const body = addCollapsibleSection('云轨道', sortedOrbits.length);
-    sortedOrbits.forEach((orb) => {
-      const op = quaternionToOrbitParams(orb);
-      const ed = cloud.visibility ? !!isVisible(cloud.visibility.editor, orb.id) : true;
-      const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
-      const val = '半径 ' + orb.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
-      addStatToggle('cloud', orb.id, '云轨道 ' + orb.id, val, gv, body);
-    });
-  }
-
-  // ── 壳层统计 ──
-  if (shell?.orbitList) {
-    const sortedOrbits = shell.orbitList.filter(Boolean).sort((a, b) => a.id - b.id);
-    if (isSingleShell) {
-      for (const orbit of sortedOrbits) {
-        const shData = shell.shells?.[orbit.id] ?? null;
-        const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
-        const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
-        const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
-        const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
-        singleShellStatBox = addStat('单层壳', '节点' + nodeCnt + ' 框架' + frameCnt + ' 壳面' + faceCnt + '<br>结构点数' + ((layerData?.totalNodeSP || 0) + (layerData?.totalFrameSP || 0)) + ' / 细胞点数' + (layerData?.totalCP || 0));
-      }
-    } else {
-      const body = addCollapsibleSection('壳层', sortedOrbits.length);
-      for (const orbit of sortedOrbits) {
-        const shData = shell.shells?.[orbit.id] ?? null;
-        const nodeCnt = shData?.nodes ? shData.nodes.filter(Boolean).length : 0;
-        const frameCnt = shData?.frames ? shData.frames.filter(Boolean).length : 0;
-        const faceCnt = shData?.faces ? shData.faces.filter(Boolean).length : 0;
-        const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
-        const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
-        const layerData = powerResult?.layers.find(l => l.orbitId === orbit.id);
-        const op = quaternionToOrbitParams(orbit);
-        const val = '半径 ' + orbit.radius.toFixed(0) + ' / 倾角 ' + op.inclination.toFixed(1) + '° / 升交点 ' + op.ascendingNode.toFixed(1) + '°' + '<br>节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt + '<br>结构点数' + ((layerData?.totalNodeSP || 0) + (layerData?.totalFrameSP || 0)) + ' / 细胞点数' + (layerData?.totalCP || 0) + '<br>编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示');
-        addStatToggle('shell', orbit.id, '壳层 ' + orbit.id, val, gv, body);
-      }
-    }
-  }
+  // ── 左侧信息面板 ──
+  renderInfoPanel(parsed, powerResult);
 }
 
 parseButton.addEventListener('click', async () => {
@@ -351,7 +224,7 @@ parseButton.addEventListener('click', async () => {
   parseButton.disabled = true;
   parseButton.textContent = '解析中...';
   clearStats();
-  gPowerResult = lastParsed = singleShellStatBox = null;
+  gPowerResult = lastParsed = null;
   powerMain.textContent = '⚡ 0 W';
   preview.clearScene()
   await new Promise(resolve => requestAnimationFrame(resolve));
@@ -360,7 +233,7 @@ parseButton.addEventListener('click', async () => {
     renderFromParsed(parsed);
     lastParsed = parsed;
   } catch (error) {
-    addStat('❌ 解析失败', error.message);
+    showMessageBox('❌ 解析失败', error.message);
   }
   parseButton.disabled = false;
   parseButton.textContent = '解析并预览';
@@ -409,6 +282,6 @@ parseButton.addEventListener('click', async () => {
       if (!text.trim().startsWith('DYBP:')) throw new Error('文件不是有效的蓝图文件');
       blueprintInput.value = text;
       parseButton.click();
-    } catch (e) { clearStats(); addStat('❌ 加载失败', e.message); }
+    } catch (e) { clearStats(); showMessageBox('❌ 加载失败', e.message); }
   }
 })();

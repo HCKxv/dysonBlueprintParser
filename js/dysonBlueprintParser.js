@@ -471,6 +471,29 @@ function parseFillGrid(reader) {
   };
 }
 
+// 涂色网格类型中文名
+const GRID_TYPE_NAMES = {
+  0: '经纬线网格',
+  1: '二十面体网格',
+  2: '八面体网格',
+  3: '四面体网格',
+};
+
+function gridTypeName(gridType) {
+  return GRID_TYPE_NAMES[gridType] ?? `未知(${gridType})`;
+}
+
+// 统计已涂色格子数（fillGrid 颜色编码: a > 0 即已涂色）
+function countPaintedCells(colors) {
+  if (!colors) return 0;
+  let n = 0;
+  for (let i = 0; i < colors.length; i += 1) {
+    const c = colors[i];
+    if (c && c.a > 0) n += 1;
+  }
+  return n;
+}
+
 // 解析可见性结构：编辑器可见性和游戏内可见性
 function parseVisibility(reader) {
   return {
@@ -638,7 +661,7 @@ function isVisible(visibilityMask, index) {
   return (visibilityMask >>> index) & 1;
 }
 
-export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime, isVisible };
+export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime, isVisible, gridTypeName, countPaintedCells };
 
 // Example usage:
 // import { parseBlueprintString } from './dysonBlueprintParser.js';

@@ -11,6 +11,7 @@
  *   5. setRotationEnabled(enabled)   旋转开关
  *   6. setRotationSpeed(speed)       转速修改（建议 0.01 慢 / 0.05 中 / 0.20 快）
  *   7. setSunColor(luminosity)       根据光度系数更新恒星颜色
+ *   8. setPaintingVisible(visible)   涂色网格显示开关
  *
  *   辅助:
  *     clearScene()                   清空场景中的所有 3D 对象
@@ -42,6 +43,11 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildPaintingGeometry } from './dysonPaintingGrid.js';
+
+// 涂色裁剪模板值基准: 每层壳面写入自己层的值、该层涂色只测试自己层的值
+// （与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值；跨层叠加靠深度缓冲遮挡）
+const STENCIL_BASE = 200;
 
 // ═══════════════════════════════════════════════════════════════
 // 内部工具函数
@@ -192,7 +198,7 @@ function _createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
   return new THREE.Line(geom, mat);
 }
 
-function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null, backMaterial = null) {
+function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null, backMaterial = null, stencilRef = null) {
   if (points.length < 3) return null;
   const spherePoints = points.map(p => p.clone());
   if (edgeTypes) {
@@ -204,7 +210,7 @@ function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, 
         : _sphericalArcPoints(from, to, 3);
       for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
     }
-    return _createFaceMesh(refined, color, opacity, pole, null, backMaterial);
+    return _createFaceMesh(refined, color, opacity, pole, null, backMaterial, stencilRef);
   }
   const vertices = [], indices = [];
   const addVertex = (v) => { vertices.push(v.x, v.y, v.z); return (vertices.length / 3) - 1; };
@@ -289,6 +295,14 @@ function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, 
     }
   }
   const mat = new THREE.MeshStandardMaterial({ color, opacity, transparent: opacity < 1, side: THREE.DoubleSide, depthWrite: true });
+  if (stencilRef != null) {
+    // 壳面写入本层模板值（与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值，实现"涂色只在壳面上显示"）
+    mat.stencilWrite = true;
+    mat.stencilWriteMask = 0xff;
+    mat.stencilRef = stencilRef;
+    mat.stencilFunc = THREE.AlwaysStencilFunc;
+    mat.stencilZPass = THREE.ReplaceStencilOp;
+  }
   if (!backMaterial) {
     return new THREE.Mesh(geom, mat);
   }
@@ -319,6 +333,8 @@ class DysonSpherePreview {
     this._starGlowInner = null;
 
     this._shellGroups = [];
+    this._paintingMeshes = [];
+    this._paintingVisible = true;
     this._shellRotationEnabled = true;
     this._shellSpeed = 0.05;
     this._currentScale = 1;
@@ -421,6 +437,7 @@ class DysonSpherePreview {
    */
   render(body) {
     this.clearScene();
+    this._paintingMeshes = [];
 
     const isSingleShell = body.typeId === 1;
     const cloud = body.dysonCloud;
@@ -472,6 +489,8 @@ class DysonSpherePreview {
         const shPole = _convertBP(poleRaw);
         const shellGroup = new THREE.Group();
         this._shellGroups.push({ group: shellGroup, pole: shPole.clone().normalize(), radius: renderR });
+        // 本层专属模板值（与游戏一致: layerId+200）
+        const stencilRef = STENCIL_BASE + (orbit.id || 0);
 
         const nodeMap = new Map();
         if (shData.nodes) {
@@ -511,9 +530,49 @@ class DysonSpherePreview {
             const pts = rel.map(nid => nodeMap.get(nid));
             if (pts.some(p => !p)) return;
             const edgeTypes = rel.map((_, j) => ftMap.get(_edgeKey(rel[j], rel[(j + 1) % rel.length])) ?? 0);
-            const m = _createFaceMesh(pts, _toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes, this._sharedBackMaterial);
+            const m = _createFaceMesh(pts, _toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes, this._sharedBackMaterial, stencilRef);
             if (m) shellGroup.add(m);
           });
+        }
+
+        // ── 涂色网格 (fillGrid) ──
+        if (shData.fillGrid?.colors) {
+          const parts = buildPaintingGeometry(shData.fillGrid);
+          if (parts) {
+            const paintR = renderR * this._currentScale * 1.0015; // 略高于壳面避免重叠闪烁
+            for (const part of parts) {
+              const geom = new THREE.BufferGeometry();
+              const posAttr = new THREE.Float32BufferAttribute(part.positions, 3);
+              const colAttr = new THREE.Float32BufferAttribute(part.colors, 4);
+              // 与节点相同的坐标变换: 游戏局部空间 → 轨道四元数 → 预览空间
+              for (let vi = 0; vi < posAttr.count; vi += 1) {
+                const v = new THREE.Vector3(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi));
+                v.applyQuaternion(shQuat);
+                const w = _convertBP(v).multiplyScalar(paintR);
+                posAttr.setXYZ(vi, w.x, w.y, w.z);
+              }
+              geom.setAttribute('position', posAttr);
+              geom.setAttribute('color', colAttr);
+              const mat = new THREE.MeshBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                depthWrite: true,
+                side: THREE.FrontSide, // 单面渲染，避免正反双面叠加导致超亮发光翻倍发白
+                blending: part.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+              });
+              // 仅在本层壳面区域内显示: 测试本层壳面写入的模板值（r161 中 stencilWrite=true 才开启模板测试，写入掩码 0 只测不写）
+              mat.stencilWrite = true;
+              mat.stencilWriteMask = 0x00;
+              mat.stencilRef = stencilRef;
+              mat.stencilFunc = THREE.EqualStencilFunc;
+              const mesh = new THREE.Mesh(geom, mat);
+              mesh.renderOrder = 3;
+              mesh.frustumCulled = false;
+              mesh.visible = this._paintingVisible;
+              shellGroup.add(mesh);
+              this._paintingMeshes.push(mesh);
+            }
+          }
         }
 
         shellGroup.visible = gv;
@@ -550,6 +609,16 @@ class DysonSpherePreview {
   setGridVisible(visible) {
     if (this._gridGroup) this._gridGroup.visible = visible;
     if (this._axesHelper) this._axesHelper.visible = visible;
+  }
+
+  // ─── 4.5 涂色网格显示开关 ──────────────────────────────────
+
+  /**
+   * @param {boolean} visible
+   */
+  setPaintingVisible(visible) {
+    this._paintingVisible = visible;
+    for (const m of this._paintingMeshes) m.visible = visible;
   }
 
   // ─── 5. 旋转开关 ──────────────────────────────────────────
@@ -633,6 +702,7 @@ class DysonSpherePreview {
    */
   clearScene() {
     this._shellGroups.length = 0;
+    this._paintingMeshes.length = 0;
     this._visObjects.clear();
     if (!this._rootGroup) return;
     while (this._rootGroup.children.length) {

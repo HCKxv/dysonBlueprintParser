@@ -1,6 +1,6 @@
 // 与 dysonBlueprintParser.js 配对使用：parseBlueprintString 解析，stringifyBlueprint 编码
 
-import { digest } from './js/DSP-md5.js';
+import { digest } from './DSP-md5.js';
 
 // 二进制写入器，用于按小端序写入各种基础类型到 Uint8Array
 class BinaryWriter {
@@ -416,10 +416,28 @@ function writeBlueprintBody(body) {
   return writer.toUint8Array();
 }
 
+// 比较版本号：v1 > v2 返回 1，v1 < v2 返回 -1，相等返回 0
+function compareVersion(v1, v2) {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  const len = Math.max(parts1.length, parts2.length);
+  for (let i = 0; i < len; i += 1) {
+    const a = parts1[i] || 0;
+    const b = parts2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
 // 构建头部字符串
 function buildHeader(header) {
   const ticks = header.createdTicks || '0';
-  const version = header.version || '0.10.34.28524';
+  let version = header.version || '0.10.34.28524';
+  // 旧版蓝图（<= 0.9.24.11286）编码时使用 0.9.25.11985
+  if (compareVersion(version, '0.9.24.11286') <= 0) {
+    version = '0.9.25.11985';
+  }
   const typeId = header.typeId;
   const latLimit = header.latLimit || '0';
   return `0,${ticks},${version},${typeId},${latLimit}`;
