@@ -64,7 +64,7 @@ function createStatsPanel(statsElement, preview) {
     });
 
     // ── 建造总量 ──
-    if (!isSingleShell) {
+    if (!isSingleShell && parsed.body.typeId !== 3) {
       nodes.push({
         kind: 'stat', label: '建造',
         value: '总结构点数：' + ((powerResult?.totalNodeSP || 0) + (powerResult?.totalFrameSP || 0)) + '<br>' +

@@ -799,6 +799,9 @@ class DysonSpherePreview {
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
         sp.position.copy(dir.clone().multiplyScalar(radius + tick * 1.8));
         sp.scale.set(fontSize * 2, fontSize, 1);
+        // Sprite 是透明对象且不写深度；涂色层(renderOrder=3)后绘制会盖住数字，
+        // 把刻度数字的渲染顺序提到涂色层之上（深度测试仍保留，被球体遮挡时依旧隐藏）
+        sp.renderOrder = 4;
         this._gridGroup.add(sp);
       } else if (deg % 5 === 0) {
         const s = dir.clone().multiplyScalar(radius);
