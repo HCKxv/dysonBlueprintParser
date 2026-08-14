@@ -191,14 +191,8 @@ function _gridArcPoints(from, to, segments = 18, pole = null) {
   return pts;
 }
 
-function _createLineSegment(from, to, color = 0xffffff, type = 0, pole = null) {
-  const pts = (type === 1 && pole) ? _gridArcPoints(from, to, 18, pole) : _sphericalArcPoints(from, to, 18);
-  const geom = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({ color, opacity: 0.5, transparent: true });
-  return new THREE.Line(geom, mat);
-}
-
-function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, edgeTypes = null, backMaterial = null, stencilRef = null) {
+// 构建单个壳面的三角形几何（返回 { positions: 扁平数组, indices }，法线朝外）
+function _buildFaceGeometry(points, pole, edgeTypes) {
   if (points.length < 3) return null;
   const spherePoints = points.map(p => p.clone());
   if (edgeTypes) {
@@ -210,7 +204,7 @@ function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, 
         : _sphericalArcPoints(from, to, 3);
       for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
     }
-    return _createFaceMesh(refined, color, opacity, pole, null, backMaterial, stencilRef);
+    return _buildFaceGeometry(refined, pole, null);
   }
   const vertices = [], indices = [];
   const addVertex = (v) => { vertices.push(v.x, v.y, v.z); return (vertices.length / 3) - 1; };
@@ -267,51 +261,26 @@ function _createFaceMesh(points, color = 0x00b7ff, opacity = 0.25, pole = null, 
   const tris2d = earClip(polygon);
   tris2d.forEach(([ai, bi, ci]) => { if (ai < spherePoints.length && bi < spherePoints.length && ci < spherePoints.length) subdivide(spherePoints[ai], spherePoints[bi], spherePoints[ci], 3); });
   if (tris2d.length === 0) return null;
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geom.setIndex(indices);
-  geom.computeVertexNormals();
-  // 确保法线统一朝外
-  if (backMaterial) {
-    const posAttr = geom.getAttribute('position');
-    const normAttr = geom.getAttribute('normal');
-    let avgDot = 0;
-    for (let i = 0; i < posAttr.count; i++) {
-      avgDot += posAttr.getX(i) * normAttr.getX(i) + posAttr.getY(i) * normAttr.getY(i) + posAttr.getZ(i) * normAttr.getZ(i);
-    }
-    if (avgDot < 0) {
-      // 翻转法线
-      for (let i = 0; i < normAttr.count; i++) {
-        normAttr.setXYZ(i, -normAttr.getX(i), -normAttr.getY(i), -normAttr.getZ(i));
-      }
-      // 翻转三角形绕序
-      const idxArr = geom.getIndex().array;
-      for (let i = 0; i < idxArr.length; i += 3) {
-        const tmp = idxArr[i + 1];
-        idxArr[i + 1] = idxArr[i + 2];
-        idxArr[i + 2] = tmp;
-      }
-      geom.getIndex().needsUpdate = true;
+  // 确保法线统一朝外（按三角形面法线判断，必要时翻转绕序）
+  let avgDot = 0;
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i] * 3, b = indices[i + 1] * 3, c = indices[i + 2] * 3;
+    const ux = vertices[b] - vertices[a], uy = vertices[b + 1] - vertices[a + 1], uz = vertices[b + 2] - vertices[a + 2];
+    const vx = vertices[c] - vertices[a], vy = vertices[c + 1] - vertices[a + 1], vz = vertices[c + 2] - vertices[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const cx = (vertices[a] + vertices[b] + vertices[c]) / 3;
+    const cy = (vertices[a + 1] + vertices[b + 1] + vertices[c + 1]) / 3;
+    const cz = (vertices[a + 2] + vertices[b + 2] + vertices[c + 2]) / 3;
+    avgDot += nx * cx + ny * cy + nz * cz;
+  }
+  if (avgDot < 0) {
+    for (let i = 0; i < indices.length; i += 3) {
+      const tmp = indices[i + 1];
+      indices[i + 1] = indices[i + 2];
+      indices[i + 2] = tmp;
     }
   }
-  const mat = new THREE.MeshStandardMaterial({ color, opacity, transparent: opacity < 1, side: THREE.DoubleSide, depthWrite: true });
-  if (stencilRef != null) {
-    // 壳面写入本层模板值（与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值，实现"涂色只在壳面上显示"）
-    mat.stencilWrite = true;
-    mat.stencilWriteMask = 0xff;
-    mat.stencilRef = stencilRef;
-    mat.stencilFunc = THREE.AlwaysStencilFunc;
-    mat.stencilZPass = THREE.ReplaceStencilOp;
-  }
-  if (!backMaterial) {
-    return new THREE.Mesh(geom, mat);
-  }
-  // 正反两面
-  mat.side = THREE.FrontSide;
-  const group = new THREE.Group();
-  group.add(new THREE.Mesh(geom, mat));
-  group.add(new THREE.Mesh(geom, backMaterial));
-  return group;
+  return { positions: vertices, indices };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -340,13 +309,14 @@ class DysonSpherePreview {
     this._currentScale = 1;
     this._clock = new THREE.Clock();
     this._animFrameId = null;
+    this._needsRender = true;   // 脏标记: 旋转/交互/场景变化时置位，静止时跳过渲染（省电）
+    this._resizeObserver = null;
 
     this._visObjects = new Map();
     this._nodeGeom = new THREE.SphereGeometry(1, 8, 8);
     this._sharedBackMaterial = new THREE.MeshBasicMaterial({ color: 0xB2A886, opacity: 1, transparent: true, side: THREE.BackSide, depthWrite: true });
 
     // 绑定的事件回调引用，用于 dispose
-    this._onResize = null;
     this._onBlur = null;
   }
 
@@ -374,6 +344,8 @@ class DysonSpherePreview {
     this._controls.minDistance = 0.8;
     this._controls.maxDistance = 20;
     this._controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
+    // 相机交互（含阻尼惯性）时置脏
+    this._controls.addEventListener('change', () => { this._needsRender = true; });
 
     // 指针丢失兜底
     canvas.addEventListener('lostpointercapture', (e) => {
@@ -384,9 +356,12 @@ class DysonSpherePreview {
     };
     window.addEventListener('blur', this._onBlur);
 
-    // resize
-    this._onResize = () => this.resize();
-    window.addEventListener('resize', this._onResize);
+    // resize: 用 ResizeObserver 监听容器尺寸（替代每帧读取 clientWidth + window resize）
+    this._resizeObserver = new ResizeObserver(() => {
+      this.resize();
+      this._needsRender = true;
+    });
+    this._resizeObserver.observe(canvas.parentElement || canvas);
 
     // 光照
     this._scene.add(new THREE.AmbientLight(0xffffff, 1.2));
@@ -400,13 +375,13 @@ class DysonSpherePreview {
     this._gridGroup.name = 'longitudeGrid';
     this._scene.add(this._gridGroup);
 
+    this._createLongitudeGrid(1.2);
+
     // 坐标轴
     this._axesHelper = new THREE.AxesHelper(0.05);
     this._axesHelper.material.depthTest = false;
     this._axesHelper.renderOrder = 2;
     this._scene.add(this._axesHelper);
-
-    this._createLongitudeGrid(1.2);
 
     // 恒星
     this._originSphere = new THREE.Mesh(
@@ -493,6 +468,7 @@ class DysonSpherePreview {
         const stencilRef = STENCIL_BASE + (orbit.id || 0);
 
         const nodeMap = new Map();
+        const nodeData = [];
         if (shData.nodes) {
           for (let ni = 1; ni < shData.nodes.length; ni++) {
             const nd = shData.nodes[ni];
@@ -501,10 +477,36 @@ class DysonSpherePreview {
             d.applyQuaternion(shQuat);
             const pos = _convertBP(d).multiplyScalar(renderR * this._currentScale);
             nodeMap.set(nd.id, pos);
-            shellGroup.add(this._createNode(pos, nd.id, _toHexColor(nd.color, 0x60D6FD)));
+            nodeData.push({ pos, color: _toHexColor(nd.color, 0x60D6FD) });
           }
         }
+        // 节点: InstancedMesh 合并为一次绘制
+        if (nodeData.length) {
+          const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6 });
+          const inst = new THREE.InstancedMesh(this._nodeGeom, mat, nodeData.length);
+          const m4 = new THREE.Matrix4();
+          const c = new THREE.Color();
+          const s = 50 * this._currentScale;
+          nodeData.forEach((nd, i) => {
+            m4.makeScale(s, s, s);
+            m4.setPosition(nd.pos.x, nd.pos.y, nd.pos.z);
+            inst.setMatrixAt(i, m4);
+            inst.setColorAt(i, c.setHex(nd.color));
+          });
+          inst.instanceMatrix.needsUpdate = true;
+          if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+          shellGroup.add(inst);
+        }
 
+        // 框架: 合并为一条 LineSegments（顶点色）
+        const colorCache = new Map();
+        const hexColor = (hex) => {
+          let c = colorCache.get(hex);
+          if (!c) { c = new THREE.Color(hex); colorCache.set(hex, c); }
+          return c;
+        };
+        const framePts = [];
+        const frameCols = [];
         const renderedEdges = new Set();
         const ftMap = new Map();
         const re = (id1, id2, color, type = 0) => {
@@ -512,7 +514,13 @@ class DysonSpherePreview {
           if (renderedEdges.has(k)) return;
           renderedEdges.add(k);
           const f = nodeMap.get(id1), t = nodeMap.get(id2);
-          if (f && t) shellGroup.add(_createLineSegment(f, t, color, type, shPole));
+          if (!f || !t) return;
+          const pts = (type === 1 && shPole) ? _gridArcPoints(f, t, 18, shPole) : _sphericalArcPoints(f, t, 18);
+          const c = hexColor(color);
+          for (let i = 0; i < pts.length - 1; i++) {
+            framePts.push(pts[i].x, pts[i].y, pts[i].z, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
+            frameCols.push(c.r, c.g, c.b, c.r, c.g, c.b);
+          }
         };
         if (shData.frames) {
           shData.frames.forEach(fr => {
@@ -522,6 +530,17 @@ class DysonSpherePreview {
             re(fr.relation[0], fr.relation[1], _toHexColor(fr.color, 0x175473), fr.type);
           });
         }
+        if (framePts.length) {
+          const geom = new THREE.BufferGeometry();
+          geom.setAttribute('position', new THREE.Float32BufferAttribute(framePts, 3));
+          geom.setAttribute('color', new THREE.Float32BufferAttribute(frameCols, 3));
+          shellGroup.add(new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ vertexColors: true, opacity: 0.5, transparent: true })));
+        }
+
+        // 壳面: 合并为共享几何（正面顶点色，背面共享材质复用同一几何）
+        const faceVerts = [];
+        const faceCols = [];
+        const faceIdx = [];
         if (shData.faces) {
           shData.faces.forEach(fc => {
             if (!fc || !Array.isArray(fc.relation) || fc.relation.length < 3) return;
@@ -530,9 +549,34 @@ class DysonSpherePreview {
             const pts = rel.map(nid => nodeMap.get(nid));
             if (pts.some(p => !p)) return;
             const edgeTypes = rel.map((_, j) => ftMap.get(_edgeKey(rel[j], rel[(j + 1) % rel.length])) ?? 0);
-            const m = _createFaceMesh(pts, _toHexColor(fc.color, 0x175473), 1, shPole, edgeTypes, this._sharedBackMaterial, stencilRef);
-            if (m) shellGroup.add(m);
+            const fg = _buildFaceGeometry(pts, shPole, edgeTypes);
+            if (!fg) return;
+            const base = faceVerts.length / 3;
+            const c = hexColor(_toHexColor(fc.color, 0x175473));
+            for (let i = 0; i < fg.positions.length; i += 3) {
+              faceVerts.push(fg.positions[i], fg.positions[i + 1], fg.positions[i + 2]);
+              faceCols.push(c.r, c.g, c.b);
+            }
+            for (const i of fg.indices) faceIdx.push(base + i);
           });
+        }
+        if (faceVerts.length) {
+          const geom = new THREE.BufferGeometry();
+          geom.setAttribute('position', new THREE.Float32BufferAttribute(faceVerts, 3));
+          geom.setAttribute('color', new THREE.Float32BufferAttribute(faceCols, 3));
+          geom.setIndex(faceIdx);
+          geom.computeVertexNormals();
+          const mat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.FrontSide, depthWrite: true });
+          // 壳面写入本层模板值（与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值）
+          mat.stencilWrite = true;
+          mat.stencilWriteMask = 0xff;
+          mat.stencilRef = stencilRef;
+          mat.stencilFunc = THREE.AlwaysStencilFunc;
+          mat.stencilZPass = THREE.ReplaceStencilOp;
+          const group = new THREE.Group();
+          group.add(new THREE.Mesh(geom, mat));
+          group.add(new THREE.Mesh(geom, this._sharedBackMaterial)); // BackSide 复用同一几何
+          shellGroup.add(group);
         }
 
         // ── 涂色网格 (fillGrid) ──
@@ -545,11 +589,17 @@ class DysonSpherePreview {
               const posAttr = new THREE.Float32BufferAttribute(part.positions, 3);
               const colAttr = new THREE.Float32BufferAttribute(part.colors, 4);
               // 与节点相同的坐标变换: 游戏局部空间 → 轨道四元数 → 预览空间
+              // （纯标量四元数旋转 + z 翻转，避免每顶点分配 Vector3 对象）
+              const qx = shQuat.x, qy = shQuat.y, qz = shQuat.z, qw = shQuat.w;
               for (let vi = 0; vi < posAttr.count; vi += 1) {
-                const v = new THREE.Vector3(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi));
-                v.applyQuaternion(shQuat);
-                const w = _convertBP(v).multiplyScalar(paintR);
-                posAttr.setXYZ(vi, w.x, w.y, w.z);
+                const x = posAttr.getX(vi), y = posAttr.getY(vi), z = posAttr.getZ(vi);
+                const tx = 2 * (qy * z - qz * y);
+                const ty = 2 * (qz * x - qx * z);
+                const tz = 2 * (qx * y - qy * x);
+                const rx = x + qw * tx + (qy * tz - qz * ty);
+                const ry = y + qw * ty + (qz * tx - qx * tz);
+                const rz = z + qw * tz + (qx * ty - qy * tx);
+                posAttr.setXYZ(vi, rx * paintR, ry * paintR, -rz * paintR);
               }
               geom.setAttribute('position', posAttr);
               geom.setAttribute('color', colAttr);
@@ -584,6 +634,7 @@ class DysonSpherePreview {
     this._camera.position.set(0, 1.8, -3.2);
     this._controls.target.set(0, 0, 0);
     this._controls.update();
+    this._needsRender = true; // 新蓝图渲染完成后置脏
   }
 
   // ─── 3. 壳层与云轨道显示控制 ───────────────────────────────
@@ -599,6 +650,7 @@ class DysonSpherePreview {
     if (obj) obj.visible = visible;
     const glow = this._visObjects.get(key.replace(/^cloud_/, 'cloud_glow_'));
     if (glow) glow.visible = visible;
+    this._needsRender = true;
   }
 
   // ─── 4. 刻度显示开关 ───────────────────────────────────────
@@ -609,6 +661,7 @@ class DysonSpherePreview {
   setGridVisible(visible) {
     if (this._gridGroup) this._gridGroup.visible = visible;
     if (this._axesHelper) this._axesHelper.visible = visible;
+    this._needsRender = true;
   }
 
   // ─── 4.5 涂色网格显示开关 ──────────────────────────────────
@@ -619,6 +672,7 @@ class DysonSpherePreview {
   setPaintingVisible(visible) {
     this._paintingVisible = visible;
     for (const m of this._paintingMeshes) m.visible = visible;
+    this._needsRender = true;
   }
 
   // ─── 5. 旋转开关 ──────────────────────────────────────────
@@ -628,6 +682,7 @@ class DysonSpherePreview {
    */
   setRotationEnabled(enabled) {
     this._shellRotationEnabled = enabled;
+    this._needsRender = true;
   }
 
   // ─── 6. 转速修改 ──────────────────────────────────────────
@@ -681,6 +736,7 @@ class DysonSpherePreview {
     if (this._originSphere) this._originSphere.material.color.copy(run);
     if (this._starGlowInner) this._starGlowInner.material.color.copy(run);
     this._sharedBackMaterial.color.copy(color);
+    this._needsRender = true;
   }
 
   // ─── 辅助 ──────────────────────────────────────────────────
@@ -705,15 +761,17 @@ class DysonSpherePreview {
     this._paintingMeshes.length = 0;
     this._visObjects.clear();
     if (!this._rootGroup) return;
-    while (this._rootGroup.children.length) {
-      const c = this._rootGroup.children[0];
-      this._rootGroup.remove(c);
-      if (c.geometry && c.geometry !== this._nodeGeom) c.geometry.dispose();
-      if (c.material) {
-        const mats = Array.isArray(c.material) ? c.material : [c.material];
+    // 递归释放所有子对象的几何体与材质
+    this._rootGroup.traverse((obj) => {
+      // 共享的节点球体几何与壳面背面材质由类持有，不可释放
+      if (obj.geometry && obj.geometry !== this._nodeGeom) obj.geometry.dispose();
+      if (obj.material && obj.material !== this._sharedBackMaterial) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const m of mats) m.dispose();
       }
-    }
+    });
+    this._rootGroup.remove(...this._rootGroup.children);
+    this._needsRender = true;
   }
 
   // ─── 生命周期 ──────────────────────────────────────────────
@@ -733,7 +791,7 @@ class DysonSpherePreview {
       cancelAnimationFrame(this._animFrameId);
       this._animFrameId = null;
     }
-    window.removeEventListener('resize', this._onResize);
+    if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
     window.removeEventListener('blur', this._onBlur);
     this.clearScene();
     if (this._sharedBackMaterial) { this._sharedBackMaterial.dispose(); this._sharedBackMaterial = null; }
@@ -749,9 +807,9 @@ class DysonSpherePreview {
   _startLoop() {
     const loop = () => {
       this._animFrameId = requestAnimationFrame(loop);
-      this.resize();
       const dt = Math.min(this._clock.getDelta(), 0.1);
       if (this._shellRotationEnabled) {
+        this._needsRender = true; // 旋转中持续渲染
         const maxR = this._currentScale > 0 ? 1 / this._currentScale : 1;
         for (const sg of this._shellGroups) {
           const omega = this._shellSpeed * maxR / sg.radius;
@@ -759,19 +817,15 @@ class DysonSpherePreview {
           sg.group.quaternion.premultiply(rot);
         }
       }
-      this._controls.update();
-      this._renderer.render(this._scene, this._camera);
+      this._controls.update(); // 处理阻尼惯性（change 事件会置脏）
+      // 静止且无交互/变化时跳过渲染（省电）
+      if (this._needsRender) {
+        this.resize();
+        this._renderer.render(this._scene, this._camera);
+        this._needsRender = false;
+      }
     };
     this._animFrameId = requestAnimationFrame(loop);
-  }
-
-  _createNode(position, id, color = 0x44ffb8) {
-    const mat = new THREE.MeshStandardMaterial({ color, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6 });
-    const sphere = new THREE.Mesh(this._nodeGeom, mat);
-    sphere.position.copy(position);
-    sphere.scale.setScalar(50 * this._currentScale);
-    sphere.name = 'node-' + id;
-    return sphere;
   }
 
   _createLongitudeGrid(radius) {
@@ -782,8 +836,28 @@ class DysonSpherePreview {
       if (c.geometry) c.geometry.dispose();
       if (c.material) c.material.dispose();
     }
-    const tick = radius * 0.08, midTick = radius * 0.05, minorTick = radius * 0.03;
+    const tick = radius * 0.05, midTick = radius * 0.04, minorTick = radius * 0.03;
     const fontSize = radius * 0.04;
+
+    // 刻度标签图集: 36 个 64×32 格（12 列 × 3 行）绘制到一张 canvas，
+    const CELL_W = 64, CELL_H = 32, COLS = 12, ROWS = 3;
+    const atlas = document.createElement('canvas');
+    atlas.width = CELL_W * COLS;
+    atlas.height = CELL_H * ROWS;
+    const actx = atlas.getContext('2d');
+    actx.fillStyle = '#ffdd99';
+    actx.font = 'bold 20px sans-serif';
+    actx.textAlign = 'center';
+    actx.textBaseline = 'middle';
+    for (let k = 0; k < 36; k++) {
+      const cx = (k % COLS) * CELL_W, cy = Math.floor(k / COLS) * CELL_H;
+      actx.fillText(String(k * 10), cx + CELL_W / 2, cy + CELL_H / 2 + 1);
+    }
+    const labelTex = new THREE.CanvasTexture(atlas);
+    labelTex.minFilter = THREE.LinearFilter;
+    // 双面显示（底面镜像，仅作装饰不追求可读性）
+    const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+
     for (let deg = 0; deg < 360; deg++) {
       const rad = THREE.MathUtils.degToRad(deg + 180);
       const dir = new THREE.Vector3(Math.sin(rad), 0, Math.cos(rad));
@@ -791,18 +865,34 @@ class DysonSpherePreview {
         const s = dir.clone().multiplyScalar(radius);
         const e = dir.clone().multiplyScalar(radius + tick);
         this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([s, e]), new THREE.LineBasicMaterial({ color: 0xffdd99 })));
-        const lc = document.createElement('canvas'); lc.width = 64; lc.height = 32;
-        const ctx = lc.getContext('2d');
-        ctx.fillStyle = '#ffdd99'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`${deg}°`, 32, 24);
-        const tex = new THREE.CanvasTexture(lc); tex.minFilter = THREE.LinearFilter;
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
-        sp.position.copy(dir.clone().multiplyScalar(radius + tick * 1.8));
-        sp.scale.set(fontSize * 2, fontSize, 1);
-        // Sprite 是透明对象且不写深度；涂色层(renderOrder=3)后绘制会盖住数字，
-        // 把刻度数字的渲染顺序提到涂色层之上（深度测试仍保留，被球体遮挡时依旧隐藏）
-        sp.renderOrder = 4;
-        this._gridGroup.add(sp);
+        // 标签公告板平面（Sprite 共享内部几何无法按实例设 UV，改用平面 + 图集 UV）
+        const k = deg / 10;
+        const u0 = (k % COLS) / COLS, u1 = u0 + 1 / COLS;
+        const r = Math.floor(k / COLS);
+        const v0 = 1 - (r + 1) / ROWS, v1 = 1 - r / ROWS; // CanvasTexture flipY: v=1 为画布顶部
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute([
+          -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
+        ], 3));
+        geom.setAttribute('uv', new THREE.Float32BufferAttribute([
+          u0, v0, u1, v0, u1, v1, u0, v1,
+        ], 2));
+        geom.setIndex([0, 1, 2, 0, 2, 3]);
+        const mesh = new THREE.Mesh(geom, labelMat);
+        mesh.position.copy(dir.clone().multiplyScalar(radius + tick * 1.25));
+        mesh.scale.set(fontSize * 2, fontSize, 1);
+        // 渲染在涂色层(renderOrder=3)之上（renderOrder 必须设在对象上，材质上的设置无效）；
+        // 深度测试保留，被球体遮挡时依旧隐藏
+        mesh.renderOrder = 4;
+        // 平铺在黄道平面上: 文字方向垂直于刻度线（沿切向），数字底部朝向内侧，法线朝上
+        const up = new THREE.Vector3(0, 1, 0);
+        const basis = new THREE.Matrix4().makeBasis(
+          new THREE.Vector3().crossVectors(dir, up),  // X: 文字方向 = 切线（垂直于刻度线）
+          dir.clone(),                                 // Y: 字顶朝外（数字底部朝向内侧）
+          up,                                          // Z: 平面法线朝上
+        );
+        mesh.quaternion.setFromRotationMatrix(basis);
+        this._gridGroup.add(mesh);
       } else if (deg % 5 === 0) {
         const s = dir.clone().multiplyScalar(radius);
         const e = dir.clone().multiplyScalar(radius + midTick);

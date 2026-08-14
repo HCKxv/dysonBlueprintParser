@@ -200,7 +200,7 @@ function renderFromParsed(parsed) {
   radiusInput.classList.toggle('hidden', !isSingleShell);
 
   // ── 发电量 ──
-  const userRadius = radiusInput.value || 10000;
+  const userRadius = parseFloat(radiusInput.value) || 10000;
   const powerResult = computePoints(parsed.body, isSingleShell ? userRadius : null);
   if (!powerResult) {
     powerMain.textContent = '⚡ 0 W';

@@ -1,16 +1,6 @@
 /**
  * dysonPaintingGrid — 戴森球蓝图「涂色网格」(fillGrid) 生成模块
  *
- * 背景:
- *   游戏 0.10.31+ 支持给壳层涂色。蓝图 fillGrid 结构为:
- *     { gridType: 0|1|2|3, colors: RGBA[] | null }
- *   gridType 0 = 经纬线网格 (graticule)，1/2/3 = 测地线网格 geo20/geo8/geo4。
- *   colors 数组按格子序号存储颜色（Game 侧为 mesh.triangles.Length/2，
- *   因此数组长度约为实际格数的 1.5 倍，尾部为填充）。
- *   颜色编码（游戏 PaintCells）: a 通道不是透明度——a>0 即已涂色，
- *   RGB 已按笔刷强度缩放，显示时完全不透明；a>127 为超亮涂色（加色发光，
- *   强度 (a-127)/128）。
- *
  * 经纬线网格 (gridType 0) —— 已通过真实蓝图数据 + 游戏本体网格资产双重验证:
  *   - 120 个纬度带（各 1.5°），带序号 latIdx ∈ [-60, 59]，从南向北编号
  *   - 每带经向分段数 = GetSegByLatitudeIdx(带的最靠赤道一侧的纬度序号)，

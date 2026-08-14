@@ -405,6 +405,18 @@ canvas {
   color: #e7ebff;
 }
 
+.footer-bar button.footer-item {
+  background: transparent;
+  color: #bcc8e0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.footer-bar button.footer-item:hover {
+  background: #1a2a44;
+  color: #e7ebff;
+}
+
 .footer-item {
   padding: 1px 4px;
   border-radius: 6px;

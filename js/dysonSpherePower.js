@@ -296,7 +296,7 @@ function computePoints(body, r0 = 10000) {
     if (!orbit) continue;
     const sh = shell.shells[orbit.id];
     if (!sh) continue;
-    const R = orbit.radius;
+    const R = Number(orbit.radius);
 
     // 节点映射
     const nodeMap = new Map();
