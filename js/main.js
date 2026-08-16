@@ -227,7 +227,7 @@ parseButton.addEventListener('click', async () => {
   gPowerResult = lastParsed = null;
   powerMain.textContent = '⚡ 0 W';
   preview.clearScene()
-  await new Promise(resolve => requestAnimationFrame(resolve));
+  await new Promise(resolve => requestAnimationFrame(resolve)); // 等待下一帧，确保样式已经应用
   try {
     const parsed = await parseBlueprintString(text);
     renderFromParsed(parsed);

@@ -50,6 +50,33 @@ import { buildPaintingGeometry } from './dysonPaintingGrid.js';
 const STENCIL_BASE = 200;
 
 // ═══════════════════════════════════════════════════════════════
+// 恒星光谱型颜色表
+//   从低温到高温: M < K < G < F < A < B < O
+//   back: 壳层内衬背景色（恒星盘面暗部）
+//   core: 恒星本体/光晕发光色
+//   分档为开区间: 光度 lum < maxLum 归入该型
+// ═══════════════════════════════════════════════════════════════
+const STAR_TYPE_COLORS = [
+  { type: 'M', maxLum: 0.90, back: 0xB28174, core: 0xFF4032 },
+  { type: 'K', maxLum: 0.98, back: 0xB29886, core: 0xFF7842 },
+  { type: 'G', maxLum: 1.08, back: 0xB2A886, core: 0xFFED2A },
+  { type: 'F', maxLum: 1.25, back: 0xB1B29D, core: 0xF9FF99 },
+  { type: 'A', maxLum: 1.55, back: 0xAAB0B2, core: 0xFFFFFF },
+  { type: 'B', maxLum: 2.00, back: 0x8198B2, core: 0x55A2FF },
+  { type: 'O', maxLum: Infinity, back: 0x748BB2, core: 0x2E47FF },
+];
+
+/**
+ * 按光度系数取恒星配色
+ * @param {number} luminosity  光度系数
+ * @returns {{type: string, maxLum: number, back: number, core: number}}
+ */
+function getStarColors(luminosity) {
+  return STAR_TYPE_COLORS.find(s => luminosity < s.maxLum)
+    ?? STAR_TYPE_COLORS[STAR_TYPE_COLORS.length - 1];
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 内部工具函数
 // ═══════════════════════════════════════════════════════════════
 
@@ -314,7 +341,7 @@ class DysonSpherePreview {
 
     this._visObjects = new Map();
     this._nodeGeom = new THREE.SphereGeometry(1, 8, 8);
-    this._sharedBackMaterial = new THREE.MeshBasicMaterial({ color: 0xB2A886, opacity: 1, transparent: true, side: THREE.BackSide, depthWrite: true });
+    this._sharedBackMaterial = new THREE.MeshBasicMaterial({ color: getStarColors(1.0).back, opacity: 1, transparent: true, side: THREE.BackSide, depthWrite: true });
 
     // 绑定的事件回调引用，用于 dispose
     this._onBlur = null;
@@ -386,14 +413,14 @@ class DysonSpherePreview {
     // 恒星
     this._originSphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.05, 48, 24),
-      new THREE.MeshBasicMaterial({ color: 0xFFED2A })
+      new THREE.MeshBasicMaterial({ color: getStarColors(1.0).core })
     );
     this._scene.add(this._originSphere);
 
     // 光晕
     this._starGlowInner = new THREE.Mesh(
       new THREE.SphereGeometry(0.068, 32, 16),
-      new THREE.MeshBasicMaterial({ color: 0xFFED2A, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: getStarColors(1.0).core, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
     );
     this._scene.add(this._starGlowInner);
 
@@ -702,40 +729,11 @@ class DysonSpherePreview {
    */
   setSunColor(luminosity) {
     const lum = Math.max(0.01, Math.min(10, luminosity));
-    let color;
-    let run
-    if (lum < 0.9) {                        // M 型
-      color = new THREE.Color(0xB28174);
-      run = new THREE.Color(0xFF4032);
-    }
-    else if (lum < 0.98) {                    // K 型
-      color = new THREE.Color(0xB29886);
-      run = new THREE.Color(0xFF7842);
-    }
-    else if (lum < 1.08) {                    // G 型
-      color = new THREE.Color(0xB2A886);
-      run = new THREE.Color(0xFFED2A);
-    }
-    else if (lum < 1.25) {                    // F 型
-      color = new THREE.Color(0xB1B29D);
-      run = new THREE.Color(0xF9FF99);
-    }
-    else if (lum < 1.55) {                    // A 型
-      color = new THREE.Color(0xAAB0B2);
-      run = new THREE.Color(0xFFFFFF);
-    }
-    else if (lum < 2.0) {                     // B 型
-      color = new THREE.Color(0x8198B2);
-      run = new THREE.Color(0x55A2FF);
-    }
-    else {                                    // O 型
-      color = new THREE.Color(0x748BB2);
-      run = new THREE.Color(0x2E47FF);
-    }
+    const { back, core } = getStarColors(lum);
 
-    if (this._originSphere) this._originSphere.material.color.copy(run);
-    if (this._starGlowInner) this._starGlowInner.material.color.copy(run);
-    this._sharedBackMaterial.color.copy(color);
+    if (this._originSphere) this._originSphere.material.color.copy(new THREE.Color(core));
+    if (this._starGlowInner) this._starGlowInner.material.color.copy(new THREE.Color(core));
+    this._sharedBackMaterial.color.copy(new THREE.Color(back));
     this._needsRender = true;
   }
 
@@ -855,7 +853,7 @@ class DysonSpherePreview {
     }
     const labelTex = new THREE.CanvasTexture(atlas);
     labelTex.minFilter = THREE.LinearFilter;
-    // 双面显示（底面镜像，仅作装饰不追求可读性）
+    // 双面显示
     const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
 
     for (let deg = 0; deg < 360; deg++) {
@@ -879,7 +877,7 @@ class DysonSpherePreview {
         ], 2));
         geom.setIndex([0, 1, 2, 0, 2, 3]);
         const mesh = new THREE.Mesh(geom, labelMat);
-        mesh.position.copy(dir.clone().multiplyScalar(radius + tick * 1.25));
+        mesh.position.copy(dir.clone().multiplyScalar(radius + tick * 1.35));
         mesh.scale.set(fontSize * 2, fontSize, 1);
         // 渲染在涂色层(renderOrder=3)之上（renderOrder 必须设在对象上，材质上的设置无效）；
         // 深度测试保留，被球体遮挡时依旧隐藏
@@ -913,4 +911,4 @@ class DysonSpherePreview {
 
 }
 
-export { DysonSpherePreview };
+export { DysonSpherePreview, STAR_TYPE_COLORS, getStarColors };

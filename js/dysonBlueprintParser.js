@@ -12,6 +12,26 @@ const BlueprintType = {
   },
 };
 
+/**
+ * 识别蓝图 body 的类型 id（1-4）
+ * @param {object} body - parsed.body 或任意疑似 body 的对象
+ * @returns {number|null}
+ *   1=单层壳  2=多层壳  3=戴森云  4=壳+云
+ *   -1 = 结构非法
+ *   null = 无法识别
+ */
+function getBodyTypeId(body) {
+  if (!body || typeof body !== 'object') return null;
+  const { singleShell, dysonShell, dysonCloud } = body;
+  // 单层壳与壳/云互斥，同时出现视为非法数据
+  if (singleShell && (dysonShell || dysonCloud)) return -1;
+  if (singleShell) return 1;
+  if (dysonShell && dysonCloud) return 4;
+  if (dysonShell) return 2;
+  if (dysonCloud) return 3;
+  return null;
+}
+
 // 二进制读取器，用于从 Uint8Array 中按小端序读取各种基础类型
 class BinaryReader {
   constructor(array) {
@@ -662,7 +682,7 @@ function isVisible(visibilityMask, index) {
   return (visibilityMask >>> index) & 1;
 }
 
-export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime, isVisible, gridTypeName, countPaintedCells };
+export { parseBlueprintString, BlueprintType, hsvaToRgba, quaternionToOrbitParams, ticksTime, isVisible, gridTypeName, countPaintedCells, getBodyTypeId };
 
 // Example usage:
 // import { parseBlueprintString } from './dysonBlueprintParser.js';
