@@ -48,11 +48,9 @@ function createStatsPanel(statsElement, preview) {
 
   function buildStatsTree(parsed, powerResult) {
     const nodes = [];
-    const isSingleShell = parsed.body.typeId === 1;
+    const singleShell = parsed.body.singleShell;
     const cloud = parsed.body.dysonCloud;
-    const shell = isSingleShell
-      ? { shells: [parsed.body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
-      : (parsed.body.dysonShell ?? null);
+    const shell = parsed.body.dysonShell;
 
     // ── 蓝图信息 ──
     nodes.push({
@@ -64,7 +62,7 @@ function createStatsPanel(statsElement, preview) {
     });
 
     // ── 建造总量 ──
-    if (!isSingleShell && parsed.body.typeId !== 3) {
+    if ([2, 4].includes(parsed.body.typeId)) {
       nodes.push({
         kind: 'stat', label: '建造',
         value: '总结构点数：' + ((powerResult?.totalNodeSP || 0) + (powerResult?.totalFrameSP || 0)) + '<br>' +
@@ -90,14 +88,16 @@ function createStatsPanel(statsElement, preview) {
     }
 
     // ── 壳层 ──
-    if (shell?.orbitList) {
+    if (singleShell) {
+      nodes.push({
+        kind: 'stat', label: '单层壳',
+        value: fmtShellValue(singleShell, powerResult?.layers?.[0] ?? null),
+      });
+    } else if (shell?.orbitList) {
       const orbits = shell.orbitList.filter(Boolean).sort((a, b) => a.id - b.id);
       const items = orbits.map((orbit) => {
         const shData = shell.shells?.[orbit.id] ?? null;
         const layerData = powerResult?.layers.find((l) => l.orbitId === orbit.id);
-        if (isSingleShell) {
-          return { kind: 'stat', label: '单层壳', value: fmtShellValue(shData, layerData) };
-        }
         const ed = shell.visibility ? !!isVisible(shell.visibility.editor, orbit.id) : true;
         const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
         return {
@@ -110,11 +110,7 @@ function createStatsPanel(statsElement, preview) {
           checked: gv,
         };
       });
-      if (isSingleShell) {
-        nodes.push(...items); // 单层壳: 直接平铺信息卡
-      } else {
-        nodes.push({ kind: 'section', title: '壳层', count: orbits.length, children: items });
-      }
+      nodes.push({ kind: 'section', title: '壳层', count: orbits.length, children: items });
     }
 
     return nodes;

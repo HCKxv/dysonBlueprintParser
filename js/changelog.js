@@ -1,8 +1,8 @@
-// 相对模块定位数据文件
-const CHANGELOG_URL = new URL('../changelog.json', import.meta.url);
-
 async function loadChangelog() {
-  const res = await fetch(CHANGELOG_URL, { cache: 'no-cache' });
+  const embedded = window.__OFFLINE_CHANGELOG__;
+  if (Array.isArray(embedded)) return embedded;
+  const url = new URL('../changelog.json', document.baseURI);
+  const res = await fetch(url, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

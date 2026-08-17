@@ -346,7 +346,7 @@ function computePoints(body, r0 = 10000) {
     }
 
     tNSP += totalNSP;
-    tFSP += totalFSP
+    tFSP += totalFSP;
     tCP += totalCP;
 
     layers.push({
@@ -401,4 +401,4 @@ function fmtKW(kw) {
   return formatValue(kw) + ' kW';
 }
 
-export { computeFrameStructurePoints, computeShellCellPoints, computePoints, computePower, fmtKW };
+export { computePoints, computePower, fmtKW };
