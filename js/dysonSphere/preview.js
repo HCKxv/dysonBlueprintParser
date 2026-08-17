@@ -43,7 +43,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildPaintingGeometry } from './dysonPaintingGrid.js';
+import { buildPaintingGeometry } from './paintingGrid.js';
+import { isVisible } from './lib/domain.js';
 
 // 涂色裁剪模板值基准: 每层壳面写入自己层的值、该层涂色只测试自己层的值
 // （与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值；跨层叠加靠深度缓冲遮挡）
@@ -79,10 +80,6 @@ function getStarColors(luminosity) {
 // ═══════════════════════════════════════════════════════════════
 // 内部工具函数
 // ═══════════════════════════════════════════════════════════════
-
-function _isVisible(visibilityMask, index) {
-  return (visibilityMask >>> index) & 1;
-}
 
 function _colorIsValid(color) {
   if (!color) return false;
@@ -465,7 +462,7 @@ class DysonSpherePreview {
     if (cloud?.orbits) {
       cloud.orbits.forEach((orb, idx) => {
         if (!orb) return;
-        const gv = cloud.visibility ? !!_isVisible(cloud.visibility.inGame, orb.id) : true;
+        const gv = cloud.visibility ? !!isVisible(cloud.visibility.inGame, orb.id) : true;
         const r = orb.radius * this._currentScale;
         const e = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id - 1] ?? cloud.colors?.[idx];
         const ring = _createOrbitRing(r, orb, _toHexColor(e, 0xffcba6), 0.9);
@@ -484,7 +481,7 @@ class DysonSpherePreview {
         if (!orbit) continue;
         const shData = shell.shells?.[orbit.id] ?? null;
         if (!shData) continue;
-        const gv = shell.visibility ? !!_isVisible(shell.visibility.inGame, orbit.id) : true;
+        const gv = shell.visibility ? !!isVisible(shell.visibility.inGame, orbit.id) : true;
         const renderR = orbit.radius;
         const shQuat = _normQuat(orbit);
         const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);

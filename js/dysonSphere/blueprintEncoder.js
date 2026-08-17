@@ -1,68 +1,7 @@
-// 与 dysonBlueprintParser.js 配对使用：parseBlueprintString 解析，stringifyBlueprint 编码
-
-import { digest } from './DSP-md5.js';
-
-// 二进制写入器，用于按小端序写入各种基础类型到 Uint8Array
-class BinaryWriter {
-  constructor(initialCapacity = 4096) {
-    this.buffer = new ArrayBuffer(initialCapacity);
-    this.view = new DataView(this.buffer);
-    this.offset = 0;
-  }
-
-  _ensureCapacity(additionalBytes) {
-    const needed = this.offset + additionalBytes;
-    if (needed > this.buffer.byteLength) {
-      let newCapacity = this.buffer.byteLength * 2;
-      while (newCapacity < needed) newCapacity *= 2;
-      const newBuffer = new ArrayBuffer(newCapacity);
-      new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
-      this.buffer = newBuffer;
-      this.view = new DataView(this.buffer);
-    }
-  }
-
-  writeInt32(value) {
-    this._ensureCapacity(4);
-    this.view.setInt32(this.offset, value, true);
-    this.offset += 4;
-  }
-
-  writeUInt32(value) {
-    this._ensureCapacity(4);
-    this.view.setUint32(this.offset, value, true);
-    this.offset += 4;
-  }
-
-  writeFloat32(value) {
-    this._ensureCapacity(4);
-    this.view.setFloat32(this.offset, value, true);
-    this.offset += 4;
-  }
-
-  writeUInt8(value) {
-    this._ensureCapacity(1);
-    this.view.setUint8(this.offset, value & 0xFF);
-    this.offset += 1;
-  }
-
-  writeBool(value) {
-    this.writeUInt8(value ? 1 : 0);
-  }
-
-  toUint8Array() {
-    return new Uint8Array(this.buffer, 0, this.offset);
-  }
-}
-
-// 将 Uint8Array 编码为 Base64 字符串
-function uint8ArrayToBase64(bytes) {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
+import { digest } from './lib/md5.js';
+import { compareVersion } from './lib/utils.js';
+import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from './lib/codec.js';
+import { compactAndRebuildIds } from './blueprintEdit.js';
 
 // 对文本计算 MD5 签名，返回大写十六进制字符串
 function computeSignature(text) {
@@ -72,127 +11,6 @@ function computeSignature(text) {
     .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
     .join('');
 }
-
-// 使用 gzip 压缩数据
-async function gzipCompress(data) {
-  if (typeof CompressionStream === 'function') {
-    const cs = new CompressionStream('gzip');
-    const writer = cs.writable.getWriter();
-    writer.write(data);
-    writer.close();
-    const arrayBuffer = await new Response(cs.readable).arrayBuffer();
-    return new Uint8Array(arrayBuffer);
-  }
-
-  if (typeof pako !== 'undefined' && typeof pako.gzip === 'function') {
-    return pako.gzip(data);
-  }
-
-  throw new Error('浏览器不支持 gzip 压缩，请使用 Edge 或 Chrome 浏览器。');
-}
-
-// ---- 壳组件清理与重建 ----
-
-// 将无序节点对编码为字符串 key，用于集合查找
-function edgeKey(a, b) {
-  return a < b ? `${a},${b}` : `${b},${a}`;
-}
-
-// 清理框架中引用已删除节点的项，以及壳面中边不在框架中的项
-function cleanOrphanedComponents(shell) {
-  // 收集所有有效节点 id
-  const nodeIds = new Set();
-  const nodes = shell.nodes;
-  for (let i = 1; i < nodes.length; i += 1) {
-    if (nodes[i] != null) {
-      nodeIds.add(nodes[i].id);
-    }
-  }
-
-  // 清理框架：引用的节点不存在 → 标记为 null
-  const frames = shell.frames;
-  for (let i = 1; i < frames.length; i += 1) {
-    const frame = frames[i];
-    if (frame == null) continue;
-    if (!frame.relation.every(pid => nodeIds.has(pid))) {
-      frames[i] = null;
-    }
-  }
-
-  // 收集所有有效框架端点（无序节点对）
-  const frameEndpoints = new Set();
-  for (let i = 1; i < frames.length; i += 1) {
-    const frame = frames[i];
-    if (frame == null) continue;
-    frameEndpoints.add(edgeKey(frame.relation[0], frame.relation[1]));
-  }
-
-  // 清理壳面：少于 2 个节点，或任一边不在框架端点集合中 → 标记为 null
-  const faces = shell.faces;
-  for (let i = 1; i < faces.length; i += 1) {
-    const face = faces[i];
-    if (face == null) continue;
-    const rel = face.relation;
-    if (rel.length < 2) {
-      faces[i] = null;
-      continue;
-    }
-    // 构建壳面的所有边（相邻节点对，含首尾闭合边）
-    const edges = [];
-    for (let j = 0; j < rel.length - 1; j += 1) {
-      edges.push(edgeKey(rel[j], rel[j + 1]));
-    }
-    edges.push(edgeKey(rel[rel.length - 1], rel[0]));
-
-    if (!edges.every(e => frameEndpoints.has(e))) {
-      faces[i] = null;
-    }
-  }
-}
-
-// 移除空位，重建连续 id，更新所有引用关系
-function compactAndRebuildIds(shell) {
-  cleanOrphanedComponents(shell);
-
-  // 重建节点列表，建立旧→新 id 映射
-  const nodeIdMap = {};
-  const newNodes = [null];
-  let newNodeId = 1;
-  for (let i = 1; i < shell.nodes.length; i += 1) {
-    const node = shell.nodes[i];
-    if (node == null) continue;
-    nodeIdMap[node.id] = newNodeId;
-    newNodes.push({ ...node, id: newNodeId });
-    newNodeId += 1;
-  }
-
-  // 通用重建函数：过滤空位，更新节点引用，重新分配连续 id
-  function rebuildList(oldList) {
-    const newList = [null];
-    let newId = 1;
-    for (let i = 1; i < oldList.length; i += 1) {
-      const item = oldList[i];
-      if (item == null) continue;
-      const newRelation = item.relation.map(pid => nodeIdMap[pid]);
-      newList.push({ ...item, id: newId, relation: newRelation });
-      newId += 1;
-    }
-    return newList;
-  }
-
-  shell.nodes = newNodes;
-  shell.frames = rebuildList(shell.frames);
-  shell.faces = rebuildList(shell.faces);
-
-  // 涂色网格颜色全为默认值 (0,0,0,0) 时清空
-  if (shell.fillGrid && shell.fillGrid.colors) {
-    if (shell.fillGrid.colors.every(c => c.r === 0 && c.g === 0 && c.b === 0 && c.a === 0)) {
-      shell.fillGrid.colors = null;
-    }
-  }
-}
-
-// ---- 写入各组件类型的函数 ----
 
 // 写入三维坐标
 function writeCoordinate(writer, coord) {
@@ -416,20 +234,6 @@ function writeBlueprintBody(body) {
   return writer.toUint8Array();
 }
 
-// 比较版本号：v1 > v2 返回 1，v1 < v2 返回 -1，相等返回 0
-function compareVersion(v1, v2) {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-  const len = Math.max(parts1.length, parts2.length);
-  for (let i = 0; i < len; i += 1) {
-    const a = parts1[i] || 0;
-    const b = parts2[i] || 0;
-    if (a > b) return 1;
-    if (a < b) return -1;
-  }
-  return 0;
-}
-
 // 构建头部字符串
 function buildHeader(header) {
   const ticks = header.createdTicks || '0';
@@ -469,4 +273,4 @@ async function stringifyBlueprint(blueprint) {
   return text;
 }
 
-export { stringifyBlueprint, cleanOrphanedComponents, compactAndRebuildIds };
+export { stringifyBlueprint };

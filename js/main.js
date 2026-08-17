@@ -1,9 +1,10 @@
-import { parseBlueprintString } from './dysonBlueprintParser.js';
-import { computePoints, computePower, fmtKW } from './dysonSpherePower.js';
-import { DysonSpherePreview } from './DysonSpherePreview.js';
+import { parseBlueprintString } from './dysonSphere/blueprintParser.js';
+import { computePoints, computePower } from './dysonSphere/power.js';
+import { DysonSpherePreview } from './dysonSphere/preview.js';
 import { createStatsPanel } from './statsPanel.js';
 import { initChangelog } from './changelog.js';
-//import { stringifyBlueprint } from './dysonBlueprintEncoder.js';
+import { fmtKW } from './dysonSphere/lib/utils.js';
+//import { stringifyBlueprint } from './dysonSphere/blueprintEncoder.js';
 
 // ═══════════════════════════════════════════════════════════════
 // 全局拖放拦截

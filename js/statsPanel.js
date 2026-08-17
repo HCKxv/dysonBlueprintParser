@@ -8,7 +8,8 @@
  *       { kind:'toggle', layerType, id, label, value, checked }
  *       { kind:'section', title, count, children: Node[] }
  */
-import { quaternionToOrbitParams, isVisible, gridTypeName, countPaintedCells } from './dysonBlueprintParser.js';
+import { quaternionToOrbitParams } from './dysonSphere/lib/utils.js';
+import { isVisible, gridTypeName, countPaintedCells } from './dysonSphere/lib/domain.js';
 
 function createStatsPanel(statsElement, preview) {
 

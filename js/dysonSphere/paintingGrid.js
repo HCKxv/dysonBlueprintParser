@@ -1,5 +1,5 @@
 /**
- * dysonPaintingGrid — 戴森球蓝图「涂色网格」(fillGrid) 生成模块
+ * paintingGrid — 戴森球蓝图「涂色网格」(fillGrid) 生成模块
  *
  * 经纬线网格 (gridType 0) —— 已通过真实蓝图数据 + 游戏本体网格资产双重验证:
  *   - 120 个纬度带（各 1.5°），带序号 latIdx ∈ [-60, 59]，从南向北编号
