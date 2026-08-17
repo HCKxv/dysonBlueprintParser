@@ -392,18 +392,17 @@ function parseNode(reader) {
   const coordinate = parseCoordinate(reader);
   const structurePoints = reader.readInt32();
 
+  // 原节点的建造进度
   if (version >= 2) {
-    reader.readInt32();
+    reader.readInt32();  // 游戏分配的渲染id
   }
-
-  reader.readInt32();
+  reader.readInt32();  // 框架建造轮询
   if (version >= 1) {
-    reader.readInt32();
+    reader.readInt32();  // 壳面建造轮询
   }
-
-  reader.readInt32();
+  reader.readInt32();  // 待建造的结构点
   if (version >= 4) {
-    reader.readInt32();
+    reader.readInt32();  // 待建造的细胞点
   }
 
   let color = null;

@@ -86,7 +86,7 @@
     </div>
   </div>
 </div>
-<div class="footer-bar">
+<div id="footerBar" class="footer-bar">
   <a href="#top"><div class="footer-item">▲</div></a>
   |
   <button type="button" id="changelogLink" class="footer-item" aria-haspopup="dialog">更新日志</button>
@@ -94,11 +94,7 @@
   <a href="https://github.com/HCKxv/dysonBlueprintParser" target="_blank"><div class="footer-item">GitHub仓库</div></a>
   |
   <a href="https://hckxv.github.io/DSB/" target="_blank"><div class="footer-item">戴森球蓝图集</div></a>
-  |
-  <div><span id="vercount_value_page_pv">Loading</span> / <span id="vercount_value_site_uv">Loading</span></div>
 </div>
-
-<!-- 更新日志弹窗 -->
 <div id="changelogModal" class="modal hidden">
   <div class="modal-backdrop" id="changelogBackdrop"></div>
   <div class="modal-box">
@@ -109,7 +105,7 @@
     <div class="modal-body scroll-y" id="changelogBody"></div>
   </div>
 </div>
-<script defer src="https://events.vercount.one/js"></script>
+<script defer src="js/analytics.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
