@@ -235,9 +235,10 @@ parseButton.addEventListener('click', async () => {
     lastParsed = parsed;
   } catch (error) {
     showMessageBox('❌ 解析失败', error.message);
+  } finally {
+    parseButton.disabled = false;
+    parseButton.textContent = '解析并预览';
   }
-  parseButton.disabled = false;
-  parseButton.textContent = '解析并预览';
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -251,6 +252,7 @@ parseButton.addEventListener('click', async () => {
       const resolved = new URL(txtUrl, window.location.href);
       const whitelist = [
         'raw.githubusercontent.com/DSPBluePrints/DysonSphereBluePrints/',
+        'cdn.jsdelivr.net/gh/DSPBluePrints/DysonSphereBluePrints@main/',
       ];
 
       function isUrlAllowed(url, list) {
