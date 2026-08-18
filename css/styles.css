@@ -29,7 +29,7 @@ body {
   background: #0f1628;
   border: 1px solid #243556;
   border-radius: 12px;
-  padding: 8px 14px;
+  padding: 7px 14px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -39,8 +39,9 @@ body {
 }
 
 .app-logo {
-  height: 24px;
+  height: 28px;
   width: auto;
+  display: block;
 }
 
 .header-author {

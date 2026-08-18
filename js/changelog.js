@@ -7,29 +7,25 @@ async function loadChangelog() {
   return res.json();
 }
 
-// 将更新日志渲染进指定容器
-function renderChangelog(container, changelog) {
-  for (const entry of changelog ?? []) {
-    const box = document.createElement('div');
-    box.className = 'changelog-entry';
-    const h = document.createElement('h3');
-    h.textContent = entry.version ?? '';
-    const ul = document.createElement('ul');
-    for (const line of entry.changes ?? []) {
-      const li = document.createElement('li');
-      li.textContent = line;
-      ul.appendChild(li);
-    }
-    box.appendChild(h);
-    box.appendChild(ul);
-    container.appendChild(box);
-  }
-}
-
-// 加载并渲染更新日志；失败时在容器内显示兜底提示
 function initChangelog(container) {
   loadChangelog()
-    .then((data) => renderChangelog(container, data))
+    .then((data) => {
+      for (const entry of data ?? []) {
+        const box = document.createElement('div');
+        box.className = 'changelog-entry';
+        const h = document.createElement('h3');
+        h.textContent = entry.version ?? '';
+        const ul = document.createElement('ul');
+        for (const line of entry.changes ?? []) {
+          const li = document.createElement('li');
+          li.textContent = line;
+          ul.appendChild(li);
+        }
+        box.appendChild(h);
+        box.appendChild(ul);
+        container.appendChild(box);
+      }
+    })
     .catch(() => {
       const box = document.createElement('div');
       box.className = 'changelog-entry';
@@ -38,4 +34,14 @@ function initChangelog(container) {
     });
 }
 
-export { initChangelog };
+(() => {
+  initChangelog(document.getElementById('changelogBody'));
+  const changelogModal = document.getElementById('changelogModal');
+  const closeChangelog = () => changelogModal.classList.add('hidden');
+  document.getElementById('changelogLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    changelogModal.classList.remove('hidden');
+  });
+  document.getElementById('changelogClose').addEventListener('click', closeChangelog);
+  document.getElementById('changelogBackdrop').addEventListener('click', closeChangelog);
+})();

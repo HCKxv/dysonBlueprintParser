@@ -2,7 +2,6 @@ import { parseBlueprintString } from './dysonSphere/blueprintParser.js';
 import { computePoints, computePower } from './dysonSphere/power.js';
 import { DysonSpherePreview } from './dysonSphere/preview.js';
 import { createStatsPanel } from './statsPanel.js';
-import { initChangelog } from './changelog.js';
 import { fmtKW } from './dysonSphere/lib/utils.js';
 //import { stringifyBlueprint } from './dysonSphere/blueprintEncoder.js';
 
@@ -74,19 +73,6 @@ btn.addEventListener('click', (e) => {
   btn.classList.toggle('collapsed');
   menu.classList.toggle('collapsed');
 });
-
-// ═══════════════════════════════════════════════════════════════
-// 更新日志弹窗
-// ═══════════════════════════════════════════════════════════════
-initChangelog(document.getElementById('changelogBody'));
-const changelogModal = document.getElementById('changelogModal');
-const closeChangelog = () => changelogModal.classList.add('hidden');
-document.getElementById('changelogLink').addEventListener('click', (e) => {
-  e.preventDefault();
-  changelogModal.classList.remove('hidden');
-});
-document.getElementById('changelogClose').addEventListener('click', closeChangelog);
-document.getElementById('changelogBackdrop').addEventListener('click', closeChangelog);
 
 // ═══════════════════════════════════════════════════════════════
 // 更新功率

@@ -44,38 +44,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildPaintingGeometry } from './paintingGrid.js';
-import { isVisible } from './lib/domain.js';
+import { isVisible, getStarColors } from './lib/domain.js';
 
 // 涂色裁剪模板值基准: 每层壳面写入自己层的值、该层涂色只测试自己层的值
 // （与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值；跨层叠加靠深度缓冲遮挡）
 const STENCIL_BASE = 200;
-
-// ═══════════════════════════════════════════════════════════════
-// 恒星光谱型颜色表
-//   从低温到高温: M < K < G < F < A < B < O
-//   back: 壳层内衬背景色（恒星盘面暗部）
-//   core: 恒星本体/光晕发光色
-//   分档为开区间: 光度 lum < maxLum 归入该型
-// ═══════════════════════════════════════════════════════════════
-const STAR_TYPE_COLORS = [
-  { type: 'M', maxLum: 0.90, back: 0xB28174, core: 0xFF4032 },
-  { type: 'K', maxLum: 0.98, back: 0xB29886, core: 0xFF7842 },
-  { type: 'G', maxLum: 1.08, back: 0xB2A886, core: 0xFFED2A },
-  { type: 'F', maxLum: 1.25, back: 0xB1B29D, core: 0xF9FF99 },
-  { type: 'A', maxLum: 1.55, back: 0xAAB0B2, core: 0xFFFFFF },
-  { type: 'B', maxLum: 2.00, back: 0x8198B2, core: 0x55A2FF },
-  { type: 'O', maxLum: Infinity, back: 0x748BB2, core: 0x2E47FF },
-];
-
-/**
- * 按光度系数取恒星配色
- * @param {number} luminosity  光度系数
- * @returns {{type: string, maxLum: number, back: number, core: number}}
- */
-function getStarColors(luminosity) {
-  return STAR_TYPE_COLORS.find(s => luminosity < s.maxLum)
-    ?? STAR_TYPE_COLORS[STAR_TYPE_COLORS.length - 1];
-}
 
 // ═══════════════════════════════════════════════════════════════
 // 内部工具函数
@@ -908,4 +881,4 @@ class DysonSpherePreview {
 
 }
 
-export { DysonSpherePreview, STAR_TYPE_COLORS, getStarColors };
+export { DysonSpherePreview };
