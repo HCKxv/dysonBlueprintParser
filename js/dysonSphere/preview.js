@@ -326,7 +326,7 @@ class DysonSpherePreview {
     this._canvas = canvas;
 
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(0x3F5C6A);
+    this._scene.background = new THREE.Color(0x314954);
 
     this._camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     this._camera.position.set(0, 1.8, -3.2);
@@ -353,7 +353,6 @@ class DysonSpherePreview {
     };
     window.addEventListener('blur', this._onBlur);
 
-    // resize: 用 ResizeObserver 监听容器尺寸（替代每帧读取 clientWidth + window resize）
     this._resizeObserver = new ResizeObserver(() => {
       this.resize();
       this._needsRender = true;
