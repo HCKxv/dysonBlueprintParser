@@ -326,7 +326,7 @@ class DysonSpherePreview {
     this._canvas = canvas;
 
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(0x314954);
+    this._scene.background = new THREE.Color(0x3C5765);
 
     this._camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     this._camera.position.set(0, 1.8, -3.2);
