@@ -8,6 +8,7 @@
   <link rel="icon" href="./favicon.ico">
   <title>戴森球蓝图预览 & 发电量计算</title>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/toast.css">
   <script type="importmap">
     { "imports": { "three": "https://registry.npmmirror.com/three/0.161.0/files/build/three.module.js", "three/addons/": "https://registry.npmmirror.com/three/0.161.0/files/examples/jsm/" } }
   </script>
@@ -33,7 +34,7 @@
   </div>
   <div class="col panel panel-right">
     <div id="powerPanel" class="power-panel">
-      <div id="powerMain" class="power-main">⚡ 0 W</div>
+      <div class="power-main">⚡ <span id="powerMain">0 W</span></div>
     </div>
     <div>
       <div id="menuButton" class="menu-header collapsed"><span class="arrow">▼</span>设置</div>

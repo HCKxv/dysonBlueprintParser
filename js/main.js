@@ -2,6 +2,7 @@ import { parseBlueprintString } from './dysonSphere/blueprintParser.js';
 import { computePoints, computePower } from './dysonSphere/power.js';
 import { DysonSpherePreview } from './dysonSphere/preview.js';
 import { createStatsPanel } from './statsPanel.js';
+import {showToast} from './toast.js'
 import { fmtKW } from './dysonSphere/lib/utils.js';
 //import { stringifyBlueprint } from './dysonSphere/blueprintEncoder.js';
 
@@ -54,12 +55,12 @@ document.getElementById('speedSelect').addEventListener('change', function () {
 });
 
 document.getElementById('pasteButton').addEventListener('click', async () => {
-  try { blueprintInput.value = await navigator.clipboard.readText(); } catch { alert('无法读取剪贴板，请手动粘贴'); }
+  try { blueprintInput.value = await navigator.clipboard.readText(); } catch { showToast('无法读取剪贴板，请手动粘贴'); }
 });
 document.getElementById('copyButton').addEventListener('click', async () => {
   const text = blueprintInput.value.trim();
   if (!text) return;
-  try { await navigator.clipboard.writeText(text); alert('成功复制到剪贴板'); } catch { alert('无法复制到剪贴板'); }
+  try { await navigator.clipboard.writeText(text); showToast('成功复制到剪贴板'); } catch { showToast('无法复制到剪贴板'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -84,7 +85,7 @@ let gPowerResult = null, lastParsed = null;
 // 刷新功率
 const refreshPower = () => {
   if (!gPowerResult) return;
-  powerMain.textContent = '⚡ ' + fmtKW(computePower(
+  powerMain.textContent = fmtKW(computePower(
     gPowerResult,
     parseFloat(lumInput.value) || 1.0,
     isNode.checked ?? true,
@@ -158,13 +159,13 @@ function handleDrop(e) {
   const reader = new FileReader();
   reader.onload = (ev) => {
     const text = ev.target.result.trim();
-    if (!text) { alert('文件为空'); return; }
-    if (!text.startsWith('DYBP:')) { alert('文件不是有效的蓝图文件'); return; }
+    if (!text) { showToast('文件为空'); return; }
+    if (!text.startsWith('DYBP:')) { showToast('文件不是有效的蓝图文件'); return; }
     blueprintInput.value = text;
     // 自动触发解析
     parseButton.click();
   };
-  reader.onerror = () => { alert('读取文件失败'); };
+  reader.onerror = () => { showToast('读取文件失败'); };
   reader.readAsText(file);
 }
 
@@ -190,13 +191,13 @@ function renderFromParsed(parsed) {
   const userRadius = parseFloat(radiusInput.value) || 10000;
   const powerResult = computePoints(parsed.body, isSingleShell ? userRadius : null);
   if (!powerResult) {
-    powerMain.textContent = '⚡ 0 W';
+    powerMain.textContent = '0 W';
     gPowerResult = null;
   } else {
     let lum = parseFloat(lumInput.value) || 1.0;
     if (isNaN(lum) || lum <= 0) { lum = 0.1; lumInput.value = 0.1; }
     if (lum > 10) { lum = 10; lumInput.value = 10; }
-    powerMain.textContent = '⚡ ' + fmtKW(computePower(powerResult, lum));
+    powerMain.textContent = fmtKW(computePower(powerResult, lum));
     gPowerResult = powerResult;
     preview.setSunColor(lum);
   }
@@ -208,69 +209,28 @@ function renderFromParsed(parsed) {
 parseButton.addEventListener('click', async () => {
   const text = blueprintInput.value.trim();
   if (!text) return;
+  showToast('解析蓝图中...', 10000)
   parseButton.disabled = true;
-  parseButton.textContent = '解析中...';
   clearStats();
   gPowerResult = lastParsed = null;
-  powerMain.textContent = '⚡ 0 W';
+  powerMain.textContent = '0 W';
   preview.clearScene()
   await new Promise(resolve => requestAnimationFrame(resolve)); // 等待下一帧，确保样式已经应用
   try {
     const parsed = await parseBlueprintString(text);
     renderFromParsed(parsed);
     lastParsed = parsed;
+    showToast('成功解析蓝图')
   } catch (error) {
     showMessageBox('❌ 解析失败', error.message);
+    showToast(`解析蓝图失败：\n${error.message}`)
   } finally {
     parseButton.disabled = false;
-    parseButton.textContent = '解析并预览';
   }
 });
 
 // ═══════════════════════════════════════════════════════════════
 // URL 参数加载
 // ═══════════════════════════════════════════════════════════════
-(async () => {
-  const params = new URLSearchParams(window.location.search);
-  const txtUrl = params.get('txt');
-  if (txtUrl) {
-    try {
-      const resolved = new URL(txtUrl, window.location.href);
-      const whitelist = [
-        'raw.githubusercontent.com/DSPBluePrints/DysonSphereBluePrints/',
-        'cdn.jsdelivr.net/gh/DSPBluePrints/DysonSphereBluePrints@main/',
-      ];
-
-      function isUrlAllowed(url, list) {
-        const host = url.hostname;
-        const path = url.pathname;
-        return list.some(entry => {
-          if (entry.includes('/')) {
-            const slash = entry.indexOf('/');
-            const entryHost = entry.slice(0, slash);
-            let entryPath = entry.slice(slash);
-            if (!entryPath.endsWith('/')) {
-              entryPath += '/';
-            }
-            return host === entryHost && (path + '/').startsWith(entryPath);
-          } else {
-            return host === entry;
-          }
-        });
-      }
-
-      const isWhitelist = isUrlAllowed(resolved, whitelist);
-      const isSameOrigin = resolved.hostname === window.location.hostname;
-      if (!isSameOrigin && !isWhitelist) {
-        throw new Error('尝试加载未知的蓝图链接');
-      }
-
-      const response = await fetch(resolved.href);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-      if (!text.trim().startsWith('DYBP:')) throw new Error('文件不是有效的蓝图文件');
-      blueprintInput.value = text;
-      parseButton.click();
-    } catch (e) { clearStats(); showMessageBox('❌ 加载失败', e.message); }
-  }
-})();
+import { loadBlueprintFromUrl } from './urlLoader.js';
+loadBlueprintFromUrl({ input: blueprintInput, onLoaded: () => parseButton.click(), onError: (e) => showToast(`加载蓝图失败：\n${e.message}`) });
