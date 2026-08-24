@@ -64,7 +64,7 @@ function createStatsPanel(statsElement, preview) {
     nodes.push({
       kind: 'stat', label: '蓝图信息',
       value: '蓝图类型：' + (parsed.header.typeName || '未知') + '<br>' +
-        '蓝图版本：' + parsed.header.version + '<br>' +
+        '游戏版本：' + parsed.header.version + '<br>' +
         '创建时间：' + parsed.header.createdAt + '<br>' +
         '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.header.latLimit || 0) / 15)))),
     });
