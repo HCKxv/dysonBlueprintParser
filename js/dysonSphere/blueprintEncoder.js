@@ -1,16 +1,7 @@
-import { digest } from './lib/md5.js';
 import { compareVersion } from './lib/utils.js';
 import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from './lib/codec.js';
+import { computeSignature } from './blueprintChecksum.js';
 import { compactAndRebuildIds } from './blueprintEdit.js';
-
-// 对文本计算 MD5 签名，返回大写十六进制字符串
-function computeSignature(text) {
-  const bytes = new TextEncoder().encode(text);
-  const hashBuffer = digest(new Uint8Array(bytes).buffer);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-    .join('');
-}
 
 // 写入三维坐标
 function writeCoordinate(writer, coord) {

@@ -53,6 +53,13 @@ function createStatsPanel(statsElement, preview) {
     const cloud = parsed.body.dysonCloud;
     const shell = parsed.body.dysonShell;
 
+    if (parsed?.validFlag === false){
+      nodes.push({
+        kind: 'stat', label: '⚠该蓝图校验未通过',
+        value: '蓝图被修改过，无法在游戏内粘贴',
+      });
+    }
+
     // ── 蓝图信息 ──
     nodes.push({
       kind: 'stat', label: '蓝图信息',

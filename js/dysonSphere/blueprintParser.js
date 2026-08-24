@@ -24,6 +24,8 @@ function parseHeader(headerString) {
   };
 }
 
+const BLUEPRINT_PREFIX = 'DYBP:';
+
 // 解析完整蓝图字符串
 async function parseBlueprintString(blueprintString) {
   blueprintString = blueprintString.trim();
@@ -32,8 +34,8 @@ async function parseBlueprintString(blueprintString) {
     throw new TypeError('blueprintString must be a string');
   }
 
-  if (!blueprintString.startsWith('DYBP:')) {
-    throw new Error('蓝图格式错误: 必须以 DYBP: 开头');
+  if (!blueprintString.startsWith(BLUEPRINT_PREFIX)) {
+    throw new Error(`蓝图格式错误: 必须以 ${BLUEPRINT_PREFIX} 开头`);
   }
 
   const rawBody = blueprintString.slice(5);  // 去掉前缀 DYBP:

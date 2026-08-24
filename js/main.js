@@ -1,6 +1,7 @@
 import { parseBlueprintString } from './dysonSphere/blueprintParser.js';
 import { computePoints, computePower } from './dysonSphere/power.js';
 import { DysonSpherePreview } from './dysonSphere/preview.js';
+import { verifyBlueprintString } from './dysonSphere/blueprintChecksum.js';
 import { createStatsPanel } from './statsPanel.js';
 import { showToast } from './toast.js'
 import { fmtKW } from './dysonSphere/lib/utils.js';
@@ -239,6 +240,7 @@ parseButton.addEventListener('click', async () => {
   await new Promise(resolve => requestAnimationFrame(resolve)); // 等待下一帧，确保样式已经应用
   try {
     const parsed = await parseBlueprintString(text);
+    parsed.validFlag = verifyBlueprintString(text)
     renderFromParsed(parsed);
     lastParsed = parsed;
     showToast('成功解析蓝图')
