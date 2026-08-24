@@ -2,15 +2,19 @@ import { parseBlueprintString } from './dysonSphere/blueprintParser.js';
 import { computePoints, computePower } from './dysonSphere/power.js';
 import { DysonSpherePreview } from './dysonSphere/preview.js';
 import { createStatsPanel } from './statsPanel.js';
-import {showToast} from './toast.js'
+import { showToast } from './toast.js'
 import { fmtKW } from './dysonSphere/lib/utils.js';
 //import { stringifyBlueprint } from './dysonSphere/blueprintEncoder.js';
 
 // ═══════════════════════════════════════════════════════════════
 // 全局拖放拦截
 // ═══════════════════════════════════════════════════════════════
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach((evt) => {
-  document.body.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
+window.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'none';
+});
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
 });
 // 阻止整个页面的中键自动滚动
 document.addEventListener('mousedown', function(e) {
@@ -147,26 +151,43 @@ function handleDragLeave(e) {
   }
 }
 
+function handleBlueprintText(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) {
+    showToast(`内容为空`);
+    return;
+  }
+  if (!trimmed.startsWith('DYBP:')) {
+    showToast('内容不是有效的蓝图');
+    return;
+  }
+
+  blueprintInput.value = trimmed;
+  parseButton.click();
+}
+
 function handleDrop(e) {
   e.preventDefault();
   e.stopPropagation();
   blueprintInput.classList.remove('drag-over');
   dropHint.classList.remove('show');
 
-  const file = e.dataTransfer.files[0];
-  if (!file) return;
+  const dt = e.dataTransfer;
+  const file = dt.files && dt.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => { handleBlueprintText(ev.target.result) };
+    reader.onerror = () => { showToast('读取文件失败') };
+    reader.readAsText(file);
+    return;
+  }
 
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const text = ev.target.result.trim();
-    if (!text) { showToast('文件为空'); return; }
-    if (!text.startsWith('DYBP:')) { showToast('文件不是有效的蓝图文件'); return; }
-    blueprintInput.value = text;
-    // 自动触发解析
-    parseButton.click();
-  };
-  reader.onerror = () => { showToast('读取文件失败'); };
-  reader.readAsText(file);
+  const text = dt.getData('text/plain');
+  if (!text) {
+    showToast('未检测到文件或文本');
+    return;
+  }
+  handleBlueprintText(text);
 }
 
 textareaWrapper.addEventListener('dragover', handleDragOver);
