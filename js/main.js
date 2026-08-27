@@ -256,4 +256,8 @@ parseButton.addEventListener('click', async () => {
 // URL 参数加载
 // ═══════════════════════════════════════════════════════════════
 import { loadBlueprintFromUrl } from './urlLoader.js';
-loadBlueprintFromUrl({ input: blueprintInput, onLoaded: () => parseButton.click(), onError: (e) => showToast(`加载蓝图失败：\n${e.message}`) });
+loadBlueprintFromUrl({
+  onLoadStart: () => showToast('正在加载蓝图'),
+  onLoaded: (text) => { blueprintInput.value = text; parseButton.click() },
+  onError: (e) => showToast(`加载蓝图失败：\n${e.message}`)
+});

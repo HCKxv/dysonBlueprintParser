@@ -20,12 +20,13 @@ function isUrlAllowed(url, list = DEFAULT_WHITELIST) {
   });
 }
 
-async function loadBlueprintFromUrl({ input, onLoaded, onError }) {
+async function loadBlueprintFromUrl({ onLoadStart, onLoaded, onError }) {
   const params = new URLSearchParams(window.location.search);
   const txtUrl = params.get('txt');
   if (!txtUrl) return false;
 
   try {
+    onLoadStart?.()
     const resolved = new URL(txtUrl, window.location.href);
     const isWhitelist = isUrlAllowed(resolved);
     const isSameOrigin = resolved.hostname === window.location.hostname;
@@ -36,9 +37,9 @@ async function loadBlueprintFromUrl({ input, onLoaded, onError }) {
     const response = await fetch(resolved.href);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
-    if (!text.trim().startsWith('DYBP:')) throw new Error('文件不是有效的蓝图文件');
-    input.value = text;
-    onLoaded?.();
+
+    if (!text.trim().startsWith('DYBP:')) throw new Error('链接不是有效的蓝图代码');
+    onLoaded?.(text);
     return true;
   } catch (e) {
     onError?.(e);
