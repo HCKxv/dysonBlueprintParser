@@ -4,115 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="戴森球蓝图预览工具，支持蓝图预览、发电量计算。" />
-  <meta name="author" content="氢碳钾">
-  <link rel="icon" href="./favicon.ico">
+  <meta name="author" content="氢碳钾" />
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="icon" href="./favicon.ico" />
   <title>戴森球蓝图预览 & 发电量计算</title>
-  <link rel="stylesheet" href="css/styles.css">
-  <link rel="stylesheet" href="css/toast.css">
-  <script type="importmap">
-    { "imports": { "three": "https://registry.npmmirror.com/three/0.161.0/files/build/three.module.js", "three/addons/": "https://registry.npmmirror.com/three/0.161.0/files/examples/jsm/" } }
-  </script>
 </head>
 <body>
-<div class="app">
-  <div class="app-header">
-    <a href="?" title="重置页面">
-      <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHg9IjBweCIgeT0iMHB4IiB2aWV3Qm94PSIwIDAgNTY2LjkzIDU2Ni45MyIgZmlsbD0iI2U3ZWJmZiI+DQo8bWV0YWRhdGE+DQogICAgPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIg0KICAgICAgICAgICAgIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyI+DQogICAgICAgIDxyZGY6RGVzY3JpcHRpb24gYWJvdXQ9IiI+DQogICAgICAgICAgICA8ZGM6Y3JlYXRvcj7msKLnorPpkr54djwvZGM6Y3JlYXRvcj4NCiAgICAgICAgICAgIDxkYzpyaWdodHM+wqkgMjAyNiDmsKLnorPpkr54di4g5L+d55WZ5omA5pyJ5p2D5Yip44CC5pyq57uP6K645Y+v77yM5Lil56aB5aSN5Yi244CB5YiG5Y+R44CB5L+u5pS55oiW55So5LqO5Lu75L2V5ZWG5Lia55uu55qE44CCPC9kYzpyaWdodHM+DQogICAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPg0KICAgIDwvcmRmOlJERj4NCjwvbWV0YWRhdGE+DQo8cGF0aCBkPSJNMjgyLjQ3LDQ5My44OGMtMzQuOTYsMC02Ni43Ni0xNC4wMi05MC41MS0zNi45NEwyOC4zNSw1MDAuNzdsMTIxLjMtMTM3LjgyYy0wLjEyLTIuNDItMC4xOC00Ljg1LTAuMTgtNy4zDQoJYzAtNTYuMTgsMzIuMjUtMTA0LjUzLDc4LjU3LTEyNi4xNWw1NS4wMS0xOTEuN2w1NS4xOSwxOTIuMzNjNDUuNiwyMS45Miw3Ny4yNSw2OS44Nyw3Ny4yNSwxMjUuNTJjMCwxLjY4LTAuMDQsMy4zNS0wLjEsNS4wMQ0KCWwxMjMuMiwxNDAuMTFsLTE2NS4xOC00NC4yNkMzNDkuNjIsNDc5LjY4LDMxNy42NCw0OTMuODgsMjgyLjQ3LDQ5My44OHogTTM1MS45Myw0MjguNTdsMTI0LjA5LDMzLjI1TDM4Mi44OSwzNTUuOQ0KCWMwLjA5LTEuMTksMC4xNi0yLjM5LDAuMjItMy42MWMtMS41Ni00OC4xNi0yNi40Ny03OS45My01OC4yNS05NC41NmwtNDEuNzEtMTQ1LjM1bC00MS40NywxNDQuNQ0KCWMtMzEuNzMsMTQuMDEtNTYuOSw0NS41Ni01OS4zNiw5NS40MWMwLjA2LDEuODEsMC4xNiwzLjU5LDAuMjgsNS4zNUw5MC45LDQ2MS44MmwxMjMuMTItMzIuOTkNCglDMjUxLjc3LDQ2NC45MywzMTQuMzYsNDY1LjYzLDM1MS45Myw0MjguNTd6Ii8+DQo8cGF0aCBkPSJNMzM2LjEsNDExbDk1LjM5LDI1LjU2bC03MS42LTgxLjQzYzAuMDctMC45MiwwLjEzLTEuODQsMC4xNy0yLjc3Yy0xLjItMzcuMDItMjAuMzUtNjEuNDUtNDQuNzgtNzIuNjlsLTMyLjA3LTExMS43Mw0KCWwtMzEuODgsMTExLjA4Yy0yNC4zOSwxMC43Ny00My43NCwzNS4wMi00NS42Myw3My4zNWMwLjA1LDEuMzksMC4xMiwyLjc2LDAuMjIsNC4xMWwtNzAuNDksODAuMDlsOTQuNjQtMjUuMzYNCglDMjU5LjEsNDM4Ljk1LDMwNy4yMSw0MzkuNDgsMzM2LjEsNDExeiIvPg0KPC9zdmc+DQo=" class="app-logo">
-    </a>
-    戴森球蓝图预览 V1.6
-    <span class="header-author">by.氢碳钾xv</span>
-  </div>
-  <div class="col panel panel-left">
-    <h2>蓝图信息</h2>
-    <div class="scroll-y">
-      <div class="stat-grid" id="stats"><div class="stat-box">请输入蓝图字符串并点击解析</div></div>
-    </div>
-  </div>
-  <div class="col panel panel-center">
-    <h2>蓝图预览</h2>
-    <div class="canvas-container"><canvas id="canvas3d"></canvas></div>
-  </div>
-  <div class="col panel panel-right">
-    <div id="powerPanel" class="power-panel">
-      <div class="power-main">⚡ <span id="powerMain">0 W</span></div>
-    </div>
-    <div>
-      <div id="menuButton" class="menu-header collapsed"><span class="arrow">▼</span>设置</div>
-      <div id="powerMenu" class="menu-div collapsed">
-        <div class="menu">
-          <span id="radiusLabel" class="hidden">半径</span> <input type="number" id="shellRadiusInput" value="10000" step="100" min="4000" class="input-dark hidden w-80">
-          光度系数 <input type="number" id="luminosityInput" value="1.0" step="0.1" min="0.1" class="input-dark w-70">
-        </div>
-        <div class="menu">
-          <span>发电量计算:</span>
-          <label>
-            <input id="isNode" type="checkbox" checked> 节点
-          </label>
-          <label>
-            <input id="isFrame" type="checkbox" checked> 框架
-          </label>
-          <label>
-            <input id="isFaces" type="checkbox" checked> 壳面
-          </label>
-        </div>
-        <div class="menu">
-          显示:
-          <label>
-            <input type="checkbox" id="gridToggle" checked>
-            刻度
-          </label>
-          <label>
-            <input type="checkbox" id="rotateToggle" checked>
-            旋转
-          </label>
-          <select id="speedSelect" class="speed-select">
-            <option value="0.01">慢</option>
-            <option value="0.05" selected>中</option>
-            <option value="0.20">快</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div class="input-group">
-      <div class="input-header">
-        <span>蓝图输入</span>
-        <div class="btn-group">
-          <button id="parseButton" class="btn-sm">解析并预览</button>
-          <button id="pasteButton" class="btn-sm">粘贴</button>
-          <button id="copyButton" class="btn-sm">复制</button>
-        </div>
-      </div>
-      <div class="textarea-wrapper">
-        <textarea id="blueprintInput" placeholder="粘贴以 DYBP: 开头的蓝图字符串&#10;或拖动蓝图文件到此处"></textarea>
-        <div class="drop-hint" id="dropHint">📂 释放文件以加载蓝图</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="footerBar" class="footer-bar">
-  <a href="#"><div class="footer-item">▲</div></a>
-  |
-  <button type="button" id="changelogLink" class="footer-item" aria-haspopup="dialog">更新日志</button>
-  |
-  <a href="https://github.com/HCKxv/dysonBlueprintParser" target="_blank"><div class="footer-item">GitHub仓库</div></a>
-  |
-  <a href="https://hckxv.github.io/DSB/" target="_blank"><div class="footer-item">戴森球蓝图集</div></a>
-</div>
-<div id="changelogModal" class="modal hidden">
-  <div class="modal-backdrop" id="changelogBackdrop"></div>
-  <div class="modal-box">
-    <div class="modal-header">
-      <span>更新日志</span>
-      <button id="changelogClose" class="modal-close" aria-label="关闭">✕</button>
-    </div>
-    <div class="modal-body scroll-y" id="changelogBody"></div>
-  </div>
-</div>
-
-<script defer src="js/changelog.js"></script>
-<script defer src="js/analytics.js"></script>
-
-<script type="module" src="js/main.js"></script>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
