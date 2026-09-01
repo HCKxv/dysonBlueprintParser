@@ -33,25 +33,3 @@ npm run dev        # 开发服务器
 npm run build      # 构建静态文件到 dist/
 ```
 
-## 目录结构
-
-```
-├── index.html
-├── package.json / vite.config.ts / tsconfig.json
-├── public/
-├── src/
-│   ├── main.ts                # 应用入口
-│   ├── App.vue                # 布局组装、全局事件
-│   ├── style.css              # 全局样式
-│   ├── components/            # Vue 组件
-│   ├── composables/useToast.ts    # 全局提示逻辑
-│   ├── stores/app.ts              # 响应式全局状态与解析/发电量动作
-│   └── lib/
-│       ├── blueprint/         # 蓝图解析/编码/校验
-│       ├── power/             # 发电量计算
-│       ├── preview/           # 3D 渲染
-│       ├── statsTree.ts       # 信息面板数据树
-│       └── urlLoader.ts       # URL 蓝图加载
-└── dist/                      # 构建产物（npm run build 生成）
-```
-
