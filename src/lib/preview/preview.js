@@ -12,6 +12,7 @@
  *   6. setRotationSpeed(speed)       转速修改（建议 0.01 慢 / 0.05 中 / 0.20 快）
  *   7. setSunColor(luminosity)       根据光度系数更新恒星颜色
  *   8. setPaintingVisible(visible)   涂色网格显示开关
+ *   9. exportImage(scale)            导出当前预览画面（返回 PNG 画布）
  *
  *   辅助:
  *     clearScene()                   清空场景中的所有 3D 对象
@@ -351,6 +352,27 @@ class DysonSpherePreview {
     }
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+  }
+
+  /**
+   * 导出当前预览画面为 PNG 画布
+   * 渲染器未开启 preserveDrawingBuffer，需先同步渲染一帧，再在同一执行块内捕获画面
+   * @param {number} [scale=2] 输出分辨率倍率（相对画布像素尺寸，画布本身已含 devicePixelRatio）
+   * @returns {HTMLCanvasElement|null} 合成后的画布，失败返回 null
+   */
+  exportImage(scale = 2) {
+    if (!this._renderer || !this._scene || !this._camera || !this._canvas) return null;
+    this.resize();
+    this._renderer.render(this._scene, this._camera);
+    const w = Math.max(1, Math.round(this._canvas.width * scale));
+    const h = Math.max(1, Math.round(this._canvas.height * scale));
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(this._canvas, 0, 0, w, h);
+    return out;
   }
 
   dispose() {
