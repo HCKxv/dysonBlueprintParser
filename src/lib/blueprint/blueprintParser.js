@@ -1,6 +1,5 @@
-import { ticksTime, compareVersion } from './utils.js';
+import { ticksTime, compareVersion, blueprintTypeName } from './utils.js';
 import { BinaryReader, decodeBase64Gzip } from './codec.js';
-import { blueprintTypeName } from './domain.js';
 
 // 解析蓝图头部
 function parseHeader(headerString) {
@@ -14,7 +13,7 @@ function parseHeader(headerString) {
   const latLimit = Number(values[4]);
 
   return {
-    raw: headerString,
+    //raw: headerString,
     createdTicks: ticks,
     createdAt: ticksTime(ticks),
     version: values[2].trim(),

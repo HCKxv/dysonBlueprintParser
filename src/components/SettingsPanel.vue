@@ -36,7 +36,7 @@ function onSpeedChange(e: Event) {
           v-show="store.isSingleShell"
           type="number"
           v-model.number="store.radius"
-          step="100"
+          step="1000"
           min="4000"
           class="input-dark w-80"
           @change="onRadiusChange"

@@ -1,4 +1,4 @@
-import { blueprintTypeName } from './domain.js';
+import { blueprintTypeName } from './utils.js';
 
 // 将无序节点对编码为字符串 key，用于集合查找
 function edgeKey(a, b) {

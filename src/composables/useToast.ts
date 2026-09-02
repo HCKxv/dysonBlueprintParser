@@ -5,9 +5,16 @@ const visible = ref(false)
 const transitionEnabled = ref(true)
 let hideTimer: ReturnType<typeof setTimeout> | undefined
 
+const consoleToastEnabled =
+  import.meta.env.DEV
+
 export function useToast() {
   function show(text: string, duration = 3000) {
     if (hideTimer) clearTimeout(hideTimer)
+
+    if (consoleToastEnabled) {
+      console.log('[toast]', text)
+    }
 
     message.value = text
 

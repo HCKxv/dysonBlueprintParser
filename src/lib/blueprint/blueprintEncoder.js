@@ -1,4 +1,4 @@
-import { compareVersion } from './utils.js';
+import { compareVersion, getBodyTypeId } from './utils.js';
 import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from './codec.js';
 import { computeSignature } from './blueprintChecksum.js';
 import { compactAndRebuildIds } from './blueprintEdit.js';
@@ -232,13 +232,15 @@ function writeBlueprintBody(body) {
   return writer.toUint8Array();
 }
 
+const BLUEPRINT_PREFIX = 'DYBP:';
+
 // 构建头部字符串
 function buildHeader(header) {
   const ticks = header.createdTicks || '0';
   let version = header.version || '0.10.34.28524';
-  // 旧版蓝图（<= 0.9.24.11286）编码时使用 0.9.25.11985
+  // 旧版蓝图（<= 0.9.24.11286）编码时使用 0.10.34.28524
   if (compareVersion(version, '0.9.24.11286') <= 0) {
-    version = '0.9.25.11985';
+    version = '0.10.34.28524';
   }
   const typeId = header.typeId;
   const latLimit = header.latLimit || '0';
@@ -255,7 +257,14 @@ async function stringifyBlueprint(blueprint) {
     throw new Error('蓝图对象格式错误：缺少 header 或 body');
   }
 
-  blueprint.header.typeId = blueprint.body.typeId
+  const t = getBodyTypeId(blueprint.body)
+  if ( !t ){
+    throw new Error('无法识别的蓝图');
+  } 
+  if ( t < 1 ) {
+    throw new Error(`蓝图 body 格式错误：${t}`);
+  }
+  blueprint.header.typeId = t;
 
   const headerStr = buildHeader(blueprint.header);
   const bodyData = writeBlueprintBody(blueprint.body);
@@ -263,7 +272,7 @@ async function stringifyBlueprint(blueprint) {
   const base64Body = uint8ArrayToBase64(compressed);
 
   // 签名
-  let text = `DYBP:${headerStr}"${base64Body}`;
+  let text = `${BLUEPRINT_PREFIX}${headerStr}"${base64Body}`;
   const signature = computeSignature(text);
   text += '"'
   text += signature;

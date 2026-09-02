@@ -6,8 +6,7 @@
  *   { kind:'toggle',  layerType, id, label, value, checked }
  *   { kind:'section', title, count, children: StatNode[] }
  */
-import { quaternionToOrbitParams } from './blueprint/utils.js'
-import { gridTypeName, countPaintedCells } from './blueprint/domain.js'
+import { quaternionToOrbitParams, gridTypeName, countPaintedCells } from './blueprint/utils.js'
 
 export interface StatNode {
   kind: 'stat' | 'toggle' | 'section'
