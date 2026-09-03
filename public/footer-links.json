@@ -1,0 +1,17 @@
+{
+  "showVisitorStats": true,
+  "links": [
+    {
+      "label": "GitHub仓库",
+      "href": "https://github.com/HCKxv/dysonBlueprintParser"
+    },
+    {
+      "label": "戴森球蓝图集",
+      "href": "https://hckxv.github.io/DSB/"
+    },
+    {
+      "label": "联系作者",
+      "href": "https://space.bilibili.com/397260674"
+    }
+  ]
+}

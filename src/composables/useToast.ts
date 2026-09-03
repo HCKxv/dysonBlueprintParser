@@ -13,7 +13,7 @@ export function useToast() {
     if (hideTimer) clearTimeout(hideTimer)
 
     if (consoleToastEnabled) {
-      console.log('[toast]', text)
+      console.log(`[${new Date().toLocaleString()}] [toast]`, text);
     }
 
     message.value = text

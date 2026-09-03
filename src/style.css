@@ -104,35 +104,37 @@ body {
   .app {
     grid-template-columns: minmax(250px, 1fr) minmax(0, 3fr);
     grid-template-areas:
+      "header header"
       "right right"
       "left center";
   }
 
+  .app-header {
+    grid-area: header;
+    order: 1;
+  }
+
   .panel-right {
     grid-area: right;
-    order: 1;
+    order: 2;
   }
 
   .panel-left {
     grid-area: left;
-    order: 2;
+    order: 3;
     min-width: 0;
   }
 
   .panel-center {
     grid-area: center;
-    order: 3;
+    order: 4;
     min-width: 0;
-  }
-
-  .app-header {
-    display: none;
   }
 }
 
 @media (min-width: 901px) and (max-width: 1400px) {
   .app {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
   }
 
   .panel-right {
@@ -184,6 +186,7 @@ body {
   .app {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "header"
       "right"
       "center"
       "left";
@@ -193,11 +196,11 @@ body {
   }
 
   .panel-center {
-    order: 2;
+    order: 3;
   }
 
   .panel-left {
-    order: 3;
+    order: 4;
   }
 }
 
@@ -276,6 +279,10 @@ button {
   background: #4364eb;
   color: white;
   cursor: pointer;
+}
+
+button:hover {
+  background: #3451c9;
 }
 
 button:disabled {

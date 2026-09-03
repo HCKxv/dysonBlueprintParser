@@ -1,8 +1,36 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
-import VisitorStats from './VisitorStats.vue'
+import { onMounted, onBeforeUnmount, ref, defineAsyncComponent } from 'vue'
+
+const VisitorStats = defineAsyncComponent(() =>
+  import('./VisitorStats.vue')
+)
 
 const emit = defineEmits<{ (e: 'open-changelog'): void }>()
+
+interface FooterLink {
+  label: string
+  href: string
+}
+
+const links = ref<FooterLink[]>([])
+
+const showVisitorStats = ref(false)
+
+// 页脚配置从 footer-links.json 加载
+async function loadLinks() {
+  try {
+    const url = new URL('./footer-links.json', document.baseURI)
+    const res = await fetch(url, { cache: 'no-cache' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    links.value = Array.isArray(data?.links) ? data.links : []
+    if (typeof data?.showVisitorStats === 'boolean') {
+      showVisitorStats.value = data.showVisitorStats
+    }
+  } catch {
+    links.value = []
+  }
+}
 
 const rootEl = ref<HTMLElement | null>(null)
 let timer: number | undefined
@@ -39,6 +67,7 @@ function onScroll() {
 }
 
 onMounted(() => {
+  loadLinks()
   window.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', onScroll, { passive: true })
   onScroll()
@@ -58,15 +87,13 @@ onBeforeUnmount(() => {
     <button type="button" class="footer-item" aria-haspopup="dialog" @click="emit('open-changelog')">
       更新日志
     </button>
-    |
-    <a href="https://github.com/HCKxv/dysonBlueprintParser" target="_blank" rel="noopener">
-      <div class="footer-item">GitHub仓库</div>
-    </a>
-    |
-    <a href="https://hckxv.github.io/DSB/" target="_blank" rel="noopener">
-      <div class="footer-item">戴森球蓝图集</div>
-    </a>
-    
-    <VisitorStats />
+    <template v-for="link in links" :key="link.href">
+      |
+      <a :href="link.href" target="_blank" rel="noopener">
+        <div class="footer-item">{{ link.label }}</div>
+      </a>
+    </template>
+
+    <VisitorStats v-if="showVisitorStats" />
   </div>
 </template>

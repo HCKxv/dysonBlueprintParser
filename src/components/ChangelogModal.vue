@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import pkg from '../../package.json'
+
+const fullVersion = `V${pkg.version}`
 
 interface ChangelogEntry {
   version: string
@@ -41,7 +44,7 @@ defineExpose({ open: openModal })
     <div class="modal-backdrop" @click="closeModal"></div>
     <div class="modal-box">
       <div class="modal-header">
-        <span>更新日志</span>
+        <span>更新日志 {{ fullVersion }}</span>
         <button class="modal-close" aria-label="关闭" @click="closeModal">✕</button>
       </div>
       <div class="modal-body scroll-y">
