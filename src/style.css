@@ -350,6 +350,41 @@ button:disabled {
   vertical-align: middle;
 }
 
+/* 信息卡片标题行：标签居左、按钮居右 */
+.stat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  margin-top: 2px;
+}
+
+.stat-card-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.stat-section-title {
+  min-width: 0;
+}
+
+.stat-section-header .stat-card-btn {
+  margin-left: auto;
+}
+
 .stat-section {
   display: flex;
   flex-direction: column;

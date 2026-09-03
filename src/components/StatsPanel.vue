@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import { store, setLayerVisible } from '../stores/app'
+import { store } from '../stores/app'
 import StatSection from './StatSection.vue'
-import type { StatNode } from '../lib/statsTree'
-
-function onToggle(node: StatNode, e: Event) {
-  const checked = (e.target as HTMLInputElement).checked
-  setLayerVisible(node.layerType as 'shell' | 'cloud', node.id as number, checked)
-}
+import StatBox from './StatBox.vue'
 </script>
 
 <template>
@@ -27,16 +22,7 @@ function onToggle(node: StatNode, e: Event) {
       <template v-else>
         <template v-for="(node, i) in store.statsTree" :key="i">
           <StatSection v-if="node.kind === 'section'" :node="node" />
-          <div v-else class="stat-box">
-            <input
-              v-if="node.kind === 'toggle'"
-              type="checkbox"
-              class="stat-checkbox"
-              :checked="node.checked"
-              @change="onToggle(node, $event)"
-            />
-            <span><strong>{{ node.label }}</strong><br /><span v-html="node.value"></span></span>
-          </div>
+          <StatBox v-else :node="node" />
         </template>
       </template>
     </div>

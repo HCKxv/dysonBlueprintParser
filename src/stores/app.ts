@@ -1,6 +1,8 @@
-import { reactive, shallowRef } from 'vue'
+import { reactive, shallowRef, toRaw } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
 import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
+import { extractSingleShell } from '../lib/blueprint/blueprintEdit.js'
+import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
 import { computePoints, computePower, fmtKW } from '../lib/power/power.js'
 import { buildStatsTree, type StatNode } from '../lib/statsTree'
 import { loadBlueprintFromUrl } from '../lib/urlLoader'
@@ -88,6 +90,14 @@ export function refreshPower() {
   )
 }
 
+/** 构建信息面板节点树 */
+function buildTree(parsed: Record<string, any>, powerResult: Record<string, any> | null) {
+  store.statsTree = buildStatsTree(parsed, powerResult, {
+    onExtractShell: extractShellLayer,
+    onLayerVisible: setLayerVisible,
+  })
+}
+
 /** 解析成功后：3D 渲染 + 发电量计算 + 信息面板 */
 function renderFromParsed(parsed: Record<string, any>) {
   preview.value?.render(parsed.body)
@@ -107,7 +117,7 @@ function renderFromParsed(parsed: Record<string, any>) {
     preview.value?.setSunColor(lum)
   }
 
-  store.statsTree = buildStatsTree(parsed, powerResult)
+  buildTree(parsed, powerResult)
 }
 
 /** 解析并预览输入框中的蓝图字符串 */
@@ -150,7 +160,7 @@ export function onRadiusChange() {
   store.powerResult = powerResult
   refreshPower()
   // 重渲染信息面板（结构/细胞点数随半径变化）
-  store.statsTree = buildStatsTree(store.parsed, powerResult)
+  buildTree(store.parsed, powerResult)
 }
 
 /** 光度系数变化：更新恒星颜色并刷新发电量 */
@@ -164,6 +174,28 @@ export function onLuminosityChange() {
 /** 壳层 / 云轨道显示开关 */
 export function setLayerVisible(type: 'shell' | 'cloud', id: number, visible: boolean) {
   preview.value?.setLayerVisible(type, id, visible)
+}
+
+/**
+ * 提取多层壳中的某个壳层，生成单层壳蓝图字符串并复制到剪贴板
+ * @param orbitId - 壳层 id（多层壳中的轨道 id）
+ */
+export async function extractShellLayer(orbitId: number) {
+  const parsed = store.parsed
+  if (!parsed) {
+    toast.show('当前没有已解析的蓝图')
+    return
+  }
+
+  try {
+    // toRaw：extractSingleShell 内部使用 structuredClone，Vue 响应式代理无法被克隆
+    const single = extractSingleShell(toRaw(parsed), orbitId)
+    const text = await stringifyBlueprint(single)
+    await navigator.clipboard.writeText(text)
+    toast.show(`已提取壳层 ${orbitId} 为单层壳蓝图，并复制到剪贴板`)
+  } catch (error) {
+    toast.show(`提取壳层失败：\n${(error as Error).message}`)
+  }
 }
 
 /** 刻度显示开关 */

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, defineAsyncComponent } from 'vue'
+import ChangelogModal from './ChangelogModal.vue'
+
+const changelogModal = ref<InstanceType<typeof ChangelogModal> | null>(null)
 
 const VisitorStats = defineAsyncComponent(() =>
   import('./VisitorStats.vue')
 )
-
-const emit = defineEmits<{ (e: 'open-changelog'): void }>()
 
 interface FooterLink {
   label: string
@@ -84,7 +85,7 @@ onBeforeUnmount(() => {
   <div ref="rootEl" class="footer-bar">
     <a href="#"><div class="footer-item">▲</div></a>
     |
-    <button type="button" class="footer-item" aria-haspopup="dialog" @click="emit('open-changelog')">
+    <button type="button" class="footer-item" aria-haspopup="dialog" @click="changelogModal?.open()">
       更新日志
     </button>
     <template v-for="link in links" :key="link.href">
@@ -96,4 +97,5 @@ onBeforeUnmount(() => {
 
     <VisitorStats v-if="showVisitorStats" />
   </div>
+  <ChangelogModal ref="changelogModal" />
 </template>

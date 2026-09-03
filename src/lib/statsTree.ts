@@ -2,22 +2,41 @@
  * statsTree — 左侧蓝图信息面板的数据树构建
  *
  * 节点类型:
- *   { kind:'stat',    label, value }
- *   { kind:'toggle',  layerType, id, label, value, checked }
+ *   { kind:'stat',    label, value, toggle{...}, button{...} }
  *   { kind:'section', title, count, children: StatNode[] }
  */
 import { quaternionToOrbitParams, gridTypeName, countPaintedCells } from './blueprint/utils.js'
 
+/** 信息卡片标题行右侧按钮 */
+export interface StatNodeAction {
+  label: string
+  title?: string
+  onClick: () => void
+}
+
+/** 信息卡片标题行左侧开关 */
+export interface StatNodeToggle {
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
+
 export interface StatNode {
-  kind: 'stat' | 'toggle' | 'section'
+  kind: 'stat' | 'section'
   label?: string
   value?: string
-  layerType?: 'shell' | 'cloud'
-  id?: number
-  checked?: boolean
   title?: string
   count?: number
   children?: StatNode[]
+  button?: StatNodeAction
+  toggle?: StatNodeToggle
+}
+
+/** 可选回调 */
+export interface BuildStatsTreeHandlers {
+  /** 提取多层壳中某壳层为单层壳蓝图 */
+  onExtractShell?: (orbitId: number) => void
+  /** 切换壳层 / 云轨道可见性 */
+  onLayerVisible?: (type: 'shell' | 'cloud', id: number, checked: boolean) => void
 }
 
 /** 轨道 */
@@ -45,7 +64,7 @@ function fmtVisibilityLine(ed: boolean, gv: boolean): string {
   return '编辑器' + (ed ? '显示' : '不显示') + ' / 游戏内' + (gv ? '显示' : '不显示')
 }
 
-// 壳层核心统计内容（单层壳/多层壳共用）
+// 壳层统计内容（单层壳/多层壳共用）
 function fmtShellValue(shData: any, layerData: any): string {
   const nodeCnt = countComponents(shData?.nodes)
   const frameCnt = countComponents(shData?.frames)
@@ -69,11 +88,14 @@ function fmtShellValue(shData: any, layerData: any): string {
 export function buildStatsTree(
   parsed: Record<string, any>,
   powerResult: Record<string, any> | null,
+  handlers: BuildStatsTreeHandlers = {},
 ): StatNode[] {
   const nodes: StatNode[] = []
   const singleShell = parsed.body.singleShell
   const cloud = parsed.body.dysonCloud
   const shell = parsed.body.dysonShell
+  const onExtractShell = handlers.onExtractShell
+  const onLayerVisible = handlers.onLayerVisible
 
   if (parsed?.validFlag === false) {
     nodes.push({
@@ -109,9 +131,11 @@ export function buildStatsTree(
         const ed = cloud.visibility ? cloud.visibility.editor[orb.id] : true
         const gv = cloud.visibility ? cloud.visibility.inGame[orb.id] : true
         return {
-          kind: 'toggle', layerType: 'cloud', id: orb.id, label: '云轨道 ' + orb.id,
+          kind: 'stat', label: '云轨道 ' + orb.id,
           value: fmtOrbitLine(orb) + '<br>' + fmtVisibilityLine(ed, gv),
-          checked: gv,
+          toggle: onLayerVisible
+            ? { checked: gv, onChange: (checked: boolean) => onLayerVisible('cloud', orb.id, checked) }
+            : undefined,
         }
       }),
     })
@@ -131,13 +155,22 @@ export function buildStatsTree(
       const ed = shell.visibility ? shell.visibility.editor[orbit.id] : true
       const gv = shell.visibility ? shell.visibility.inGame[orbit.id] : true
       return {
-        kind: 'toggle', layerType: 'shell', id: orbit.id, label: '壳层 ' + orbit.id,
+        kind: 'stat', label: '壳层 ' + orbit.id,
         value: [
           fmtOrbitLine(orbit),
           fmtShellValue(shData, layerData),
           fmtVisibilityLine(ed, gv),
         ].join('<br>'),
-        checked: gv,
+        toggle: onLayerVisible
+          ? { checked: gv, onChange: (checked: boolean) => onLayerVisible('shell', orbit.id, checked) }
+          : undefined,
+        button: onExtractShell
+          ? {
+              label: '提取',
+              title: '提取该壳层并复制到剪贴板',
+              onClick: () => onExtractShell(orbit.id),
+            }
+          : undefined,
       }
     })
     nodes.push({ kind: 'section', title: '壳层', count: orbits.length, children: items })
