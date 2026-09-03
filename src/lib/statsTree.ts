@@ -92,11 +92,11 @@ export function buildStatsTree(
   })
 
   // ── 建造总量 ──
-  if ([2, 4].includes(parsed.body.typeId)) {
+  if ([1, 2, 4].includes(parsed.body.typeId)) {
     nodes.push({
-      kind: 'stat', label: '建造',
-      value: '总结构点数：' + ((powerResult?.totalNodeSP || 0) + (powerResult?.totalFrameSP || 0)) + '<br>' +
-        '总细胞点数：' + (powerResult?.totalCP || 0),
+      kind: 'stat', label: '戴森壳建造量',
+      value: '小型运载火箭：约 ' + ((powerResult?.totalNodeSP || 0) + (powerResult?.totalFrameSP || 0)) + '<br>' +
+        '太阳帆：约 ' + (powerResult?.totalCP || 0),
     })
   }
 
