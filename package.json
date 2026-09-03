@@ -1,7 +1,7 @@
 {
   "name": "dyson-sphere-blueprint-preview",
   "private": true,
-  "version": "1.7.2",
+  "version": "1.7.3",
   "type": "module",
   "description": "戴森球蓝图预览 & 发电量计算",
   "scripts": {
