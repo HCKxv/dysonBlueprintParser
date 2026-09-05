@@ -1,4 +1,4 @@
-import { blueprintTypeName } from './utils.js';
+import { blueprintTypeName, getBodyTypeId } from './utils.js';
 
 // 将无序节点对编码为字符串 key，用于集合查找
 function edgeKey(a, b) {
@@ -108,12 +108,9 @@ function compactAndRebuildIds(shell) {
  */
 function extractSingleShell(blueprint, shellId) {
   const body = blueprint?.body;
-  if (!body || typeof body !== 'object') {
-    throw new Error('蓝图对象格式错误：缺少 body');
-  }
 
-  if (!body.dysonShell) {
-    throw new Error('蓝图不包含戴森壳（需要多层壳或戴森球蓝图），无法提取壳层');
+  if ( ![2, 4].includes(getBodyTypeId(body)) ) {
+    throw new Error('蓝图不包含戴森壳，无法提取壳层');
   }
 
   const shell = body.dysonShell.shells?.[shellId];
@@ -122,7 +119,6 @@ function extractSingleShell(blueprint, shellId) {
   }
 
   const copy = structuredClone(shell);
-  compactAndRebuildIds(copy);
 
   const header = structuredClone(blueprint.header ?? {});
   header.typeId = 1;
@@ -134,4 +130,38 @@ function extractSingleShell(blueprint, shellId) {
   };
 }
 
-export { cleanOrphanedComponents, compactAndRebuildIds, extractSingleShell };
+/**
+ * 从戴森球中提取戴森壳或戴森云
+ * @param {object} blueprint - 戴森球蓝图对象 typeId: 4
+ * @param {('shell' | 'cloud')} type - 提取类型
+ * @returns {object} 戴森壳或戴森云蓝图对象 typeId: 2|3
+ */
+function extractStructure(blueprint, type){
+  if (type !== 'shell' && type !== 'cloud') {
+    throw new Error('Structure 必须是 "shell" 或 "cloud"');
+  }
+
+  if (getBodyTypeId(blueprint?.body) !== 4){
+    throw new Error('不是戴森球蓝图，无法提取戴森壳或戴森云');
+  }
+
+  const header = structuredClone(blueprint.header ?? {});
+  const body = {}
+
+  if (type === 'shell') {
+    body.dysonShell = structuredClone(blueprint.body?.dysonShell);
+  } if (type === 'cloud') {
+    body.dysonCloud = structuredClone(blueprint.body?.dysonCloud);
+  }
+
+  header.typeId = body.typeId = getBodyTypeId(body);
+  header.typeName = blueprintTypeName(header.typeId);
+
+  return {
+    header,
+    body
+  }
+
+}
+
+export { cleanOrphanedComponents, compactAndRebuildIds, extractSingleShell, extractStructure };

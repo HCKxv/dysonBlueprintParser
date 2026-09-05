@@ -1,11 +1,12 @@
 import { reactive, shallowRef, toRaw } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
 import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
-import { extractSingleShell } from '../lib/blueprint/blueprintEdit.js'
+import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
 import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
 import { computePoints, computePower, fmtKW } from '../lib/power/power.js'
 import { buildStatsTree, type StatNode } from '../lib/statsTree'
 import { loadBlueprintFromUrl } from '../lib/urlLoader'
+import { downloadTxt } from '../lib/download'
 import { useToast } from '../composables/useToast'
 
 /** DysonSpherePreview 的命令式子集（由 PreviewPanel 注入实例） */
@@ -93,7 +94,9 @@ export function refreshPower() {
 /** 构建信息面板节点树 */
 function buildTree(parsed: Record<string, any>, powerResult: Record<string, any> | null) {
   store.statsTree = buildStatsTree(parsed, powerResult, {
-    onExtractShell: extractShellLayer,
+    onExportShell: exportShellLayer,
+    onExportStructure: exportStructure,
+    onExportBlueprint: exportBlueprint,
     onLayerVisible: setLayerVisible,
   })
 }
@@ -176,25 +179,57 @@ export function setLayerVisible(type: 'shell' | 'cloud', id: number, visible: bo
   preview.value?.setLayerVisible(type, id, visible)
 }
 
-/**
- * 提取多层壳中的某个壳层，生成单层壳蓝图字符串并复制到剪贴板
- * @param orbitId - 壳层 id（多层壳中的轨道 id）
- */
-export async function extractShellLayer(orbitId: number) {
+/** 提取多层壳中的某个壳层 */
+export async function exportShellLayer(orbitId: number) {
   const parsed = store.parsed
   if (!parsed) {
     toast.show('当前没有已解析的蓝图')
     return
   }
-
   try {
-    // toRaw：extractSingleShell 内部使用 structuredClone，Vue 响应式代理无法被克隆
     const single = extractSingleShell(toRaw(parsed), orbitId)
     const text = await stringifyBlueprint(single)
+    const name = `壳层${orbitId}_${Date.now()}`
+    downloadTxt(text, name)
     await navigator.clipboard.writeText(text)
     toast.show(`已提取壳层 ${orbitId} 为单层壳蓝图，并复制到剪贴板`)
   } catch (error) {
     toast.show(`提取壳层失败：\n${(error as Error).message}`)
+  }
+}
+
+/** 提取戴森壳或云 */
+export async function exportStructure(type:'shell'|'cloud') {
+  const parsed = store.parsed
+  if (!parsed) {
+    toast.show('当前没有已解析的蓝图')
+    return
+  }
+  try {
+    const single = extractStructure(toRaw(parsed), type)
+    const text = await stringifyBlueprint(single)
+    downloadTxt(text, `${type==='shell'? '戴森壳':'戴森云'}_${Date.now()}`)
+    await navigator.clipboard.writeText(text)
+    toast.show(`已提取为${type==='shell'? '戴森壳':'戴森云'}蓝图，并复制到剪贴板`)
+  } catch (error) {
+    toast.show(`提取蓝图失败：\n${(error as Error).message}`)
+  }
+}
+
+/** 导出蓝图 */
+export async function exportBlueprint() {
+  const parsed = store.parsed
+  if (!parsed) {
+    toast.show('当前没有已解析的蓝图')
+    return
+  }
+  try {
+    const text = await stringifyBlueprint(store.parsed)
+    const name = `戴森球_${Date.now()}`
+    downloadTxt(text, name)
+    toast.show(`已将蓝图导出到 ${name}`)
+  } catch (error) {
+    toast.show(`导出蓝图失败：\n${(error as Error).message}`)
   }
 }
 

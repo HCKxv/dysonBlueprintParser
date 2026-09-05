@@ -33,8 +33,9 @@ export interface StatNode {
 
 /** 可选回调 */
 export interface BuildStatsTreeHandlers {
-  /** 提取多层壳中某壳层为单层壳蓝图 */
-  onExtractShell?: (orbitId: number) => void
+  onExportShell?: (orbitId: number) => void
+  onExportStructure?: (type:'shell'|'cloud') => void
+  onExportBlueprint?: () => void
   /** 切换壳层 / 云轨道可见性 */
   onLayerVisible?: (type: 'shell' | 'cloud', id: number, checked: boolean) => void
 }
@@ -94,8 +95,10 @@ export function buildStatsTree(
   const singleShell = parsed.body.singleShell
   const cloud = parsed.body.dysonCloud
   const shell = parsed.body.dysonShell
-  const onExtractShell = handlers.onExtractShell
+  const onExportShell = handlers.onExportShell
+  const onExportStructure = handlers.onExportStructure
   const onLayerVisible = handlers.onLayerVisible
+  const onExportBlueprint = handlers.onExportBlueprint
 
   if (parsed?.validFlag === false) {
     nodes.push({
@@ -111,6 +114,10 @@ export function buildStatsTree(
       '游戏版本：' + parsed.header.version + '<br>' +
       '创建时间：' + parsed.header.createdAt + '<br>' +
       '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.header.latLimit || 0) / 15)))),
+    button: {
+      label: '导出蓝图',
+      onClick: () => onExportBlueprint(),
+    }
   })
 
   // ── 建造总量 ──
@@ -138,6 +145,12 @@ export function buildStatsTree(
             : undefined,
         }
       }),
+      button: onExportStructure && shell
+        ? {
+            label: '提取戴森云',
+            onClick: () => onExportStructure('cloud'),
+          }
+        : undefined,
     })
   }
 
@@ -164,15 +177,26 @@ export function buildStatsTree(
         toggle: onLayerVisible
           ? { checked: gv, onChange: (checked: boolean) => onLayerVisible('shell', orbit.id, checked) }
           : undefined,
-        button: onExtractShell
+        button: onExportShell
           ? {
               label: '提取',
-              onClick: () => onExtractShell(orbit.id),
+              onClick: () => onExportShell(orbit.id),
             }
           : undefined,
       }
     })
-    nodes.push({ kind: 'section', title: '壳层', count: orbits.length, children: items })
+    nodes.push({
+      kind: 'section',
+      title: '壳层',
+      count: orbits.length,
+      children: items,
+      button: onExportStructure && cloud
+        ? {
+            label: '提取戴森壳',
+            onClick: () => onExportStructure('shell'),
+          }
+        : undefined,
+    })
   }
 
   return nodes

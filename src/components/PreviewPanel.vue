@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { DysonSpherePreview } from '../lib/preview/preview.js'
+import { downloadBlob } from '../lib/download'
 import { setPreview } from '../stores/app'
 import { useToast } from '../composables/useToast'
 
@@ -47,12 +48,7 @@ function onExportImage() {
       toast.show('导出失败：无法生成图片')
       return
     }
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `戴森球蓝图预览-${timestamp()}.png`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    downloadBlob(blob, `戴森球预览图-${timestamp()}`)
     toast.show('已导出图片')
   }, 'image/png')
 }
