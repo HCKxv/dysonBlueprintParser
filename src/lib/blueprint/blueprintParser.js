@@ -8,7 +8,7 @@ function parseHeader(headerString) {
     throw new Error(`蓝图头部格式错误：${headerString}`);
   }
 
-  const ticks = values[1].trim();
+  const ticks = values[1];
   const typeId = Number(values[3]);
   const latLimit = Number(values[4]);
 
@@ -16,7 +16,7 @@ function parseHeader(headerString) {
     //raw: headerString,
     createdTicks: ticks,
     createdAt: ticksTime(ticks),
-    version: values[2].trim(),
+    version: values[2],
     typeId,
     typeName: blueprintTypeName(typeId),
     latLimit,

@@ -1,7 +1,7 @@
-// 将 .NET ticks 转换为格式化的时间字符串
+// 公元 1 年到 1970 年 1 月 1 日的 ticks 数
+const EPOCH_OFFSET_TICKS = 621355968000000000;
+
 function ticksTime(ticks) {
-  // 公元 1 年到 1970 年 1 月 1 日的 ticks 数
-  const EPOCH_OFFSET_TICKS = 621355968000000000;
   // 1 tick = 100 纳秒，1 毫秒 = 10000 ticks
   const ms = (ticks - EPOCH_OFFSET_TICKS) / 10000;
 
@@ -16,6 +16,11 @@ function ticksTime(ticks) {
   const seconds = pad(date.getUTCSeconds());
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function getCurrentTicks() {
+  const localMs = Date.now() - new Date().getTimezoneOffset() * 60000;
+  return localMs * 10000 + EPOCH_OFFSET_TICKS;
 }
 
 // 比较版本号：v1 > v2 返回 1，v1 < v2 返回 -1，相等返回 0
@@ -167,6 +172,7 @@ function countPaintedCells(colors) {
 
 export {
   ticksTime,
+  getCurrentTicks,
   compareVersion,
   hsvaToRgba,
   quaternionToOrbitParams,

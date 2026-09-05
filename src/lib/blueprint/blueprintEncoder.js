@@ -1,4 +1,4 @@
-import { compareVersion, getBodyTypeId } from './utils.js';
+import { compareVersion, getBodyTypeId, getCurrentTicks } from './utils.js';
 import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from './codec.js';
 import { computeSignature } from './blueprintChecksum.js';
 import { compactAndRebuildIds } from './blueprintEdit.js';
@@ -233,15 +233,12 @@ function writeBlueprintBody(body) {
 }
 
 const BLUEPRINT_PREFIX = 'DYBP:';
+const BLUEPRINT_VERSION = '0.10.34.28524';
 
 // 构建头部字符串
 function buildHeader(header) {
-  const ticks = header.createdTicks || '0';
-  let version = header.version || '0.10.34.28524';
-  // 旧版蓝图（<= 0.9.24.11286）编码时使用 0.10.34.28524
-  if (compareVersion(version, '0.9.24.11286') <= 0) {
-    version = '0.10.34.28524';
-  }
+  const ticks = header.createdTicks || '630822816000000000';
+  const version = header.version || '0.10.34.28524';
   const typeId = header.typeId;
   const latLimit = header.latLimit || '0';
   return `0,${ticks},${version},${typeId},${latLimit}`;
@@ -265,6 +262,9 @@ async function stringifyBlueprint(blueprint) {
     throw new Error(`蓝图 body 格式错误：${t}`);
   }
   blueprint.header.typeId = t;
+  blueprint.header.createdTicks = getCurrentTicks();
+  blueprint.header.version = BLUEPRINT_VERSION;
+
 
   const headerStr = buildHeader(blueprint.header);
   const bodyData = writeBlueprintBody(blueprint.body);
