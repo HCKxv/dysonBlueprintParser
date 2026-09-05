@@ -7,7 +7,7 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', '1.svg'],
+      includeAssets: ['favicon.ico', 'sphere.svg'],
       injectRegister: 'auto',
       manifest: {
         name: '戴森球蓝图预览 & 发电量计算',
@@ -21,7 +21,7 @@ export default defineConfig({
         orientation: 'any',
         icons: [
           {
-            src: '1.svg',
+            src: 'sphere.svg',
             sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any maskable',

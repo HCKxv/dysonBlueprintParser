@@ -167,7 +167,6 @@ export function buildStatsTree(
         button: onExtractShell
           ? {
               label: '提取',
-              title: '提取该壳层并复制到剪贴板',
               onClick: () => onExtractShell(orbit.id),
             }
           : undefined,
