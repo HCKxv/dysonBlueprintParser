@@ -223,6 +223,17 @@ body {
   text-align: center;
 }
 
+input[type='number']:not(.keep-spin)::-webkit-outer-spin-button,
+input[type='number']:not(.keep-spin)::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number']:not(.keep-spin) {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 textarea {
   width: 100%;
   flex: 1;
@@ -307,6 +318,11 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.btn-group.center {
+  margin: auto;
+  gap: 24px;
 }
 
 /* ── Power Panel ───────────────────────────────────────────── */
@@ -462,6 +478,13 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.menu-divider {
+  border: none;
+  border-top: 1px solid #23334f;
+  margin: 4px 0;
+  width: 100%;
 }
 
 .menu-div.collapsed {

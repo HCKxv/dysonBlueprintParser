@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StatNode } from '../lib/statsTree'
+import type { StatNode } from './statsTree'
 
 defineProps<{ node: StatNode }>()
 

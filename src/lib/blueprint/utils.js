@@ -115,6 +115,21 @@ function quaternionToOrbitParams(orbit) {
   };
 }
 
+// 将轨道倾角和升交点经度转换为轨道四元数
+function orbitParamsToQuaternion(inclination, ascendingNode) {
+  const deg2rad = Math.PI / 180;
+  const halfInc = (((inclination % 360) + 360) % 360) * deg2rad / 2;
+  const halfLan = (((ascendingNode % 360) + 360) % 360) * deg2rad / 2;
+  const cInc = Math.cos(halfInc), sInc = Math.sin(halfInc);
+  const cLan = Math.cos(halfLan), sLan = Math.sin(halfLan);
+  return {
+    x: cLan * sInc,
+    y: -sLan * cInc,
+    z: sLan * sInc,
+    w: cLan * cInc,
+  };
+}
+
 
 const BLUEPRINT_TYPE_NAMES = {
   1: '单层戴森壳',
@@ -176,6 +191,7 @@ export {
   compareVersion,
   hsvaToRgba,
   quaternionToOrbitParams,
+  orbitParamsToQuaternion,
   blueprintTypeName,
   getBodyTypeId,
   gridTypeName,

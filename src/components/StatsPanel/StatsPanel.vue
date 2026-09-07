@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { store } from '../stores/app'
+import { store } from '../../stores/app'
 import StatSection from './StatSection.vue'
 import StatBox from './StatBox.vue'
 </script>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import AppHeader from './components/AppHeader.vue'
-import StatsPanel from './components/StatsPanel.vue'
+import StatsPanel from './components/StatsPanel/StatsPanel.vue'
 import PreviewPanel from './components/PreviewPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import BlueprintInput from './components/BlueprintInput.vue'
 import FooterBar from './components/FooterBar.vue'
 import AppToast from './components/AppToast.vue'
+import CopyShellModal from './components/copyShellModal.vue'
 import { loadUrlBlueprint } from './stores/app'
 
 // 全局拖放拦截 / 中键自动滚动阻止
@@ -55,5 +56,6 @@ onBeforeUnmount(() => {
   </div>
 
   <FooterBar />
+  <CopyShellModal />
   <AppToast />
 </template>

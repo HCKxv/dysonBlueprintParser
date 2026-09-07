@@ -4,9 +4,9 @@ import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
 import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
 import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
 import { computePoints, computePower, fmtKW } from '../lib/power/power.js'
-import { buildStatsTree, type StatNode } from '../lib/statsTree'
-import { loadBlueprintFromUrl } from '../lib/urlLoader'
-import { downloadTxt } from '../lib/download'
+import { buildStatsTree, type StatNode } from '../components/StatsPanel/statsTree'
+import { loadBlueprintFromUrl } from '../utils/urlLoader'
+import { downloadTxt } from '../utils/download'
 import { useToast } from '../composables/useToast'
 
 /** DysonSpherePreview 的命令式子集（由 PreviewPanel 注入实例） */
@@ -44,6 +44,8 @@ const store = reactive({
   rotateEnabled: true,
   speed: 0.05,
   menuCollapsed: true,
+
+  showCopyShellModal: false,
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ function buildTree(parsed: Record<string, any>, powerResult: Record<string, any>
     onExportShell: exportShellLayer,
     onExportStructure: exportStructure,
     onExportBlueprint: exportBlueprint,
+    onCopyToMultiLayer: openCopyShellModal,
     onLayerVisible: setLayerVisible,
   })
 }
@@ -196,6 +199,25 @@ export async function exportShellLayer(orbitId: number) {
   } catch (error) {
     toast.show(`提取壳层失败：\n${(error as Error).message}`)
   }
+}
+
+/** 打开生成多层弹窗 */
+export function openCopyShellModal() {
+  const parsed = store.parsed
+  if (!parsed) {
+    toast.show('当前没有已解析的蓝图')
+    return
+  }
+  if (parsed.body?.typeId !== 1) {
+    toast.show('仅单层壳蓝图支持复制到多层')
+    return
+  }
+  store.showCopyShellModal = true
+}
+
+/** 关闭生成多层弹窗 */
+export function closeCopyShellModal() {
+  store.showCopyShellModal = false
 }
 
 /** 提取戴森壳或云 */

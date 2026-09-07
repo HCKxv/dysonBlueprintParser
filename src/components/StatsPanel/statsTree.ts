@@ -5,7 +5,7 @@
  *   { kind:'stat',    label, value, toggle{...}, button{...} }
  *   { kind:'section', title, count, children: StatNode[] }
  */
-import { quaternionToOrbitParams, gridTypeName, countPaintedCells } from './blueprint/utils.js'
+import { quaternionToOrbitParams, gridTypeName, countPaintedCells } from '../../lib/blueprint/utils.js'
 
 /** 信息卡片标题行右侧按钮 */
 export interface StatNodeAction {
@@ -36,7 +36,7 @@ export interface BuildStatsTreeHandlers {
   onExportShell?: (orbitId: number) => void
   onExportStructure?: (type:'shell'|'cloud') => void
   onExportBlueprint?: () => void
-  /** 切换壳层 / 云轨道可见性 */
+  onCopyToMultiLayer?: () => void
   onLayerVisible?: (type: 'shell' | 'cloud', id: number, checked: boolean) => void
 }
 
@@ -99,6 +99,7 @@ export function buildStatsTree(
   const onExportStructure = handlers.onExportStructure
   const onLayerVisible = handlers.onLayerVisible
   const onExportBlueprint = handlers.onExportBlueprint
+  const onCopyToMultiLayer = handlers.onCopyToMultiLayer
 
   if (parsed?.validFlag === false) {
     nodes.push({
@@ -114,10 +115,12 @@ export function buildStatsTree(
       '游戏版本：' + parsed.header.version + '<br>' +
       '创建时间：' + parsed.header.createdAt + '<br>' +
       '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.header.latLimit || 0) / 15)))),
-    button: {
-      label: '导出蓝图',
-      onClick: () => onExportBlueprint(),
-    }
+    button: onExportBlueprint
+      ? {
+          label: '导出蓝图',
+          onClick: () => onExportBlueprint(),
+        }
+      : undefined,
   })
 
   // ── 建造总量 ──
@@ -159,6 +162,12 @@ export function buildStatsTree(
     nodes.push({
       kind: 'stat', label: '单层壳',
       value: fmtShellValue(singleShell, powerResult?.layers?.[0] ?? null),
+      button: onCopyToMultiLayer
+        ? {
+            label: '生成多层壳',
+            onClick: () => onCopyToMultiLayer(),
+          }
+        : undefined,
     })
   } else if (shell?.orbitList) {
     const orbits = shell.orbitList.filter(Boolean).sort((a: any, b: any) => a.id - b.id)

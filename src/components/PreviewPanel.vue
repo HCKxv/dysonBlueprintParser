@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { DysonSpherePreview } from '../lib/preview/preview.js'
-import { downloadBlob } from '../lib/download'
+import { downloadBlob } from '../utils/download'
 import { setPreview } from '../stores/app'
 import { useToast } from '../composables/useToast'
 

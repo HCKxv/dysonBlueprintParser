@@ -1,4 +1,4 @@
-import { blueprintTypeName, getBodyTypeId } from './utils.js';
+import { blueprintTypeName, getBodyTypeId, orbitParamsToQuaternion } from './utils.js';
 
 // 将无序节点对编码为字符串 key，用于集合查找
 function edgeKey(a, b) {
@@ -160,8 +160,86 @@ function extractStructure(blueprint, type){
   return {
     header,
     body
+  };
+};
+
+/**
+ * 将单层壳复制为多层戴森壳
+ *
+ * @param {object} blueprint - 单层壳蓝图对象 typeId: 1
+ * @param {object} options
+ * @param {number} options.radius - 源壳层轨道半径
+ * @param {number} options.inclination - 轨道倾角（度）
+ * @param {number} options.ascendingNode - 升交点经度（度）
+ * @param {number} options.count - 复制次数（最终壳层数，1-10）
+ * @param {number} options.step - 相邻层半径步长（不小于 1000）
+ * @param {number} options.direction - 1 递增 / -1 递减
+ * @returns {object} 多层戴森壳蓝图对象 typeId: 2
+ * @throws 蓝图不是单层壳、参数非法或层半径低于 4000 时
+ */
+function copyShell(blueprint, options = {}) {
+  if (getBodyTypeId(blueprint?.body) !== 1) {
+    throw new Error('不是单层壳蓝图，无法复制到多层');
+  }
+  const source = blueprint.body.singleShell;
+  if (!source || !Array.isArray(source.nodes)) {
+    throw new Error('单层壳缺少节点数据');
   }
 
+  const radius = Number(options.radius);
+  const count = Math.floor(Number(options.count));
+  const step = Number(options.step);
+  const direction = Number(options.direction) < 0 ? -1 : 1;
+  const inclination = options.inclination == null ? 0 : Number(options.inclination);
+  const ascendingNode = options.ascendingNode == null ? 0 : Number(options.ascendingNode);
+
+  if (!Number.isFinite(radius) || radius < 4000) {
+    throw new Error('轨道半径不能小于 4000');
+  }
+  if (!Number.isFinite(inclination)) {
+    throw new Error('轨道倾角不是有效数字');
+  }
+  if (!Number.isFinite(ascendingNode)) {
+    throw new Error('交升点经度不是有效数字');
+  }
+  if (!Number.isInteger(count) || count < 1 || count > 10) {
+    throw new Error('复制次数需为 1-10 的整数（最终壳层数最多 10）');
+  }
+  if (!Number.isFinite(step) || step < 1000) {
+    throw new Error('步长不能小于 1000');
+  }
+
+  const minRadius = radius + direction * step * (count - 1);
+  if (minRadius < 4000) {
+    throw new Error(`最外层半径 ${Math.round(minRadius)} 低于 4000，请调整参数`);
+  }
+
+  const quat = orbitParamsToQuaternion(inclination, ascendingNode);
+
+  const orbitList = [null];
+  const shells = [null];
+  for (let i = 0; i < count; i += 1) {
+    const layerRadius = Math.round(radius + direction * step * i);
+    const id = i + 1;
+    orbitList.push({ id, radius: layerRadius, ...quat });
+
+    shells.push(structuredClone(source));
+  }
+
+  const visibility = { editor: {}, inGame: {} };
+  for (let i = 1; i <= count; i += 1) {
+    visibility.editor[i] = true;
+    visibility.inGame[i] = true;
+  }
+
+  const header = structuredClone(blueprint.header ?? {});
+  header.typeId = 2;
+  header.typeName = blueprintTypeName(2);
+
+  return {
+    header,
+    body: { typeId: 2, dysonShell: { visibility, orbitList, shells } },
+  };
 }
 
-export { cleanOrphanedComponents, compactAndRebuildIds, extractSingleShell, extractStructure };
+export { cleanOrphanedComponents, compactAndRebuildIds, extractSingleShell, extractStructure, copyShell };
