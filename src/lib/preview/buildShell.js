@@ -1,17 +1,16 @@
 /**
- * buildShell — 戴森壳层渲染对象构建（由 preview.js render() 调用）
+ * 戴森壳层渲染对象构建
  *
- * 纯构建函数，通过 ctx 注入宿主资源，不依赖 DysonSpherePreview 实例。
- * ctx: {
- *   root: THREE.Group,               // 挂载目标（_rootGroup）
- *   vis: Map<string, Object3D>,      // 可见性注册表（_visObjects）
- *   scale: number,                   // 当前缩放系数（_currentScale）
- *   nodeGeom: SphereGeometry,        // 共享节点球体几何
- *   sharedBackMaterial: Material,    // 共享壳面背面材质
- *   shellGroups: Array,              // 自转用壳层组注册表（_shellGroups）
- *   paintingMeshes: Array,           // 涂色网格列表（_paintingMeshes）
- *   paintingVisible: boolean,        // 涂色网格显示开关
- * }
+ * @param {object} shData           - shell.shells[orbit.id]（nodes/frames/faces/fillGrid）
+ * @param {object} orbit            - orbitList 项（id/radius/四元数）
+ * @param {number} scale            - 缩放系数
+ * @param {SphereGeometry} nodeGeom - 共享节点球体几何
+ * @param {Material} sharedBackMaterial - 共享壳面背面材质
+ * @returns {{
+ *   group: THREE.Group,        // 壳层根组
+ *   pole: THREE.Vector3,       // 自转轴
+ *   paintingMeshes: Array,     // 涂色网格列表
+ * }}
  */
 import * as THREE from 'three';
 import { buildPaintingGeometry } from './paintingGrid.js';
@@ -24,20 +23,12 @@ import {
 // （与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值；跨层叠加靠深度缓冲遮挡）
 const STENCIL_BASE = 200;
 
-/**
- * 构建单个壳层的渲染对象（节点/框架/壳面/涂色网格），挂载到 ctx.root
- * @param {object} shData - shell.shells[orbit.id]（nodes/frames/faces/fillGrid）
- * @param {object} orbit  - orbitList 项（id/radius/四元数）
- * @param {boolean} gv    - 该层游戏内可见性
- * @param {object} ctx    - 见文件头注释
- */
-export function buildShellLayer(shData, orbit, gv, ctx) {
+export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMaterial) {
   const renderR = orbit.radius;
   const shQuat = _normQuat(orbit);
   const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
   const shPole = _convertBP(poleRaw);
   const shellGroup = new THREE.Group();
-  ctx.shellGroups.push({ group: shellGroup, pole: shPole.clone().normalize(), radius: renderR });
   // 本层专属模板值（与游戏一致: layerId+200）
   const stencilRef = STENCIL_BASE + (orbit.id || 0);
 
@@ -49,7 +40,7 @@ export function buildShellLayer(shData, orbit, gv, ctx) {
       if (!nd) continue;
       const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
       d.applyQuaternion(shQuat);
-      const pos = _convertBP(d).multiplyScalar(renderR * ctx.scale);
+      const pos = _convertBP(d).multiplyScalar(renderR * scale);
       nodeMap.set(nd.id, pos);
       nodeData.push({ pos, color: _toHexColor(nd.color, 0x60D6FD) });
     }
@@ -57,10 +48,10 @@ export function buildShellLayer(shData, orbit, gv, ctx) {
   // 节点: InstancedMesh 合并为一次绘制
   if (nodeData.length) {
     const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6 });
-    const inst = new THREE.InstancedMesh(ctx.nodeGeom, mat, nodeData.length);
+    const inst = new THREE.InstancedMesh(nodeGeom, mat, nodeData.length);
     const m4 = new THREE.Matrix4();
     const c = new THREE.Color();
-    const s = 50 * ctx.scale;
+    const s = 50 * scale;
     nodeData.forEach((nd, i) => {
       m4.makeScale(s, s, s);
       m4.setPosition(nd.pos.x, nd.pos.y, nd.pos.z);
@@ -149,15 +140,16 @@ export function buildShellLayer(shData, orbit, gv, ctx) {
     mat.stencilZPass = THREE.ReplaceStencilOp;
     const group = new THREE.Group();
     group.add(new THREE.Mesh(geom, mat));
-    group.add(new THREE.Mesh(geom, ctx.sharedBackMaterial)); // BackSide 复用同一几何
+    group.add(new THREE.Mesh(geom, sharedBackMaterial)); // BackSide 复用同一几何
     shellGroup.add(group);
   }
 
   // ── 涂色网格 (fillGrid) ──
+  const paintingMeshes = [];
   if (shData.fillGrid?.colors) {
     const parts = buildPaintingGeometry(shData.fillGrid);
     if (parts) {
-      const paintR = renderR * ctx.scale * 1.0015; // 略高于壳面避免重叠闪烁
+      const paintR = renderR * scale * 1.0015; // 略高于壳面避免重叠闪烁
       for (const part of parts) {
         const geom = new THREE.BufferGeometry();
         const posAttr = new THREE.Float32BufferAttribute(part.positions, 3);
@@ -192,14 +184,15 @@ export function buildShellLayer(shData, orbit, gv, ctx) {
         const mesh = new THREE.Mesh(geom, mat);
         mesh.renderOrder = 3;
         mesh.frustumCulled = false;
-        mesh.visible = ctx.paintingVisible;
         shellGroup.add(mesh);
-        ctx.paintingMeshes.push(mesh);
+        paintingMeshes.push(mesh);
       }
     }
   }
 
-  shellGroup.visible = gv;
-  ctx.vis.set('shell_' + orbit.id, shellGroup);
-  ctx.root.add(shellGroup);
+  return {
+    group: shellGroup,
+    pole: shPole.clone().normalize(),
+    paintingMeshes,
+  };
 }

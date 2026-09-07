@@ -72,7 +72,7 @@ function writeNode(writer, node) {
   writer.writeBool(false); // _u1
   writer.writeBool(false); // _u2
   writeCoordinate(writer, node.coordinate);
-  writer.writeInt32(node.structurePoints);
+  writer.writeInt32(node.spMax);
   writer.writeInt32(0); // _u3 (version >= 2)
   writer.writeInt32(0); // _u4
   writer.writeInt32(0); // _u5 (version >= 1)
@@ -99,7 +99,7 @@ function writeFace(writer, face) {
   writer.writeInt32(2); // version
   writer.writeInt32(face.id);
   writer.writeInt32(face.pattern);
-  writer.writeInt32(0); // _u1
+  writer.writeInt32(0); // 每顶点细胞点数
   writeRGBColor(writer, face.color); // version >= 2
   writer.writeInt32(face.relation.length);
   for (let i = 0; i < face.relation.length; i += 1) {

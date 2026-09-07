@@ -253,7 +253,7 @@ function parseNode(reader) {
   reader.readBool();
   reader.readBool();
   const coordinate = parseCoordinate(reader);
-  const structurePoints = reader.readInt32();
+  const spMax = reader.readInt32();
 
   // 原节点的建造进度
   if (version >= 2) {
@@ -277,7 +277,7 @@ function parseNode(reader) {
     id: itemId,
     style,
     coordinate,
-    structurePoints,
+    spMax,
     color,
   };
 }
@@ -292,7 +292,7 @@ function parseFrame(reader) {
   const nodeB = reader.readInt32();
   const type = reader.readUInt8();
 
-  const structurePoints = reader.readInt32();
+  const spMax = reader.readInt32();
   let color = null;
   if (version >= 1) {
     color = parseRGBColor(reader);
@@ -303,7 +303,7 @@ function parseFrame(reader) {
     style,
     type,
     relation: [nodeA, nodeB],
-    structurePoints,
+    spMax,
     color,
   };
 }
@@ -313,7 +313,7 @@ function parseFace(reader) {
   const version = reader.readInt32();
   const itemId = reader.readInt32();
   const pattern = reader.readInt32();
-  reader.readInt32();  // 每顶点细胞点数
+  const cpPerVertex = reader.readInt32();  // 每顶点细胞点数
 
   let color = null;
   if (version >= 2) {
@@ -329,6 +329,7 @@ function parseFace(reader) {
   return {
     id: itemId,
     pattern,
+    cpPerVertex,
     relation,
     color,
   };
@@ -476,9 +477,9 @@ export { parseBlueprintString };
  *   }
  * }
  *
- * Node   { id, style, coordinate: {x,y,z}, structurePoints, color: RGBA? }
- * Frame  { id, style, type, relation: [nodeA,nodeB], color: RGBA? }
- * Face   { id, pattern, relation: nodeId[], color: RGBA? }
+ * Node   { id, style, coordinate: {x,y,z}, spMax, color: RGBA? }
+ * Frame  { id, style, type, relation: [nodeA,nodeB], spMax, color: RGBA? }
+ * Face   { id, pattern, cpPerVertex, relation: nodeId[], color: RGBA? }
  * Orbit  { id, radius, x, y, z, w }  // 四元数旋转
  * FillGrid { gridType, colors: RGBA[]? }
  *

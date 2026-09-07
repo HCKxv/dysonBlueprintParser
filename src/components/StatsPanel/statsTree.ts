@@ -71,8 +71,8 @@ function fmtShellValue(shData: any, layerData: any): string {
   const frameCnt = countComponents(shData?.frames)
   const faceCnt = countComponents(shData?.faces)
   const paintCnt = countPaintedCells(shData?.fillGrid?.colors)
-  const structPts = (layerData?.totalNodeSP || 0) + (layerData?.totalFrameSP || 0)
-  const cellPts = layerData?.totalCP || 0
+  const structPts = (layerData?.nodeSpMax || 0) + (layerData?.frameSpMax || 0)
+  const cellPts = layerData?.cpMax || 0
   const lines = [
     '节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt,
     '结构点数' + structPts + ' / 细胞点数' + cellPts,
@@ -127,8 +127,8 @@ export function buildStatsTree(
   if ([1, 2, 4].includes(parsed.body.typeId)) {
     nodes.push({
       kind: 'stat', label: '戴森壳建造量',
-      value: '小型运载火箭：约 ' + ((powerResult?.totalNodeSP || 0) + (powerResult?.totalFrameSP || 0)) + '<br>' +
-        '太阳帆：约 ' + (powerResult?.totalCP || 0),
+      value: '小型运载火箭：约 ' + ((powerResult?.nodeSpMax || 0) + (powerResult?.frameSpMax || 0)) + '<br>' +
+        '太阳帆：约 ' + (powerResult?.cpMax || 0),
     })
   }
 

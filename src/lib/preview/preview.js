@@ -44,7 +44,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildCloudOrbits } from './buildCloud.js';
+import { buildCloudOrbit } from './buildCloud.js';
 import { buildShellLayer } from './buildShell.js';
 import { getStarColors } from './starColors.js';
 
@@ -201,20 +201,18 @@ class DysonSpherePreview {
     }
     this._currentScale = 1 / maxRadius;
 
-    // 构建上下文（依赖注入：云/壳构建模块不依赖类实例）
-    const ctx = {
-      root: this._rootGroup,
-      vis: this._visObjects,
-      scale: this._currentScale,
-      nodeGeom: this._nodeGeom,
-      sharedBackMaterial: this._sharedBackMaterial,
-      shellGroups: this._shellGroups,
-      paintingMeshes: this._paintingMeshes,
-      paintingVisible: this._paintingVisible,
-    };
-
     // ── 云轨道 ──
-    buildCloudOrbits(cloud, ctx);
+    if (cloud?.orbits) {
+      cloud.orbits.forEach((orb, idx) => {
+        if (!orb) return;
+        const gv = cloud.visibility ? cloud.visibility.inGame[orb.id] : true;
+        const color = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id - 1] ?? cloud.colors?.[idx];
+        const obj = buildCloudOrbit(orb, color, this._currentScale);
+        obj.visible = gv;
+        this._visObjects.set('cloud_' + orb.id, obj);
+        this._rootGroup.add(obj);
+      });
+    }
 
     // ── 壳层 ──
     if (shell?.orbitList) {
@@ -224,7 +222,13 @@ class DysonSpherePreview {
         const shData = shell.shells?.[orbit.id] ?? null;
         if (!shData) continue;
         const gv = shell.visibility ? shell.visibility.inGame[orbit.id] : true;
-        buildShellLayer(shData, orbit, gv, ctx);
+        const layer = buildShellLayer(shData, orbit, this._currentScale, this._nodeGeom, this._sharedBackMaterial);
+        layer.group.visible = gv;
+        this._shellGroups.push({ group: layer.group, pole: layer.pole, radius: orbit.radius });
+        for (const m of layer.paintingMeshes) m.visible = this._paintingVisible;
+        this._paintingMeshes.push(...layer.paintingMeshes);
+        this._visObjects.set('shell_' + orbit.id, layer.group);
+        this._rootGroup.add(layer.group);
       }
     }
 
@@ -245,8 +249,6 @@ class DysonSpherePreview {
     const key = type + '_' + id;
     const obj = this._visObjects.get(key);
     if (obj) obj.visible = visible;
-    const glow = this._visObjects.get(key.replace(/^cloud_/, 'cloud_glow_'));
-    if (glow) glow.visible = visible;
     this._needsRender = true;
   }
 
@@ -309,12 +311,10 @@ class DysonSpherePreview {
 
   // ─── 辅助 ──────────────────────────────────────────────────
 
-  /** 返回当前场景中的壳层可见性映射 */
+  /** 返回当前场景中的壳层 / 云轨道可见性映射 */
   getLayerVisibility() {
     const result = {};
-    for (const [key, obj] of this._visObjects) {
-      if (!key.startsWith('cloud_glow_')) result[key] = obj.visible;
-    }
+    for (const [key, obj] of this._visObjects) result[key] = obj.visible;
     return result;
   }
 
