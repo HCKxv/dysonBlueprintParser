@@ -173,7 +173,7 @@ function closeModal() {
               step="any"
               class="input-dark w-70"
             />
-            <button class="btn-sm" :disabled="busy || !!invalidText" @click="previewPower">预览发电量</button>
+            <button class="btn-sm" :disabled="busy || !!invalidText" @click="previewPower">计算发电量</button>
             <span v-if="previewPowerText">⚡ {{ previewPowerText }}</span>
           </div>
 

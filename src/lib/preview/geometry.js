@@ -143,8 +143,8 @@ function _buildFaceGeometry(points, pole, edgeTypes) {
     for (let i = 0; i < points.length; i++) {
       const from = points[i], to = points[(i + 1) % points.length];
       const sub = edgeTypes[i] === 1 && pole
-        ? _gridArcPoints(from, to, 5, pole)
-        : _sphericalArcPoints(from, to, 3);
+        ? _gridArcPoints(from, to, 9, pole)
+        : _sphericalArcPoints(from, to, 5);
       for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
     }
     return _buildFaceGeometry(refined, pole, null);
@@ -202,7 +202,7 @@ function _buildFaceGeometry(points, pole, edgeTypes) {
   const flat = spherePoints.map(p => { const d = p.clone().sub(centroid); return { x: d.dot(axisU), y: d.dot(axisV) }; });
   const polygon = flat.map((p, idx) => ({ x: p.x, y: p.y, idx }));
   const tris2d = earClip(polygon);
-  tris2d.forEach(([ai, bi, ci]) => { if (ai < spherePoints.length && bi < spherePoints.length && ci < spherePoints.length) subdivide(spherePoints[ai], spherePoints[bi], spherePoints[ci], 3); });
+  tris2d.forEach(([ai, bi, ci]) => { if (ai < spherePoints.length && bi < spherePoints.length && ci < spherePoints.length) subdivide(spherePoints[ai], spherePoints[bi], spherePoints[ci], 5); });
   if (tris2d.length === 0) return null;
   // 确保法线统一朝外（按三角形面法线判断，必要时翻转绕序）
   let avgDot = 0;
