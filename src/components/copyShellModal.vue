@@ -109,11 +109,12 @@ function closeModal() {
         <div class="menu-div">
 
           <div class="menu"><span>复制参数：</span></div>
-          <div class="menu">
+          <form novalidate><div class="menu">
             <span>初始半径</span>
             <input
               v-model.number="form.radius"
               type="number"
+              step="1000"
               min="4000"
               max="300000"
               class="input-dark w-80"
@@ -125,12 +126,13 @@ function closeModal() {
               step="1"
               min="1"
               max="10"
-              class="input-dark w-70 keep-spin"
+              class="input-dark w-70"
             />
             <span>步长</span>
             <input
               v-model.number="form.step"
               type="number"
+              step="100"
               min="1000"
               class="input-dark w-70"
             />
@@ -138,7 +140,7 @@ function closeModal() {
               <option :value="1">递增</option>
               <option :value="-1">递减</option>
             </select>
-          </div>
+          </div></form>
 
           <div class="menu">
             <span>交升点经度</span>
@@ -147,7 +149,7 @@ function closeModal() {
               type="number"
               min="0"
               max="360"
-              class="input-dark w-70 keep-spin"
+              class="input-dark w-70"
             />
             <span>轨道倾角</span>
             <input
@@ -155,7 +157,7 @@ function closeModal() {
               type="number"
               min="0"
               max="180"
-              class="input-dark w-70 keep-spin"
+              class="input-dark w-70"
             />
           </div>
 
@@ -170,7 +172,8 @@ function closeModal() {
             <input
               v-model.number="form.luminosity"
               type="number"
-              step="any"
+              step="0.1"
+              min="0.1"
               class="input-dark w-70"
             />
             <button class="btn-sm" :disabled="busy || !!invalidText" @click="previewPower">计算发电量</button>

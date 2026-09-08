@@ -30,12 +30,15 @@ function onSpeedChange(e: Event) {
       <span class="arrow">▼</span>设置
     </div>
     <div class="menu-div" :class="{ collapsed: store.menuCollapsed }">
-      <div class="menu">
+      <form novalidate><div class="menu">
         <span v-show="store.isSingleShell">半径</span>
         <input
           v-show="store.isSingleShell"
           type="number"
           v-model.number="store.radius"
+          step="1000"
+          min="4000"
+          max="300000"
           class="input-dark w-80"
           @change="onRadiusChange"
         />
@@ -43,11 +46,12 @@ function onSpeedChange(e: Event) {
         <input
           type="number"
           v-model.number="store.luminosity"
-          step="any"
+          step="0.1"
+          min="0.1"
           class="input-dark w-70"
           @change="onLuminosityChange"
         />
-      </div>
+      </div></form>
       <div class="menu">
         <span>发电量计算:</span>
         <label>

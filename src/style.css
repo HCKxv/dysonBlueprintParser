@@ -223,17 +223,6 @@ body {
   text-align: center;
 }
 
-input[type='number']:not(.keep-spin)::-webkit-outer-spin-button,
-input[type='number']:not(.keep-spin)::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-input[type='number']:not(.keep-spin) {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
 textarea {
   width: 100%;
   flex: 1;
