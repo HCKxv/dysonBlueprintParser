@@ -1,4 +1,4 @@
-import { reactive, shallowRef, toRaw } from 'vue'
+import { reactive, shallowRef, toRaw, watch } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
 import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
 import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
@@ -18,6 +18,7 @@ export interface DysonPreview {
   setRotationEnabled(enabled: boolean): void
   setRotationSpeed(speed: number): void
   setSunColor(luminosity: number): void
+  setBackgroundMode(mode: 'plain' | 'star'): void
 }
 
 const toast = useToast()
@@ -43,10 +44,55 @@ const store = reactive({
   gridVisible: true,
   rotateEnabled: true,
   speed: 0.05,
+  background: 'plain' as 'plain' | 'star',
   menuCollapsed: true,
 
   showCopyShellModal: false,
 })
+
+// ─────────────────────────────────────────────────────────────
+// 显示设置本地持久化（localStorage）
+// ─────────────────────────────────────────────────────────────
+const SETTINGS_KEY = 'dyson-preview-settings'
+
+/** 从 localStorage 恢复显示设置 */
+function loadDisplaySettings() {
+  let data: Record<string, unknown>
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (!raw) return
+    data = JSON.parse(raw)
+  } catch {
+    return // 数据损坏时忽略，使用默认值
+  }
+  if (!data || typeof data !== 'object') return
+  if (typeof data.gridVisible === 'boolean') store.gridVisible = data.gridVisible
+  if (typeof data.rotateEnabled === 'boolean') store.rotateEnabled = data.rotateEnabled
+  if (data.speed === 0.01 || data.speed === 0.05 || data.speed === 0.2) store.speed = data.speed
+  if (data.background === 'plain' || data.background === 'star') store.background = data.background
+}
+
+/** 将显示设置写入 localStorage */
+function saveDisplaySettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      gridVisible: store.gridVisible,
+      rotateEnabled: store.rotateEnabled,
+      speed: store.speed,
+      background: store.background,
+    }))
+  } catch {
+    /* localStorage 不可用（隐私模式等）时忽略 */
+  }
+}
+
+loadDisplaySettings()
+
+// 显示设置变化时自动保存
+watch(
+  () => [store.gridVisible, store.rotateEnabled, store.speed, store.background] as const,
+  saveDisplaySettings,
+)
 
 // ─────────────────────────────────────────────────────────────
 // 3D 预览实例（由 PreviewPanel 在挂载时注入）
@@ -55,6 +101,13 @@ const preview = shallowRef<DysonPreview | null>(null)
 
 export function setPreview(instance: DysonPreview | null) {
   preview.value = instance
+  // 挂载时把已保存的显示设置应用到预览实例
+  if (instance) {
+    instance.setGridVisible(store.gridVisible)
+    instance.setRotationEnabled(store.rotateEnabled)
+    instance.setRotationSpeed(store.speed)
+    instance.setBackgroundMode(store.background)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -271,6 +324,12 @@ export function setRotationEnabled(enabled: boolean) {
 export function setRotationSpeed(speed: number) {
   store.speed = speed
   preview.value?.setRotationSpeed(speed)
+}
+
+/** 背景切换（纯色 / 星空） */
+export function setBackground(mode: 'plain' | 'star') {
+  store.background = mode
+  preview.value?.setBackgroundMode(mode)
 }
 
 /** 处理拖放得到的蓝图文本/文件内容，校验后自动解析 */

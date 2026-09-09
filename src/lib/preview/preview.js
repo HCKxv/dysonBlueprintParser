@@ -12,7 +12,8 @@
  *   6. setRotationSpeed(speed)       转速修改（建议 0.01 慢 / 0.05 中 / 0.20 快）
  *   7. setSunColor(luminosity)       根据光度系数更新恒星颜色
  *   8. setPaintingVisible(visible)   涂色网格显示开关
- *   9. exportImage(scale)            导出当前预览画面（返回 PNG 画布）
+ *   9. setBackgroundMode(mode)       背景切换 ('plain'=纯色 | 'star'=星空)
+ *  10. exportImage(scale)            导出当前预览画面（返回 PNG 画布）
  *
  *   辅助:
  *     clearScene()                   清空场景中的所有 3D 对象
@@ -62,6 +63,10 @@ class DysonSpherePreview {
     this._axesHelper = null;
     this._originSphere = null;
     this._starGlowInner = null;
+    this._starfieldGroup = null;
+    this._backgroundMode = 'plain';
+    this._plainBgColor = new THREE.Color(0x3C5765);
+    this._starBgColor = new THREE.Color(0x070D1A);
 
     this._shellGroups = [];
     this._paintingMeshes = [];
@@ -97,7 +102,7 @@ class DysonSpherePreview {
     this._canvas = canvas;
 
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(0x3C5765);
+    this._scene.background = this._plainBgColor.clone();
 
     this._camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     this._camera.position.set(0, 1.8, -3.2);
@@ -163,6 +168,10 @@ class DysonSpherePreview {
       new THREE.MeshBasicMaterial({ color: getStarColors(1.0).core, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
     );
     this._scene.add(this._starGlowInner);
+
+    // 星空背景（默认隐藏，可通过 setBackgroundMode('star') 开启）
+    this._createStarfield();
+    this._starfieldGroup.visible = this._backgroundMode === 'star';
 
     this._startLoop();
   }
@@ -309,6 +318,23 @@ class DysonSpherePreview {
     this._needsRender = true;
   }
 
+  // ─── 7.5 背景切换 ────────────────────────────────────────
+
+  /**
+   * 切换预览背景
+   * @param {'plain'|'star'} mode  'plain'=纯色背景  'star'=星空背景
+   */
+  setBackgroundMode(mode) {
+    this._backgroundMode = mode === 'star' ? 'star' : 'plain';
+    if (this._scene) {
+      this._scene.background = this._backgroundMode === 'star'
+        ? this._starBgColor.clone()
+        : this._plainBgColor.clone();
+    }
+    if (this._starfieldGroup) this._starfieldGroup.visible = this._backgroundMode === 'star';
+    this._needsRender = true;
+  }
+
   // ─── 辅助 ──────────────────────────────────────────────────
 
   /** 返回当前场景中的壳层 / 云轨道可见性映射 */
@@ -394,6 +420,20 @@ class DysonSpherePreview {
       this._gridGroup = null;
     }
     if (this._gridLabelTexture) { this._gridLabelTexture.dispose(); this._gridLabelTexture = null; }
+    if (this._starfieldGroup) {
+      this._starfieldGroup.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const m of mats) {
+            if (m.map) m.map.dispose();
+            m.dispose();
+          }
+        }
+      });
+      this._scene?.remove(this._starfieldGroup);
+      this._starfieldGroup = null;
+    }
     if (this._sharedBackMaterial) { this._sharedBackMaterial.dispose(); this._sharedBackMaterial = null; }
     if (this._nodeGeom) { this._nodeGeom.dispose(); this._nodeGeom = null; }
     if (this._renderer) { this._renderer.dispose(); this._renderer = null; }
@@ -403,6 +443,119 @@ class DysonSpherePreview {
   // ═══════════════════════════════════════════════════════════
   // 内部实现
   // ═══════════════════════════════════════════════════════════
+
+  /** 生成星空背景 */
+  _createStarfield() {
+    if (!this._scene || this._starfieldGroup) return;
+    const group = new THREE.Group();
+    group.name = 'starfield';
+    group.visible = false;
+
+    // 种子随机数，保证每次初始化生成相同的星空
+    let seed = 20260214;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    // 星色: 白 / 冷蓝 / 暖黄 / 淡蓝 / 淡橙（按权重抽取）
+    const palette = [0xffffff, 0xd9e6ff, 0xfff0d6, 0xbcd6ff, 0xffe2b8];
+    const weights = [6, 3, 2, 2, 1];
+    let totalW = 0;
+    for (const w of weights) totalW += w;
+    const pickColor = () => {
+      let r = rand() * totalW;
+      for (let i = 0; i < weights.length; i++) {
+        r -= weights[i];
+        if (r < 0) return palette[i];
+      }
+      return palette[0];
+    };
+
+    const dpr = this._renderer ? this._renderer.getPixelRatio() : 1;
+    // 三层星点: 不同大小 / 数量 / 亮度，模拟远近层次
+    const layers = [
+      { count: 130, size: 1.8 * dpr, minBright: 0.5 },
+      { count: 380, size: 1.3 * dpr, minBright: 0.32 },
+      { count: 850, size: 0.9 * dpr, minBright: 0.18 },
+    ];
+    const RADIUS = 60;
+
+    for (const layer of layers) {
+      const pos = new Float32Array(layer.count * 3);
+      const col = new Float32Array(layer.count * 3);
+      for (let i = 0; i < layer.count; i++) {
+        // 均匀分布在球面上
+        const u = rand() * 2 - 1;
+        const theta = rand() * Math.PI * 2;
+        const r = Math.sqrt(1 - u * u);
+        pos[i * 3] = r * Math.cos(theta) * RADIUS;
+        pos[i * 3 + 1] = u * RADIUS;
+        pos[i * 3 + 2] = r * Math.sin(theta) * RADIUS;
+        // 整体亮度压低 0.55 倍，星空更柔和
+        const bright = (layer.minBright + (1 - layer.minBright) * rand()) * 0.55;
+        const c = new THREE.Color(pickColor()).multiplyScalar(bright);
+        col[i * 3] = c.r;
+        col[i * 3 + 1] = c.g;
+        col[i * 3 + 2] = c.b;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const mat = new THREE.PointsMaterial({
+        size: layer.size,
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: false,
+      });
+      group.add(new THREE.Points(geom, mat));
+    }
+
+    // 少量亮星 + 光晕 Sprite（数量、尺寸、亮度均已压低）
+    const glowTex = this._createGlowTexture();
+    const BRIGHT_COUNT = 6;
+    for (let i = 0; i < BRIGHT_COUNT; i++) {
+      const u = rand() * 2 - 1;
+      const theta = rand() * Math.PI * 2;
+      const r = Math.sqrt(1 - u * u);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTex,
+        color: new THREE.Color(pickColor()).multiplyScalar(0.7),
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }));
+      sprite.position.set(r * Math.cos(theta) * (RADIUS - 2), u * (RADIUS - 2), r * Math.sin(theta) * (RADIUS - 2));
+      const s = 0.6 + rand() * 0.8;
+      sprite.scale.set(s, s, 1);
+      group.add(sprite);
+    }
+
+    this._scene.add(group);
+    this._starfieldGroup = group;
+  }
+
+  /** 径向渐变光晕纹理（供亮星 Sprite 使用） */
+  _createGlowTexture() {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.12)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    return tex;
+  }
 
   _startLoop() {
     const loop = () => {
