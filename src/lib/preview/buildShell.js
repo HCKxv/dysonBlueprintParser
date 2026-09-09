@@ -23,57 +23,96 @@ import {
 // （与游戏一致: 壳面写 _Stencil = layerId+200，涂色层测试同值；跨层叠加靠深度缓冲遮挡）
 const STENCIL_BASE = 200;
 
-export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMaterial) {
-  const renderR = orbit.radius;
-  const shQuat = _normQuat(orbit);
-  const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
-  const shPole = _convertBP(poleRaw);
-  const shellGroup = new THREE.Group();
-  // 本层专属模板值（与游戏一致: layerId+200）
-  const stencilRef = STENCIL_BASE + (orbit.id || 0);
+// 框架杆件尺寸（蓝图单位，节点球体半径为 50）
+// 杆件为扁长方形管体: 宽面贴壳面（切向）
+const FRAME_BAR_WIDTH = 30;      // 切向宽度
+const FRAME_BAR_THICKNESS = 20;  // 径向厚度
 
-  const nodeMap = new Map();
-  const nodeData = [];
-  if (shData.nodes) {
-    for (let ni = 1; ni < shData.nodes.length; ni++) {
-      const nd = shData.nodes[ni];
-      if (!nd) continue;
-      const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
-      d.applyQuaternion(shQuat);
-      const pos = _convertBP(d).multiplyScalar(renderR * scale);
-      nodeMap.set(nd.id, pos);
-      nodeData.push({ pos, color: _toHexColor(nd.color, 0x60D6FD) });
-    }
-  }
-  // 节点: InstancedMesh 合并为一次绘制
-  if (nodeData.length) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x0a2f20, metalness: 0.2, roughness: 0.6 });
-    const inst = new THREE.InstancedMesh(nodeGeom, mat, nodeData.length);
-    const m4 = new THREE.Matrix4();
-    const c = new THREE.Color();
-    const s = 50 * scale;
-    nodeData.forEach((nd, i) => {
-      m4.makeScale(s, s, s);
-      m4.setPosition(nd.pos.x, nd.pos.y, nd.pos.z);
-      inst.setMatrixAt(i, m4);
-      inst.setColorAt(i, c.setHex(nd.color));
-    });
-    inst.instanceMatrix.needsUpdate = true;
-    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-    shellGroup.add(inst);
-  }
-
-  // 框架: 合并为一条 LineSegments（顶点色）
-  const colorCache = new Map();
-  const hexColor = (hex) => {
-    let c = colorCache.get(hex);
-    if (!c) { c = new THREE.Color(hex); colorCache.set(hex, c); }
+// 颜色缓存工厂: 同一层内重复的十六进制色共用同一个 THREE.Color 实例
+function makeHexColorCache() {
+  const cache = new Map();
+  return (hex) => {
+    let c = cache.get(hex);
+    if (!c) { c = new THREE.Color(hex); cache.set(hex, c); }
     return c;
   };
-  const framePts = [];
-  const frameCols = [];
-  const renderedEdges = new Set();
+}
+
+// ─── 节点: InstancedMesh 合并为一次绘制 ──────────────────────
+function buildNodes(nodeData, shellGroup, nodeGeom, scale) {
+  if (!nodeData.length) return;
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.2, roughness: 0.6 });
+  const inst = new THREE.InstancedMesh(nodeGeom, mat, nodeData.length);
+  const m4 = new THREE.Matrix4();
+  const c = new THREE.Color();
+  const s = 50 * scale;
+  nodeData.forEach((nd, i) => {
+    m4.makeScale(s, s, s);
+    m4.setPosition(nd.pos.x, nd.pos.y, nd.pos.z);
+    inst.setMatrixAt(i, m4);
+    inst.setColorAt(i, c.setHex(nd.color));
+  });
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  shellGroup.add(inst);
+}
+
+// ─── 框架: 沿弧线挤出扁长方形管体并合并为共享几何（顶点色）─────
+// 返回 ftMap: 边键 → 框架类型（0=测地线 1=经纬线），供壳面细分复用
+function buildFrames(shData, nodeMap, shPole, shellGroup, scale) {
   const ftMap = new Map();
+  const hexColor = makeHexColorCache();
+  const barVerts = [];
+  const barCols = [];
+  const barIdx = [];
+  const renderedEdges = new Set();
+  const halfW = (FRAME_BAR_WIDTH / 2) * scale;
+  const halfT = (FRAME_BAR_THICKNESS / 2) * scale;  // 以壳面为中心，向两侧各突出 halfT
+  const tv = new THREE.Vector3(); // 复用临时向量
+  // 沿弧线点列挤出矩形截面并合并到共享杆件几何
+  // 每环 4 顶点: A(+u,下) B(-u,下) C(+u,上) D(-u,上)
+  const buildBar = (pts, color) => {
+    const n = pts.length;
+    if (n < 2) return;
+    const base = barVerts.length / 3;
+    let prevT = null;
+    for (let i = 0; i < n; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+      // 切向（端点取相邻段方向；退化段沿用上一段方向，避免截面朝向翻转）
+      const t = tv.subVectors(b, a);
+      if (t.lengthSq() < 1e-12) {
+        if (prevT) t.copy(prevT); else t.set(0, 1, 0);
+      } else {
+        t.normalize();
+        if (!prevT) prevT = t.clone();
+        else prevT.copy(t);
+      }
+      // 径向（壳面外法线）
+      const rad = pts[i].clone().normalize();
+      // 切向（横向，垂直于框架方向、贴壳面）
+      const u = new THREE.Vector3().crossVectors(t, rad);
+      // 截面沿径向以壳面为中心向两侧突出: 下缘向背面(球心侧)突出 halfT，上缘向外突出 halfT
+      const bx = pts[i].x - rad.x * halfT, by = pts[i].y - rad.y * halfT, bz = pts[i].z - rad.z * halfT;
+      const tx = pts[i].x + rad.x * halfT, ty = pts[i].y + rad.y * halfT, tz = pts[i].z + rad.z * halfT;
+      const ux = u.x * halfW, uy = u.y * halfW, uz = u.z * halfW;
+      // A(+u,下) B(-u,下) C(+u,上) D(-u,上)
+      barVerts.push(bx + ux, by + uy, bz + uz);
+      barVerts.push(bx - ux, by - uy, bz - uz);
+      barVerts.push(tx + ux, ty + uy, tz + uz);
+      barVerts.push(tx - ux, ty - uy, tz - uz);
+      barCols.push(color.r, color.g, color.b, color.r, color.g, color.b, color.r, color.g, color.b, color.r, color.g, color.b);
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const bi = base + i * 4, bj = bi + 4;
+      // 顶面(+n) / 底面(-n) / +u 侧 / -u 侧，绕序保证法线朝外
+      barIdx.push(
+        bi + 3, bi + 2, bj + 2, bi + 3, bj + 2, bj + 3,
+        bi + 0, bi + 1, bj + 1, bi + 0, bj + 1, bj + 0,
+        bi + 0, bj + 0, bj + 2, bi + 0, bj + 2, bi + 2,
+        bi + 1, bi + 3, bj + 3, bi + 1, bj + 3, bj + 1,
+      );
+    }
+  };
   const re = (id1, id2, color, type = 0) => {
     const k = _edgeKey(id1, id2);
     if (renderedEdges.has(k)) return;
@@ -81,11 +120,7 @@ export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMateri
     const f = nodeMap.get(id1), t = nodeMap.get(id2);
     if (!f || !t) return;
     const pts = (type === 1 && shPole) ? _gridArcPoints(f, t, 18, shPole) : _sphericalArcPoints(f, t, 18);
-    const c = hexColor(color);
-    for (let i = 0; i < pts.length - 1; i++) {
-      framePts.push(pts[i].x, pts[i].y, pts[i].z, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
-      frameCols.push(c.r, c.g, c.b, c.r, c.g, c.b);
-    }
+    buildBar(pts, hexColor(color));
   };
   if (shData.frames) {
     shData.frames.forEach(fr => {
@@ -95,14 +130,22 @@ export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMateri
       re(fr.relation[0], fr.relation[1], _toHexColor(fr.color, 0x175473), fr.type);
     });
   }
-  if (framePts.length) {
+  if (barVerts.length) {
     const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(framePts, 3));
-    geom.setAttribute('color', new THREE.Float32BufferAttribute(frameCols, 3));
-    shellGroup.add(new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ vertexColors: true, opacity: 0.5, transparent: true })));
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(barVerts, 3));
+    geom.setAttribute('color', new THREE.Float32BufferAttribute(barCols, 3));
+    geom.setIndex(barIdx);
+    geom.computeVertexNormals();
+    // 与节点相同的材质（节点为 8 段球体 InstancedMesh），杆件端部埋入节点球体内
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.2, roughness: 0.6 });
+    shellGroup.add(new THREE.Mesh(geom, mat));
   }
+  return ftMap;
+}
 
-  // 壳面: 合并为共享几何（正面顶点色，背面共享材质复用同一几何）
+// ─── 壳面: 合并为共享几何（正面顶点色，背面共享材质复用同一几何）──
+function buildFaces(shData, nodeMap, shPole, ftMap, shellGroup, stencilRef, sharedBackMaterial) {
+  const hexColor = makeHexColorCache();
   const faceVerts = [];
   const faceCols = [];
   const faceIdx = [];
@@ -143,8 +186,10 @@ export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMateri
     group.add(new THREE.Mesh(geom, sharedBackMaterial)); // BackSide 复用同一几何
     shellGroup.add(group);
   }
+}
 
-  // ── 涂色网格 (fillGrid) ──
+// ─── 涂色网格 (fillGrid): 仅在本层壳面区域显示（模板测试）────────
+function buildPainting(shData, shQuat, renderR, scale, shellGroup, stencilRef) {
   const paintingMeshes = [];
   if (shData.fillGrid?.colors) {
     const parts = buildPaintingGeometry(shData.fillGrid);
@@ -189,6 +234,38 @@ export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMateri
       }
     }
   }
+  return paintingMeshes;
+}
+
+// ─── 壳层构建: 编排以上四个阶段 ───────────────────────────────
+export function buildShellLayer(shData, orbit, scale, nodeGeom, sharedBackMaterial) {
+  const renderR = orbit.radius;
+  const shQuat = _normQuat(orbit);
+  const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
+  const shPole = _convertBP(poleRaw);
+  const shellGroup = new THREE.Group();
+  // 本层专属模板值（与游戏一致: layerId+200）
+  const stencilRef = STENCIL_BASE + (orbit.id || 0);
+
+  // 收集节点: 坐标变换 + 颜色，建立 id → 位置映射
+  const nodeMap = new Map();
+  const nodeData = [];
+  if (shData.nodes) {
+    for (let ni = 1; ni < shData.nodes.length; ni++) {
+      const nd = shData.nodes[ni];
+      if (!nd) continue;
+      const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
+      d.applyQuaternion(shQuat);
+      const pos = _convertBP(d).multiplyScalar(renderR * scale);
+      nodeMap.set(nd.id, pos);
+      nodeData.push({ pos, color: _toHexColor(nd.color, 0x60D6FD) });
+    }
+  }
+
+  buildNodes(nodeData, shellGroup, nodeGeom, scale);
+  const ftMap = buildFrames(shData, nodeMap, shPole, shellGroup, scale);
+  buildFaces(shData, nodeMap, shPole, ftMap, shellGroup, stencilRef, sharedBackMaterial);
+  const paintingMeshes = buildPainting(shData, shQuat, renderR, scale, shellGroup, stencilRef);
 
   return {
     group: shellGroup,

@@ -129,39 +129,49 @@ function buildGraticuleGeometry(colors) {
   const colsBrightGlow = [];
 
   for (const band of bands) {
+    const step = 360 / band.seg;
+    // 经度边细分成多段弧线: 平面四边形在大格子处中部会下沉到球面以下
+    // (两极格子宽 22.5°, 下沉 ~1.9%), 而涂色层只比壳面高 0.15%,
+    // 下沉部分被壳面深度遮挡 → 两极出现"两色块中间有缝隙"。
+    // 细分后弧高 <= 1-cos(1°) ≈ 0.015%, 整面始终在壳面之上。
+    const m = Math.max(1, Math.ceil(step / 2));
     for (let li = 0; li < band.seg; li += 1) {
       const idx = band.base + li;
       const c = idx < colors.length ? colors[idx] : null;
       if (!c || c.a <= 0) continue;
 
-      const lngLo = li * 360 / band.seg;
-      const lngHi = (li + 1) * 360 / band.seg;
-      const corners = [
-        latLngToLocal(band.latLo, lngLo),
-        latLngToLocal(band.latLo, lngHi),
-        latLngToLocal(band.latHi, lngHi),
-        latLngToLocal(band.latHi, lngLo),
-      ];
+      const lngLo = li * step;
       // 绕序: 经预览变换（轨道四元数 + z 翻转）后法线朝外，配合 FrontSide 单面渲染
       // 涂色数据的 a 通道不是透明度（游戏 PaintCells 的编码）:
       //   a > 0 即已涂色，RGB 已按笔刷强度缩放，应完全不透明显示;
       //   a > 127 表示超亮涂色，强度 = (a-127)/128
       const bright = c.a > 127;
       const rgba = paintToVertexColor(c, 1);
-      const tri = [0, 1, 2, 0, 2, 3];
-      if (bright) {
-        const glowA = (c.a - 127) / 128 * BRIGHT_GLOW_STRENGTH;
-        const glow = [rgba[0], rgba[1], rgba[2], glowA];
-        for (const vi of tri) {
-          vertsBrightBase.push(...corners[vi]);
-          colsBrightBase.push(...rgba);
-          vertsBrightGlow.push(...corners[vi]);
-          colsBrightGlow.push(...glow);
-        }
-      } else {
-        for (const vi of tri) {
-          verts.push(...corners[vi]);
-          cols.push(...rgba);
+      const glowA = (c.a - 127) / 128 * BRIGHT_GLOW_STRENGTH;
+      const glow = [rgba[0], rgba[1], rgba[2], glowA];
+      for (let j = 0; j < m; j += 1) {
+        const lngA = lngLo + (j * step) / m;
+        const lngB = lngLo + ((j + 1) * step) / m;
+        const corners = [
+          latLngToLocal(band.latLo, lngA),
+          latLngToLocal(band.latLo, lngB),
+          latLngToLocal(band.latHi, lngB),
+          latLngToLocal(band.latHi, lngA),
+        ];
+        // 极点带退化边只保留有效三角形
+        const tri = band.latLo <= -90 ? [0, 2, 3] : band.latHi >= 90 ? [0, 1, 2] : [0, 1, 2, 0, 2, 3];
+        if (bright) {
+          for (const vi of tri) {
+            vertsBrightBase.push(...corners[vi]);
+            colsBrightBase.push(...rgba);
+            vertsBrightGlow.push(...corners[vi]);
+            colsBrightGlow.push(...glow);
+          }
+        } else {
+          for (const vi of tri) {
+            verts.push(...corners[vi]);
+            cols.push(...rgba);
+          }
         }
       }
     }

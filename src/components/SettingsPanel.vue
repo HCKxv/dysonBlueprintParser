@@ -31,38 +31,43 @@ function onSpeedChange(e: Event) {
     </div>
     <div class="menu-div" :class="{ collapsed: store.menuCollapsed }">
       <form novalidate><div class="menu">
-        <span v-show="store.isSingleShell">半径</span>
-        <input
-          v-show="store.isSingleShell"
-          type="number"
-          v-model.number="store.radius"
-          step="1000"
-          min="4000"
-          max="300000"
-          class="input-dark w-80"
-          @change="onRadiusChange"
-        />
-        光度系数
-        <input
-          type="number"
-          v-model.number="store.luminosity"
-          step="0.1"
-          min="0.1"
-          class="input-dark w-70"
-          @change="onLuminosityChange"
-        />
+        <div v-show="store.isSingleShell" class="menu">
+          <span>半径</span>
+          <input
+            type="number"
+            v-model.number="store.radius"
+            step="1000"
+            min="4000"
+            max="300000"
+            class="input-dark w-80"
+            @change="onRadiusChange"
+          />
+        </div>
+        <div class="menu">
+          光度系数
+          <input
+            type="number"
+            v-model.number="store.luminosity"
+            step="0.1"
+            min="0.1"
+            class="input-dark w-70"
+            @change="onLuminosityChange"
+          />
+        </div>
       </div></form>
       <div class="menu">
         <span>发电量计算:</span>
-        <label>
-          <input type="checkbox" v-model="store.isNode" @change="refreshPower" /> 节点
-        </label>
-        <label>
-          <input type="checkbox" v-model="store.isFrame" @change="refreshPower" /> 框架
-        </label>
-        <label>
-          <input type="checkbox" v-model="store.isFaces" @change="refreshPower" /> 壳面
-        </label>
+        <div class="menu">
+          <label>
+            <input type="checkbox" v-model="store.isNode" @change="refreshPower" /> 节点
+          </label>
+          <label>
+            <input type="checkbox" v-model="store.isFrame" @change="refreshPower" /> 框架
+          </label>
+          <label>
+            <input type="checkbox" v-model="store.isFaces" @change="refreshPower" /> 壳面
+          </label>
+        </div>
       </div>
       <div class="menu">
         显示:
