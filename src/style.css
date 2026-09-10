@@ -17,13 +17,23 @@ body {
 /* ── Layout ────────────────────────────────────────────────── */
 .app {
   display: grid;
-  grid-template-columns: minmax(250px, 320px) minmax(750px, 1fr) minmax(300px, 380px);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   padding: 10px;
   height: 100vh;
   width: 100%;
   max-width: 100%;
   overflow: hidden;
+}
+
+.panels {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(750px, 1fr) minmax(300px, 380px);
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
 }
 
 .app-header {
@@ -101,17 +111,11 @@ body {
 }
 
 @media (max-width: 1500px) {
-  .app {
+  .panels {
     grid-template-columns: minmax(250px, 1fr) minmax(0, 3fr);
     grid-template-areas:
-      "header header"
       "right right"
       "left center";
-  }
-
-  .app-header {
-    grid-area: header;
-    order: 1;
   }
 
   .panel-right {
@@ -133,8 +137,8 @@ body {
 }
 
 @media (min-width: 961px) and (max-width: 1500px) {
-  .app {
-    grid-template-rows: auto auto minmax(0, 1fr);
+  .panels {
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .panel-right {
@@ -184,19 +188,23 @@ body {
 
 @media (max-width: 960px) {
   .app {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "header"
-      "right"
-      "center"
-      "left";
     height: auto;
     min-height: 100vh;
     overflow: visible;
   }
 
+  .panels {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "right"
+      "center"
+      "left";
+  }
+
   .panel-center {
     order: 3;
+    aspect-ratio: 4 / 3;
   }
 
   .panel-left {

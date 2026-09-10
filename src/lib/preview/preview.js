@@ -116,6 +116,8 @@ class DysonSpherePreview {
     this._controls.minDistance = 0.8;
     this._controls.maxDistance = 20;
     this._controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
+    this._controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    canvas.style.touchAction = 'pan-y';
     // 相机交互（含阻尼惯性）时置脏
     this._controls.addEventListener('change', () => { this._needsRender = true; });
 

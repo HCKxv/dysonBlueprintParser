@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import AppHeader from './components/AppHeader.vue'
-import StatsPanel from './components/StatsPanel/StatsPanel.vue'
-import PreviewPanel from './components/PreviewPanel.vue'
-import SettingsPanel from './components/SettingsPanel.vue'
-import BlueprintInput from './components/BlueprintInput.vue'
+import BlueprintParse from './components/BlueprintParse.vue'
 import FooterBar from './components/FooterBar.vue'
 import AppToast from './components/AppToast.vue'
 import CopyShellModal from './components/copyShellModal.vue'
@@ -41,18 +38,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="app">
     <AppHeader />
-    <div class="col panel panel-left">
-      <h2>蓝图信息</h2>
-      <StatsPanel />
-    </div>
-    <div class="col panel panel-center">
-      <h2>蓝图预览</h2>
-      <PreviewPanel />
-    </div>
-    <div class="col panel panel-right">
-      <SettingsPanel />
-      <BlueprintInput />
-    </div>
+    <BlueprintParse />
   </div>
 
   <FooterBar />
