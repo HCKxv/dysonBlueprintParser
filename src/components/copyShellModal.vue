@@ -169,13 +169,13 @@ function closeModal() {
 
           <div class="menu">
             <span>光度</span>
-            <input
+            <form novalidate><input
               v-model.number="form.luminosity"
               type="number"
               step="0.1"
               min="0.1"
               class="input-dark w-70"
-            />
+            /></form>
             <button class="btn-sm" :disabled="busy || !!invalidText" @click="previewPower">计算发电量</button>
             <span v-if="previewPowerText">⚡ {{ previewPowerText }}</span>
           </div>

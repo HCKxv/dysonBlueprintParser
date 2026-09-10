@@ -60,7 +60,6 @@ class DysonSpherePreview {
     this._rootGroup = null;
     this._gridGroup = null;
     this._gridLabelTexture = null;
-    this._axesHelper = null;
     this._originSphere = null;
     this._starGlowInner = null;
     this._starfieldGroup = null;
@@ -148,12 +147,6 @@ class DysonSpherePreview {
     this._scene.add(this._gridGroup);
 
     this._createLongitudeGrid(1.2);
-
-    // 坐标轴
-    this._axesHelper = new THREE.AxesHelper(0.05);
-    this._axesHelper.material.depthTest = false;
-    this._axesHelper.renderOrder = 2;
-    this._scene.add(this._axesHelper);
 
     // 恒星
     this._originSphere = new THREE.Mesh(
@@ -268,7 +261,6 @@ class DysonSpherePreview {
    */
   setGridVisible(visible) {
     if (this._gridGroup) this._gridGroup.visible = visible;
-    if (this._axesHelper) this._axesHelper.visible = visible;
     this._needsRender = true;
   }
 
