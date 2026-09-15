@@ -5,6 +5,37 @@ function edgeKey(a, b) {
   return a < b ? `${a},${b}` : `${b},${a}`;
 }
 
+// 递归拷贝成纯对象 / 纯数组
+// 蓝图数据可能来自 Vue 响应式代理（reactive）：对象展开（{ ...node }）只剥掉最外层代理，
+// 嵌套对象（coordinate / color）读出来仍是代理，写回数据后 structuredClone 就会失败
+function toPlainCopy(value) {
+  if (Array.isArray(value)) {
+    const out = new Array(value.length);
+    for (let i = 0; i < value.length; i += 1) {
+      out[i] = toPlainCopy(value[i]);
+    }
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value)) {
+      out[key] = toPlainCopy(value[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+// 深拷贝蓝图数据：优先用原生 structuredClone，
+// 数据里混入响应式代理等不可克隆对象时退回纯数据递归拷贝
+function cloneData(value) {
+  try {
+    return structuredClone(value);
+  } catch {
+    return toPlainCopy(value);
+  }
+}
+
 // 清理框架中引用已删除节点的项，以及壳面中边不在框架中的项
 function cleanOrphanedComponents(shell) {
   // 收集所有有效节点 id
@@ -69,7 +100,7 @@ function compactAndRebuildIds(shell) {
     const node = shell.nodes[i];
     if (node == null) continue;
     nodeIdMap[node.id] = newNodeId;
-    newNodes.push({ ...node, id: newNodeId });
+    newNodes.push({ ...toPlainCopy(node), id: newNodeId });
     newNodeId += 1;
   }
 
@@ -81,7 +112,7 @@ function compactAndRebuildIds(shell) {
       const item = oldList[i];
       if (item == null) continue;
       const newRelation = item.relation.map(pid => nodeIdMap[pid]);
-      newList.push({ ...item, id: newId, relation: newRelation });
+      newList.push({ ...toPlainCopy(item), id: newId, relation: newRelation });
       newId += 1;
     }
     return newList;
@@ -118,9 +149,9 @@ function extractSingleShell(blueprint, shellId) {
     throw new Error(`未找到壳层 ${shellId}`);
   }
 
-  const copy = structuredClone(shell);
+  const copy = cloneData(shell);
 
-  const header = structuredClone(blueprint.header ?? {});
+  const header = cloneData(blueprint.header ?? {});
   header.typeId = 1;
   header.typeName = blueprintTypeName(1);
 
@@ -145,13 +176,13 @@ function extractStructure(blueprint, type){
     throw new Error('不是戴森球蓝图，无法提取戴森壳或戴森云');
   }
 
-  const header = structuredClone(blueprint.header ?? {});
+  const header = cloneData(blueprint.header ?? {});
   const body = {}
 
   if (type === 'shell') {
-    body.dysonShell = structuredClone(blueprint.body?.dysonShell);
+    body.dysonShell = cloneData(blueprint.body?.dysonShell);
   } if (type === 'cloud') {
-    body.dysonCloud = structuredClone(blueprint.body?.dysonCloud);
+    body.dysonCloud = cloneData(blueprint.body?.dysonCloud);
   }
 
   header.typeId = body.typeId = getBodyTypeId(body);
@@ -223,7 +254,7 @@ function copyShell(blueprint, options = {}) {
     const id = i + 1;
     orbitList.push({ id, radius: layerRadius, ...quat });
 
-    shells.push(structuredClone(source));
+    shells.push(cloneData(source));
   }
 
   const visibility = { editor: {}, inGame: {} };
@@ -232,7 +263,7 @@ function copyShell(blueprint, options = {}) {
     visibility.inGame[i] = true;
   }
 
-  const header = structuredClone(blueprint.header ?? {});
+  const header = cloneData(blueprint.header ?? {});
   header.typeId = 2;
   header.typeName = blueprintTypeName(2);
 

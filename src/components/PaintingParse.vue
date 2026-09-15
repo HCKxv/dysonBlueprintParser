@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaintingSection from './PaintingPanel/PaintingSection.vue'
 import PaintingInput from './PaintingPanel/PaintingInput.vue'
 import PaintingImage from './PaintingPanel/PaintingImage.vue'
@@ -15,7 +15,7 @@ import {
 } from '../stores/painting'
 import { useToast } from '../composables/useToast'
 import { downloadTxt } from '../utils/download'
-import { handleBlueprintText } from '../stores/app'
+import { handleBlueprintText } from '../stores/preview'
 import { setTool } from '../stores/tool'
 
 const toast = useToast()
@@ -97,12 +97,42 @@ watch(
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
 })
+
+// ── 左栏上下边缘: 超出容器范围的内容做模糊过渡 ──
+// 滚到顶/底时对应那一层淡出，避免"明明没内容了还糊着一条"
+const scrollEl = ref<HTMLElement | null>(null)
+const canScrollUp = ref(false)
+const canScrollDown = ref(false)
+
+function updateScrollEdges() {
+  const el = scrollEl.value
+  if (!el) return
+  canScrollUp.value = el.scrollTop > 1
+  canScrollDown.value = el.scrollTop < el.scrollHeight - el.clientHeight - 1
+}
+
+let edgeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  updateScrollEdges()
+  const el = scrollEl.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  // 容器尺寸变化、以及各分组折叠/展开导致的内容高度变化，都要重算
+  edgeObserver = new ResizeObserver(updateScrollEdges)
+  edgeObserver.observe(el)
+  for (const child of Array.from(el.children)) edgeObserver.observe(child)
+})
+
+onBeforeUnmount(() => {
+  edgeObserver?.disconnect()
+  edgeObserver = null
+})
 </script>
 
 <template>
   <div class="panels panels--paint">
     <div class="col paint-col">
-      <div class="scroll-y paint-scroll">
+      <div ref="scrollEl" class="scroll-y paint-scroll" @scroll="updateScrollEdges">
         <PaintingSection title="图片输入">
           <PaintingInput />
         </PaintingSection>
@@ -150,6 +180,10 @@ onBeforeUnmount(() => {
           </div>
         </PaintingSection>
       </div>
+
+      <!-- 上下边缘: 滚动时超出容器范围的内容做模糊过渡 -->
+      <div class="scroll-edge-blur top" :class="{ show: canScrollUp }"></div>
+      <div class="scroll-edge-blur bottom" :class="{ show: canScrollDown }"></div>
     </div>
 
     <div class="col panel paint-col-preview">

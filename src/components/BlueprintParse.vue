@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import StatsPanel from './StatsPanel/StatsPanel.vue'
-import PreviewPanel from './PreviewPanel.vue'
-import SettingsPanel from './SettingsPanel.vue'
-import BlueprintInput from './BlueprintInput.vue'
+import StatsPanel from './BlueprintPanel/StatsPanel.vue'
+import PreviewPanel from './BlueprintPanel/PreviewPanel.vue'
+import SettingsPanel from './BlueprintPanel/SettingsPanel.vue'
+import BlueprintInput from './BlueprintPanel/BlueprintInput.vue'
 </script>
 
 <template>

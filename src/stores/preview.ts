@@ -1,14 +1,12 @@
-import { reactive, shallowRef, toRaw, watch } from 'vue'
+import { markRaw, reactive, shallowRef, toRaw, watch } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
 import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
 import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
 import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
 import { computePoints, computePower, fmtKW } from '../lib/power/power.js'
-import { buildStatsTree, type StatNode } from '../components/StatsPanel/statsTree'
-import { loadBlueprintFromUrl } from '../utils/urlLoader'
+import { buildStatsTree, type StatNode } from '../components/BlueprintPanel/statsTree'
 import { downloadTxt } from '../utils/download'
 import { useToast } from '../composables/useToast'
-import { setTool } from './tool'
 
 /** DysonSpherePreview 的命令式子集（由 PreviewPanel 注入实例） */
 export interface DysonPreview {
@@ -111,8 +109,13 @@ export function setPreview(instance: DysonPreview | null) {
   instance.setBackgroundMode(store.background)
 
   if (store.parsed) {
-    instance.render(store.parsed.body)
     instance.setSunColor(clampLum(store.luminosity))
+    // 切回「蓝图预览」时先把工具界面绘制出来，再重建 3D 场景：
+    afterPaint(() => {
+      // 这两帧内可能又切走或换了实例，此时不该再渲染
+      if (preview.value !== instance || !store.parsed) return
+      instance.render(toRaw(store.parsed.body))
+    })
   }
 }
 
@@ -132,6 +135,15 @@ function clampRadius(v: number): number {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+}
+
+/**
+ * 等界面真正绘制出一帧后再执行回调
+ */
+function afterPaint(callback: () => void): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => callback())
+  })
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -205,7 +217,10 @@ export async function parseBlueprint() {
     const parsed = await parseBlueprintString(text)
     parsed.validFlag = verifyBlueprintString(text)
     renderFromParsed(parsed)
-    store.parsed = parsed
+    // markRaw：蓝图数据不需要深层响应式（面板由 statsTree / powerResult 驱动）。
+    // 若交给 Vue 代理，编码 / 提取时库内 { ...node } 式展开会把嵌套代理写回数据，
+    // 之后 structuredClone 就会抛「#<Object> could not be cloned」
+    store.parsed = markRaw(parsed)
     toast.show('成功解析蓝图')
   } catch (error) {
     store.errorMessage = (error as Error).message
@@ -221,7 +236,7 @@ export function onRadiusChange() {
   store.radius = val
 
   if (store.parsed?.body?.typeId !== 1) return
-  const powerResult = computePoints(store.parsed.body, val)
+  const powerResult = computePoints(toRaw(store.parsed.body), val)
   if (!powerResult) return
   store.powerResult = powerResult
   refreshPower()
@@ -305,7 +320,7 @@ export async function exportBlueprint() {
     return
   }
   try {
-    const text = await stringifyBlueprint(store.parsed)
+    const text = await stringifyBlueprint(toRaw(parsed))
     downloadTxt(text, '戴森球')
     toast.show('已将蓝图导出到下载目录')
   } catch (error) {
@@ -351,19 +366,6 @@ export function handleBlueprintText(text: string) {
 
   store.input = trimmed
   parseBlueprint()
-}
-
-/** URL 参数加载（?txt=...）：由 App.vue 在挂载时调用一次 */
-export function loadUrlBlueprint() {
-  loadBlueprintFromUrl({
-    onLoadStart: () => toast.show('正在加载蓝图'),
-    onLoaded: (text) => {
-      setTool('preview')
-      store.input = text
-      parseBlueprint()
-    },
-    onError: (e) => toast.show(`加载蓝图失败：\n${e.message}`),
-  })
 }
 
 export { store }

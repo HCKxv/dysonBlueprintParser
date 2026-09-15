@@ -8,7 +8,7 @@ import {
   setRotationEnabled,
   setRotationSpeed,
   setBackground,
-} from '../stores/app'
+} from '../../stores/preview'
 
 function onSpeedChange(e: Event) {
   setRotationSpeed(parseFloat((e.target as HTMLSelectElement).value) || 0.05)

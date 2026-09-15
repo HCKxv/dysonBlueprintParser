@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { store, parseBlueprint, handleBlueprintText } from '../stores/app'
-import { useToast } from '../composables/useToast'
+import { store, parseBlueprint, handleBlueprintText } from '../../stores/preview'
+import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 const dragging = ref(false)

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, toRaw, watch } from 'vue'
-import { store } from '../stores/app'
-import { copyShell } from '../lib/blueprint/blueprintEdit.js'
-import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
-import { computePoints, computePower, fmtKW } from '../lib/power/power.js'
-import { downloadTxt } from '../utils/download'
-import { useToast } from '../composables/useToast'
+import { store } from '../../stores/preview'
+import { copyShell } from '../../lib/blueprint/blueprintEdit.js'
+import { stringifyBlueprint } from '../../lib/blueprint/blueprintEncoder.js'
+import { computePoints, computePower, fmtKW } from '../../lib/power/power.js'
+import { downloadTxt } from '../../utils/download'
+import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 

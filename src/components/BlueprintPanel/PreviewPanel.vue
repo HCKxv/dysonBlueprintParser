@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { DysonSpherePreview } from '../lib/preview/preview.js'
-import { downloadCanvas } from '../utils/download'
-import { setPreview } from '../stores/app'
-import { useToast } from '../composables/useToast'
+import { DysonSpherePreview } from '../../lib/preview/preview.js'
+import { downloadCanvas } from '../../utils/download'
+import { setPreview } from '../../stores/preview'
+import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 const canvasEl = ref<HTMLCanvasElement | null>(null)

@@ -8,6 +8,7 @@
 - **发电量计算**：计算戴森壳的发电量，节点/框架/壳面可单独计算，单层壳支持自定义半径
 - **信息面板**：蓝图信息、建造总量、壳层与云轨道的逐层明细
 - **提取蓝图**：可以从蓝图中提取云或壳，根据单层壳生成多层壳
+- **生成彩绘**：可根据图片生成壳面像素画
 
 ## 使用
 
@@ -19,18 +20,25 @@
 
 ## 截图
 
-![image](/assets/截图1.png)
+![image](/docs/截图2.png)
 
-![image](/assets/截图2.png)
+![image](/docs/截图3.png)
 
-![image](/assets/截图3.png)
+![image](/docs/截图4.png)
+
+![image](/docs/截图5.png)
 
 
 ## 开发
 
+推荐使用 **Node.js 20** 或更高版本。
+
+### 命令
+
 ```bash
-npm install        # 安装依赖
-npm run dev        # 开发服务器
-npm run build      # 构建静态文件到 dist/
+npm install            # 安装依赖
+npm run dev            # 运行开发服务器
+npm run build          # 构建静态文件到 dist/
+npm run preview        # 本地浏览 dist/ 构建产物
 ```
 

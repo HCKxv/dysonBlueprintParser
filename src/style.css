@@ -849,6 +849,8 @@ textarea::-webkit-scrollbar-thumb,
 
 .paint-col {
   overflow: hidden;
+  /* 边缘模糊层的定位基准 */
+  position: relative;
 }
 
 .paint-scroll {
@@ -856,6 +858,38 @@ textarea::-webkit-scrollbar-thumb,
   flex-direction: column;
   gap: 8px;
   padding-right: 4px;
+}
+
+/* ── 滚动容器上下边缘: 超出容器范围的内容做模糊过渡 ── */
+.scroll-edge-blur {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 30px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.scroll-edge-blur.show {
+  opacity: 1;
+}
+
+.scroll-edge-blur.top {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(11, 16, 32, 0.7), rgba(11, 16, 32, 0));
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+}
+
+.scroll-edge-blur.bottom {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(11, 16, 32, 0.7), rgba(11, 16, 32, 0));
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
 }
 
 /* ── 折叠分组 ── */
