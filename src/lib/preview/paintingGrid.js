@@ -114,6 +114,15 @@ function latLngToLocal(latDeg, lngDeg) {
   ];
 }
 
+// 游戏局部坐标 → 经纬度（度）: lat = asin(y)，lng = atan2(x, -z)
+function localToLatLng(x, y, z) {
+  const r = Math.max(1e-9, Math.hypot(x, y, z));
+  return {
+    lat: Math.asin(Math.max(-1, Math.min(1, y / r))) * 180 / Math.PI,
+    lng: Math.atan2(x, -z) * 180 / Math.PI,
+  };
+}
+
 // 生成经纬线网格的涂色几何
 // 游戏涂色覆盖层材质为不透明替换混合 (_SrcBlend=One, _DstBlend=Zero, _ZWrite=On)，
 // 壳面颜色不会透过涂色; 超亮涂色在游戏内是 HDR×_SuperBrightness(3.0)+泛光，
@@ -211,8 +220,8 @@ function buildGeoGeometry(fillGrid) {
   const asset = getGeoAsset(fillGrid.gridType);
   if (!asset) return null;
   const nTris = asset.indices.length / 3;
-  
-  if (colors.length * 2 / 3 !== nTris) return null;
+
+  if (colors.length < nTris) return null;
 
   const pos = asset.positions;
   const idx = asset.indices;
@@ -267,9 +276,158 @@ function buildPaintingGeometry(fillGrid) {
   return buildGeoGeometry(fillGrid);
 }
 
+
+// 经纬线网格: 由带结构生成带 UV 的球面网格（uv.x = 经度 0-1，uv.y = 纬度 0-1，v=1 为北极）
+function buildGraticuleMesh(lonStepDeg = 2) {
+  const bands = buildGraticuleBands();
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+  const lineIndices = [];
+  const bandsMeta = [];
+  let cellBase = 0;
+
+  for (const band of bands) {
+    // 剖分数必须与涂色层 buildGraticuleGeometry 的 m = ceil(格宽/2) 一致:
+    // 用 round 的话，格宽/2 的小数部分在 (0,0.5) 时会少分一段，弦长翻倍、下沉更多，
+    // 网格线就会掉到涂色面下面被挡住（纬度 ±70 一带最明显）
+    const nLon = Math.max(1, Math.ceil(360 / band.seg / lonStepDeg));
+    const rows = [];
+    for (const latIdx of [band.latIdx, band.latIdx + 1]) {
+      const lat = Math.max(-90, Math.min(90, latIdx * 1.5));
+      const row = [];
+      for (let li = 0; li <= band.seg * nLon; li += 1) {
+        const lng = (li / (band.seg * nLon)) * 360;
+        row.push(positions.length / 3);
+        const p = latLngToLocal(lat, lng);
+        positions.push(p[0], p[1], p[2]);
+        uvs.push(lng / 360, (lat + 90) / 180);
+      }
+      rows.push(row);
+    }
+    const cols = band.seg * nLon;
+    for (let li = 0; li < cols; li += 1) {
+      const a = rows[0][li], b = rows[0][li + 1];
+      const c = rows[1][li + 1], d = rows[1][li];
+      // 绕序: 与 three 的 FrontSide(逆时针朝外) 一致，法线朝球外
+      if (band.latLo > -90) indices.push(a, c, b);
+      if (band.latHi < 90) indices.push(a, d, c);
+    }
+    // 网格线只画格子边界，不能拿三角形的三条边来画（那样每个四边形的内部对角线也会画出来）
+    //   纬线段: 沿整条纬线逐段折线（cols 段，保证圆弧平滑）
+    //   经线段: 只画真正的格子边界 —— 每格一条，即列下标 li * nLon。
+    //           极带一格宽 22.5°，被细分成 11 段，若按段画就会出现 11 倍密度的假经线
+    for (let li = 0; li < cols; li += 1) {
+      if (band.latLo > -90) lineIndices.push(rows[0][li], rows[0][li + 1]);
+      if (band.latHi < 90) lineIndices.push(rows[1][li], rows[1][li + 1]);
+    }
+    for (let li = 0; li < band.seg; li += 1) {
+      const c = li * nLon;
+      lineIndices.push(rows[0][c], rows[1][c]);
+    }
+    bandsMeta.push({
+      latIdx: band.latIdx,
+      latLo: band.latLo,
+      latHi: band.latHi,
+      seg: band.seg,
+      base: cellBase,
+    });
+    cellBase += band.seg;
+  }
+
+  return {
+    positions: new Float32Array(positions),
+    uvs: new Float32Array(uvs),
+    indices: new Uint32Array(indices),
+    lineIndices: new Uint32Array(lineIndices),
+    bands: bandsMeta,
+    cellCount: cellBase,
+  };
+}
+
+// 测地线网格: 返回游戏精确三角形网格 + 由顶点位置推算的 UV（uv.x = 经度 0-1，uv.y = 纬度 0-1）
+function buildGeoMesh(gridType) {
+  const asset = getGeoAsset(gridType);
+  if (!asset) return null;
+  const n = asset.positions.length / 3;
+  const uvs = new Float32Array(n * 2);
+  for (let i = 0; i < n; i += 1) {
+    const x = asset.positions[i * 3];
+    const y = asset.positions[i * 3 + 1];
+    const z = asset.positions[i * 3 + 2];
+    const r = Math.max(1e-6, Math.hypot(x, y, z));
+    uvs[i * 2] = (Math.atan2(x, -z) / (2 * Math.PI) + 0.5) % 1;
+    uvs[i * 2 + 1] = Math.asin(Math.max(-1, Math.min(1, y / r))) / Math.PI + 0.5;
+  }
+  return {
+    positions: asset.positions,
+    uvs,
+    indices: asset.indices,
+    bands: null,
+    cellCount: asset.indices.length / 3,
+  };
+}
+
+/**
+ * 取得涂色网格网格数据
+ * @param {number} gridType 0=经纬线 1=geo20 2=geo8 3=geo4
+ * @returns {{positions:Float32Array, uvs:Float32Array, indices:Uint32Array, bands:Array|null, cellCount:number}|null}
+ */
+function getGridMesh(gridType) {
+  if (gridType === 0) return buildGraticuleMesh();
+  return buildGeoMesh(gridType);
+}
+
+// 等距圆柱贴图球面: 顶点位置与 UV 都用游戏经纬度约定生成
+// （u=0 → 经度 0° = -Z 方向，东 = +X，v=1 → 北极）
+// 这样贴图与经纬线网格、测地线网格的 UV 完全同源，不存在缝/方向错位
+function buildEquirectSphere(lonSegments = 180, latSegments = 90) {
+  const positions = new Float32Array((lonSegments + 1) * (latSegments + 1) * 3);
+  const uvs = new Float32Array((lonSegments + 1) * (latSegments + 1) * 2);
+  const indices = new Uint32Array(lonSegments * latSegments * 6);
+  let vi = 0;
+  let ui = 0;
+  for (let iy = 0; iy <= latSegments; iy += 1) {
+    const v = iy / latSegments;
+    const lat = v * 180 - 90;
+    for (let ix = 0; ix <= lonSegments; ix += 1) {
+      const u = ix / lonSegments;
+      const p = latLngToLocal(lat, u * 360);
+      positions[vi] = p[0];
+      positions[vi + 1] = p[1];
+      positions[vi + 2] = p[2];
+      vi += 3;
+      uvs[ui] = u;
+      uvs[ui + 1] = v;
+      ui += 2;
+    }
+  }
+  let ii = 0;
+  for (let iy = 0; iy < latSegments; iy += 1) {
+    for (let ix = 0; ix < lonSegments; ix += 1) {
+      const a = iy * (lonSegments + 1) + ix;
+      const b = a + lonSegments + 1;
+      // 绕序: 逆时针朝外（法线朝球外），贴图朝外可见
+      indices[ii] = a;
+      indices[ii + 1] = b + 1;
+      indices[ii + 2] = a + 1;
+      indices[ii + 3] = a;
+      indices[ii + 4] = b;
+      indices[ii + 5] = b + 1;
+      ii += 6;
+    }
+  }
+  return { positions, uvs, indices };
+}
+
 export {
   buildPaintingGeometry,
   buildGraticuleBands,
+  buildGraticuleMesh,
+  buildEquirectSphere,
+  getGridMesh,
+  latLngToLocal,
+  localToLatLng,
   segByLatIdx,
 };
 

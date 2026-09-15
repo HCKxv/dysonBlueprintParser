@@ -65,8 +65,7 @@ async function confirm() {
   try{
     const multi = await copyShell(toRaw(parsed), { ...form })
     const text = await stringifyBlueprint(multi)
-    const name = `${form.count}层戴森壳_${Date.now()}`
-    downloadTxt(text, name)
+    downloadTxt(text, `${form.count}层戴森壳`)
     await navigator.clipboard.writeText(text)
     store.showCopyShellModal = false
     toast.show(`已生成 ${form.count} 层戴森壳，并复制到剪贴板`)

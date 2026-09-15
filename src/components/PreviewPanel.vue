@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { DysonSpherePreview } from '../lib/preview/preview.js'
-import { downloadBlob } from '../utils/download'
+import { downloadCanvas } from '../utils/download'
 import { setPreview } from '../stores/app'
 import { useToast } from '../composables/useToast'
 
@@ -22,18 +22,8 @@ onBeforeUnmount(() => {
   preview = null
 })
 
-// 导出文件名时间戳（YYYYMMDD-HHmmss）
-function timestamp(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
-    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
-  )
-}
-
 // 导出当前预览画面为 PNG 并触发下载
-function onExportImage() {
+async function onExportImage() {
   if (!preview) {
     toast.show('预览尚未初始化')
     return
@@ -43,14 +33,12 @@ function onExportImage() {
     toast.show('导出失败：无法生成图片')
     return
   }
-  out.toBlob((blob) => {
-    if (!blob) {
-      toast.show('导出失败：无法生成图片')
-      return
-    }
-    downloadBlob(blob, `戴森球预览图-${timestamp()}`)
+  try {
+    await downloadCanvas(out, '戴森球预览图')
     toast.show('已导出图片')
-  }, 'image/png')
+  } catch (error) {
+    toast.show(`导出失败：${(error as Error).message}`)
+  }
 }
 </script>
 

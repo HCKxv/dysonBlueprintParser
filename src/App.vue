@@ -2,10 +2,12 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import BlueprintParse from './components/BlueprintParse.vue'
+import PaintingParse from './components/PaintingParse.vue'
 import FooterBar from './components/FooterBar.vue'
 import AppToast from './components/AppToast.vue'
 import CopyShellModal from './components/copyShellModal.vue'
 import { loadUrlBlueprint } from './stores/app'
+import { activeTool } from './stores/tool'
 
 // 全局拖放拦截 / 中键自动滚动阻止
 function onGlobalDragOver(e: DragEvent) {
@@ -38,7 +40,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="app">
     <AppHeader />
-    <BlueprintParse />
+    <BlueprintParse v-if="activeTool === 'preview'" />
+    <PaintingParse v-else />
   </div>
 
   <FooterBar />

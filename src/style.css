@@ -66,6 +66,74 @@ body {
   white-space: nowrap;
 }
 
+/* ── 工具切换滑动按钮 ─────────────────────────────────────── */
+.tool-slider {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+  padding: 2px;
+  border: 1px solid #243556;
+  border-radius: 10px;
+  background: #0b1220;
+  gap: 0;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.tool-slider-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: calc(100% - 4px);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #4364eb, #3451c9);
+  box-shadow: 0 2px 10px rgba(67, 100, 235, 0.45);
+  transition: transform 0.28s cubic-bezier(0.4, 0.9, 0.3, 1);
+  pointer-events: none;
+}
+
+.tool-slider-btn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 14px;
+  border-radius: 8px;
+  background: transparent;
+  color: #9fb0d0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition: color 0.25s ease;
+}
+
+.tool-slider-btn:hover {
+  background: transparent;
+  color: #e7ebff;
+}
+
+.tool-slider-btn.active,
+.tool-slider-btn.active:hover {
+  background: transparent;
+  color: #fff;
+  font-weight: bold;
+}
+
+@media (max-width: 960px) {
+  .tool-slider {
+    order: 3;
+    margin-left: 0;
+  }
+
+  .header-author {
+    order: 4;
+  }
+}
+
 .col {
   display: flex;
   flex-direction: column;
@@ -717,6 +785,873 @@ textarea::-webkit-scrollbar-thumb,
 
 .w-70 {
   width: 70px;
+}
+
+/* ── 彩绘生成工具 ─────────────────────────────────────────── */
+/* 两栏 1 : 2，左栏最小 360px；行数必须固定成一行，
+   否则会命中 @media (max-width:1500px) 里 .panels 的 auto minmax(0,1fr)，预览被压扁 */
+.panels--paint {
+  grid-template-columns: minmax(360px, 1fr) minmax(0, 2fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "left center";
+}
+
+.panels--paint > .paint-col {
+  grid-area: left;
+}
+
+/* 彩绘预览那一栏: 与蓝图预览的 .panel-center 无关，只用一个区域名 */
+.panels--paint > .paint-col-preview {
+  grid-area: center;
+  min-width: 0;
+}
+
+/* 预览栏的视图切换行（3D 预览 / 平面展开） */
+.paint-view-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.paint-view-switch {
+  /* 两列等宽，50% 宽的滑块才能正好对上第二格 */
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  margin-left: 0;
+}
+
+.paint-view-switch .tool-slider-btn {
+  justify-content: center;
+  padding: 3px 12px;
+  font-size: 12px;
+  gap: 0;
+}
+
+.btn-ghost {
+  background: #1a2438;
+  color: #bcc8e0;
+  border: 1px solid #2d4a6e;
+}
+
+.btn-ghost:hover {
+  background: #22314b;
+  color: #eef2ff;
+}
+
+.btn-ghost:disabled,
+.btn-ghost:disabled:hover {
+  background: #161e2e;
+  color: #6d7a92;
+  opacity: 0.6;
+}
+
+.paint-col {
+  overflow: hidden;
+}
+
+.paint-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+/* ── 折叠分组 ── */
+.paint-section {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #243556;
+  border-radius: 10px;
+  background: #0f1628;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.paint-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #bcc8e0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.paint-section-header:hover {
+  background: #16203a;
+  color: #eef2ff;
+}
+
+.paint-section-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 标题栏右侧的卡片级操作 */
+.paint-section-extra {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.paint-section-extra .btn-sm {
+  font-weight: normal;
+}
+
+.paint-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 10px 10px;
+  min-width: 0;
+}
+
+.paint-section-body.collapsed {
+  display: none;
+}
+
+/* ── 图片输入 ── */
+.paint-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.image-drop {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  border: 1px dashed #34506f;
+  background: #0f1628;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.image-drop:hover {
+  border-color: #4364eb;
+}
+
+.image-drop.has-image {
+  border-style: solid;
+  border-color: #243556;
+}
+
+.image-drop.drag-over {
+  border-color: #4364eb;
+  box-shadow: 0 0 12px rgba(67, 100, 235, 0.4);
+}
+
+.image-drop-hint {
+  font-size: 12px;
+  color: #bcc8e0;
+  text-align: center;
+}
+
+.image-drop-sub {
+  font-size: 11px;
+  color: #7b8aa6;
+  text-align: center;
+}
+
+.image-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.image-meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: #dce4f5;
+  background: linear-gradient(180deg, rgba(5, 8, 14, 0), rgba(5, 8, 14, 0.88));
+}
+
+.image-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-dim {
+  margin-left: auto;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.image-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #eef2ff;
+  background: rgba(9, 11, 20, 0.62);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-drop:hover .image-overlay {
+  opacity: 1;
+}
+
+.image-drop .drop-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-size: 13px;
+  font-weight: bold;
+  color: #eef2ff;
+  opacity: 0;
+  transition: opacity 0.2s;
+  text-align: center;
+  background: rgba(16, 22, 36, 0.9);
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 2px dashed #4364eb;
+  white-space: nowrap;
+}
+
+.image-drop .drop-hint.show {
+  opacity: 1;
+}
+
+.paint-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.paint-tip {
+  font-size: 11px;
+  color: #7b8aa6;
+}
+
+.paint-params-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #1c2740;
+  min-width: 0;
+}
+
+.paint-params-block:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.paint-params-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #8fa3c8;
+}
+
+.paint-params-head .btn-sm {
+  margin-left: auto;
+}
+
+.paint-param {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.paint-param-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.paint-param-label {
+  font-size: 12px;
+  color: #bcc8e0;
+}
+
+.paint-param-value {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.paint-param-value.mono {
+  font-size: 11px;
+  color: #8fa3c8;
+  font-variant-numeric: tabular-nums;
+}
+
+.paint-num {
+  width: 62px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.paint-unit {
+  font-size: 11px;
+  color: #7b8aa6;
+}
+
+/* 颜色选择器（填充色） */
+.paint-color {
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #23334f;
+  border-radius: 5px;
+  background: #101624;
+  cursor: pointer;
+}
+
+.paint-unit.mono {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.paint-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #4364eb 0%,
+    #4364eb var(--paint-range-fill, 50%),
+    #22304a var(--paint-range-fill, 50%),
+    #22304a 100%
+  );
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.paint-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e7ebff;
+  border: 2px solid #4364eb;
+  box-shadow: 0 0 6px rgba(67, 100, 235, 0.6);
+}
+
+.paint-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e7ebff;
+  border: 2px solid #4364eb;
+}
+
+/* 有挡位的滑块：轨道下方标出每个挡位 */
+.paint-range-ticks {
+  position: relative;
+  height: 7px;
+  margin-top: -1px;
+}
+
+.paint-range-tick {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 5px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #2d4a6e;
+}
+
+.paint-range-tick.active {
+  background: #4364eb;
+}
+
+.paint-select {
+  width: 100%;
+  padding: 3px 4px;
+}
+
+.paint-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.paint-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #bcc8e0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.paint-preset-row {
+  margin-left: 0;
+  gap: 4px;
+}
+
+/* 「自定义」按钮 + 取色器: 选中时用一个框圈成同一个控件 */
+.paint-custom-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.paint-custom-group.boxed {
+  padding: 1px 3px 1px 1px;
+  border: 1px solid #2d4a6e;
+  border-radius: 9px;
+  background: #131c2d;
+  /* 拉伸取色器到按钮的高度 */
+  align-items: stretch;
+}
+
+.paint-custom-group.boxed .btn-sm {
+  border-radius: 7px;
+}
+
+/* 取色器与「自定义」按钮同尺寸 */
+.paint-custom-group.boxed .paint-color {
+  width: 58px;
+  height: auto;
+  border-radius: 7px;
+}
+
+/* 色块填满取色器本身（Chrome 默认会在 swatch 外留内边距） */
+.paint-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.paint-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+/* ── 参数设置 ── */
+.paint-projection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 组件只是内容容器: 让内部的 .paint-params-block 直接参与外层排布，
+   分组分隔线才连续（否则最后一块不会画下边框） */
+.paint-section-body > .paint-projection {
+  display: contents;
+}
+
+/* 投影模式卡片等宽平分整行 */
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  width: 100%;
+  gap: 8px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  border: 1px solid #243556;
+  background: #0f1628;
+  color: #bcc8e0;
+  text-align: left;
+  /* 全局 button 有 width: fit-content，这里要显式撑满格子 */
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.mode-card:hover {
+  background: #16203a;
+  border-color: #34506f;
+}
+
+.mode-card.active {
+  background: #16233c;
+  border-color: #4364eb;
+  color: #eef2ff;
+  box-shadow: inset 0 0 0 1px rgba(67, 100, 235, 0.35);
+}
+
+/* 模式图标: 内联 SVG（currentColor），跟随卡片文字色 */
+.mode-icon {
+  font-size: 15px;
+  line-height: 1.1;
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+}
+
+.mode-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.mode-label {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.mode-desc {
+  font-size: 10px;
+  line-height: 1.4;
+  color: #7b8aa6;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── 基底蓝图 ── */
+.paint-base {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 选项上下排列（全局 button 有 width: fit-content，这里要显式撑满） */
+.base-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.base-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border-radius: 9px;
+  border: 1px solid #243556;
+  background: #0f1628;
+  color: #bcc8e0;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.base-item:hover {
+  background: #16203a;
+  border-color: #34506f;
+}
+
+.base-item.active {
+  background: #16233c;
+  border-color: #4364eb;
+  color: #eef2ff;
+  box-shadow: inset 0 0 0 1px rgba(67, 100, 235, 0.35);
+}
+
+.base-name {
+  font-size: 12px;
+  font-weight: bold;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.base-meta {
+  font-size: 10px;
+  line-height: 1.4;
+  color: #7b8aa6;
+}
+
+/* 导入入口不是可选项: 虚线边框、无选中态，只有箭头表示展开/收起 */
+.base-import-toggle {
+  border-style: dashed;
+  background: transparent;
+}
+
+.base-import-toggle .base-arrow {
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 0.2s;
+}
+
+.base-import-toggle.open .base-arrow {
+  transform: rotate(90deg);
+}
+
+/* 导入蓝图: 提示 + 输入框 + 应用 */
+.base-import {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.base-import-hint {
+  padding: 2px 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7b8aa6;
+}
+
+.base-import-input {
+  width: 100%;
+  min-height: 64px;
+  max-height: 150px;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid #23334f;
+  background: #101624;
+  color: #eef2ff;
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.base-import-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── 彩绘预览 ── */
+.paint-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.paint-preview-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #05080e;
+}
+
+.paint-preview-stage canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 3D 画布被展开图盖住时只是「看不见」，仍占着布局尺寸 */
+.paint-preview-stage canvas.is-hidden {
+  visibility: hidden;
+}
+
+.paint-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  font-size: 13px;
+  color: #bcc8e0;
+  text-align: center;
+  padding: 12px;
+}
+
+/* 复位视角: 舞台左下角 */
+.paint-preview-tools {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+.paint-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.paint-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #111926;
+  border: 1px solid #1e3657;
+  color: #bcc8e0;
+  white-space: nowrap;
+}
+
+/* 网格线开关（在预览栏底部状态行里） */
+.paint-grid-toggle {
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid #22304a;
+  font-size: 11px;
+}
+
+/* ── 导出面板 ── */
+/* 复制蓝图 / 下载蓝图 / 查看蓝图 上下排列 */
+.paint-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 全局 button 有 width: fit-content，这里要显式撑满整行 */
+.paint-actions .btn {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 导出提示 */
+.paint-export-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7b8aa6;
+}
+
+/* 平面展开（与 3D 预览共用一块舞台，由预览栏的滑动按钮切换） */
+.paint-flatmap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #05080e;
+}
+
+/* 只有「导出展开图」按钮，靠右 */
+.paint-flatmap-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #bcc8e0;
+  flex-shrink: 0;
+}
+
+.paint-flatmap-head .btn-sm {
+  margin-left: auto;
+}
+
+.paint-flatmap-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 叠加层尺寸跟着图片走（只显示，不导出） */
+.paint-flatmap-figure {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.paint-flatmap-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.paint-flatmap-img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  border-radius: 6px;
+  border: 1px solid #22304a;
+  image-rendering: pixelated;
+}
+
+.paint-flatmap-empty {
+  font-size: 12px;
+  color: #7b8aa6;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.paint-flatmap-hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7b8aa6;
+  flex-shrink: 0;
+}
+
+/* 窄屏（≤960px，与顶栏工具切换同一断点）才上下叠放：预览在上、输入在下 */
+@media (max-width: 960px) {
+  .panels--paint {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "center"
+      "left";
+  }
+
+  .panels--paint > .paint-col-preview {
+    order: 1;
+    aspect-ratio: 4 / 3;
+  }
+
+  .panels--paint > .paint-col {
+    order: 2;
+  }
 }
 
 .w-80 {

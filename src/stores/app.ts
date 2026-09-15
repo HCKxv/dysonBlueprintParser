@@ -8,6 +8,7 @@ import { buildStatsTree, type StatNode } from '../components/StatsPanel/statsTre
 import { loadBlueprintFromUrl } from '../utils/urlLoader'
 import { downloadTxt } from '../utils/download'
 import { useToast } from '../composables/useToast'
+import { setTool } from './tool'
 
 /** DysonSpherePreview 的命令式子集（由 PreviewPanel 注入实例） */
 export interface DysonPreview {
@@ -99,14 +100,19 @@ watch(
 // ─────────────────────────────────────────────────────────────
 const preview = shallowRef<DysonPreview | null>(null)
 
+/** 注入预览实例 */
 export function setPreview(instance: DysonPreview | null) {
   preview.value = instance
+  if (!instance) return
   // 挂载时把已保存的显示设置应用到预览实例
-  if (instance) {
-    instance.setGridVisible(store.gridVisible)
-    instance.setRotationEnabled(store.rotateEnabled)
-    instance.setRotationSpeed(store.speed)
-    instance.setBackgroundMode(store.background)
+  instance.setGridVisible(store.gridVisible)
+  instance.setRotationEnabled(store.rotateEnabled)
+  instance.setRotationSpeed(store.speed)
+  instance.setBackgroundMode(store.background)
+
+  if (store.parsed) {
+    instance.render(store.parsed.body)
+    instance.setSunColor(clampLum(store.luminosity))
   }
 }
 
@@ -191,6 +197,7 @@ export async function parseBlueprint() {
   store.powerResult = null
   store.powerText = '0 W'
   store.statsTree = []
+
   preview.value?.clearScene()
   await nextFrame() // 等待下一帧，确保禁用样式已应用
 
@@ -245,8 +252,7 @@ export async function exportShellLayer(orbitId: number) {
   try {
     const single = extractSingleShell(toRaw(parsed), orbitId)
     const text = await stringifyBlueprint(single)
-    const name = `壳层${orbitId}_${Date.now()}`
-    downloadTxt(text, name)
+    downloadTxt(text, `壳层${orbitId}`)
     await navigator.clipboard.writeText(text)
     toast.show(`已提取壳层 ${orbitId} 为单层壳蓝图，并复制到剪贴板`)
   } catch (error) {
@@ -283,7 +289,7 @@ export async function exportStructure(type:'shell'|'cloud') {
   try {
     const single = extractStructure(toRaw(parsed), type)
     const text = await stringifyBlueprint(single)
-    downloadTxt(text, `${type==='shell'? '戴森壳':'戴森云'}_${Date.now()}`)
+    downloadTxt(text, type === 'shell' ? '戴森壳' : '戴森云')
     await navigator.clipboard.writeText(text)
     toast.show(`已提取为${type==='shell'? '戴森壳':'戴森云'}蓝图，并复制到剪贴板`)
   } catch (error) {
@@ -300,9 +306,8 @@ export async function exportBlueprint() {
   }
   try {
     const text = await stringifyBlueprint(store.parsed)
-    const name = `戴森球_${Date.now()}`
-    downloadTxt(text, name)
-    toast.show(`已将蓝图导出到 ${name}`)
+    downloadTxt(text, '戴森球')
+    toast.show('已将蓝图导出到下载目录')
   } catch (error) {
     toast.show(`导出蓝图失败：\n${(error as Error).message}`)
   }
@@ -353,6 +358,7 @@ export function loadUrlBlueprint() {
   loadBlueprintFromUrl({
     onLoadStart: () => toast.show('正在加载蓝图'),
     onLoaded: (text) => {
+      setTool('preview')
       store.input = text
       parseBlueprint()
     },
