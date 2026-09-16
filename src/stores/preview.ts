@@ -18,6 +18,7 @@ export interface DysonPreview {
   setRotationSpeed(speed: number): void
   setSunColor(luminosity: number): void
   setBackgroundMode(mode: 'plain' | 'star'): void
+  setQuality(level: 'low' | 'high'): void
 }
 
 const toast = useToast()
@@ -44,6 +45,7 @@ const store = reactive({
   rotateEnabled: true,
   speed: 0.05,
   background: 'plain' as 'plain' | 'star',
+  quality: 'high' as 'low' | 'high',
   menuCollapsed: true,
 
   showCopyShellModal: false,
@@ -69,6 +71,7 @@ function loadDisplaySettings() {
   if (typeof data.rotateEnabled === 'boolean') store.rotateEnabled = data.rotateEnabled
   if (data.speed === 0.01 || data.speed === 0.05 || data.speed === 0.2) store.speed = data.speed
   if (data.background === 'plain' || data.background === 'star') store.background = data.background
+  if (data.quality === 'low' || data.quality === 'high') store.quality = data.quality
 }
 
 /** 将显示设置写入 localStorage */
@@ -79,6 +82,7 @@ function saveDisplaySettings() {
       rotateEnabled: store.rotateEnabled,
       speed: store.speed,
       background: store.background,
+      quality: store.quality,
     }))
   } catch {
     /* localStorage 不可用（隐私模式等）时忽略 */
@@ -107,9 +111,10 @@ export function setPreview(instance: DysonPreview | null) {
   instance.setRotationEnabled(store.rotateEnabled)
   instance.setRotationSpeed(store.speed)
   instance.setBackgroundMode(store.background)
+  instance.setQuality(store.quality)
 
+  instance.setSunColor(clampLum(store.luminosity))
   if (store.parsed) {
-    instance.setSunColor(clampLum(store.luminosity))
     // 切回「蓝图预览」时先把工具界面绘制出来，再重建 3D 场景：
     afterPaint(() => {
       // 这两帧内可能又切走或换了实例，此时不该再渲染
@@ -350,6 +355,13 @@ export function setRotationSpeed(speed: number) {
 export function setBackground(mode: 'plain' | 'star') {
   store.background = mode
   preview.value?.setBackgroundMode(mode)
+}
+
+/** 切换画质档位 */
+export function setQuality(level: 'low' | 'high') {
+  store.quality = level
+  preview.value?.setQuality(level)
+  saveDisplaySettings()
 }
 
 /** 处理拖放得到的蓝图文本/文件内容，校验后自动解析 */

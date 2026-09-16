@@ -30,6 +30,7 @@ function _toHexColor(color, defaultColor) {
   return defaultColor;
 }
 
+// 蓝图局部坐标 → 预览坐标（z 翻转）
 function _convertBP(coord) {
   return new THREE.Vector3(coord.x, coord.y, -coord.z);
 }
@@ -69,8 +70,6 @@ function _latLonToWorld(lat, lon, r, pole = new THREE.Vector3(0, 1, 0)) {
     .addScaledVector(north, r * cosLat * Math.cos(lon))
     .addScaledVector(poleN, r * Math.sin(lat));
 }
-
-// ─── 几何构建 ────────────────────────────────────────────────
 
 function _buildOrbitPoints(radius, orbit) {
   const q = _normQuat(orbit);
@@ -134,96 +133,17 @@ function _gridArcPoints(from, to, segments = 18, pole = null) {
   return pts;
 }
 
-// 构建单个壳面的三角形几何（返回 { positions: 扁平数组, indices }，法线朝外）
-function _buildFaceGeometry(points, pole, edgeTypes) {
-  if (points.length < 3) return null;
-  const spherePoints = points.map(p => p.clone());
-  if (edgeTypes) {
-    const refined = [];
-    for (let i = 0; i < points.length; i++) {
-      const from = points[i], to = points[(i + 1) % points.length];
-      const sub = edgeTypes[i] === 1 && pole
-        ? _gridArcPoints(from, to, 9, pole)
-        : _sphericalArcPoints(from, to, 5);
-      for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
-    }
-    return _buildFaceGeometry(refined, pole, null);
+// 壳面边界按框架类型细分
+function _refineFaceBoundary(points, pole, edgeTypes, geodesicSegments = 5, gridSegments = 9) {
+  const refined = [];
+  for (let i = 0; i < points.length; i++) {
+    const from = points[i], to = points[(i + 1) % points.length];
+    const sub = edgeTypes[i] === 1 && pole
+      ? _gridArcPoints(from, to, gridSegments, pole)
+      : _sphericalArcPoints(from, to, geodesicSegments);
+    for (let j = 0; j < sub.length - 1; j++) refined.push(sub[j]);
   }
-  const vertices = [], indices = [];
-  const addVertex = (v) => { vertices.push(v.x, v.y, v.z); return (vertices.length / 3) - 1; };
-  const subdivide = (a, b, c, divs = 3) => {
-    const ra = a.length(), rb = b.length(), rc = c.length();
-    const rowIndices = [];
-    for (let i = 0; i <= divs; i++) {
-      const row = [];
-      for (let j = 0; j <= divs - i; j++) {
-        const k = divs - i - j;
-        const tA = i / divs, tB = j / divs, tC = k / divs;
-        const r = tA * ra + tB * rb + tC * rc;
-        const pt = new THREE.Vector3().addScaledVector(a, tA).addScaledVector(b, tB).addScaledVector(c, tC).normalize().multiplyScalar(r);
-        row.push(addVertex(pt));
-      }
-      rowIndices.push(row);
-    }
-    for (let i = 0; i < rowIndices.length - 1; i++) {
-      const cur = rowIndices[i], nxt = rowIndices[i + 1];
-      for (let j = 0; j < cur.length - 1; j++) {
-        indices.push(cur[j], cur[j + 1], nxt[j]);
-        if (j < cur.length - 2) indices.push(cur[j + 1], nxt[j + 1], nxt[j]);
-      }
-    }
-  };
-  function earClip(poly) {
-    const tris = [], rem = poly.slice();
-    function signedArea(a, b, c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); }
-    function isConvex(prev, curr, next) { return signedArea(prev, curr, next) > 0; }
-    function ptInTri(pt, a, b, c) { const d1 = signedArea(pt, a, b), d2 = signedArea(pt, b, c), d3 = signedArea(pt, c, a); return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)); }
-    while (rem.length > 3) {
-      let found = false;
-      for (let i = 0; i < rem.length; i++) {
-        const prev = rem[(i - 1 + rem.length) % rem.length], curr = rem[i], next = rem[(i + 1) % rem.length];
-        if (!isConvex(prev, curr, next)) continue;
-        let isEar = true;
-        for (let j = 0; j < rem.length; j++) { if (j === (i - 1 + rem.length) % rem.length || j === i || j === (i + 1) % rem.length) continue; if (ptInTri(rem[j], prev, curr, next)) { isEar = false; break; } }
-        if (isEar) { tris.push([prev.idx, curr.idx, next.idx]); rem.splice(i, 1); found = true; break; }
-      }
-      if (!found) { const base = rem[0]; for (let i = 1; i < rem.length - 1; i++) tris.push([base.idx, rem[i].idx, rem[i + 1].idx]); break; }
-    }
-    if (rem.length === 3) tris.push([rem[0].idx, rem[1].idx, rem[2].idx]);
-    return tris;
-  }
-  const faceNormal = new THREE.Vector3();
-  for (let i = 0; i < spherePoints.length; i++) { const curr = spherePoints[i], next = spherePoints[(i + 1) % spherePoints.length]; faceNormal.x += (curr.y - next.y) * (curr.z + next.z); faceNormal.y += (curr.z - next.z) * (curr.x + next.x); faceNormal.z += (curr.x - next.x) * (curr.y + next.y); }
-  faceNormal.normalize();
-  const refX = Math.abs(faceNormal.x) < 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-  const axisU = new THREE.Vector3().crossVectors(refX, faceNormal).normalize();
-  const axisV = new THREE.Vector3().crossVectors(faceNormal, axisU).normalize();
-  const centroid = spherePoints.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / spherePoints.length);
-  const flat = spherePoints.map(p => { const d = p.clone().sub(centroid); return { x: d.dot(axisU), y: d.dot(axisV) }; });
-  const polygon = flat.map((p, idx) => ({ x: p.x, y: p.y, idx }));
-  const tris2d = earClip(polygon);
-  tris2d.forEach(([ai, bi, ci]) => { if (ai < spherePoints.length && bi < spherePoints.length && ci < spherePoints.length) subdivide(spherePoints[ai], spherePoints[bi], spherePoints[ci], 5); });
-  if (tris2d.length === 0) return null;
-  // 确保法线统一朝外（按三角形面法线判断，必要时翻转绕序）
-  let avgDot = 0;
-  for (let i = 0; i < indices.length; i += 3) {
-    const a = indices[i] * 3, b = indices[i + 1] * 3, c = indices[i + 2] * 3;
-    const ux = vertices[b] - vertices[a], uy = vertices[b + 1] - vertices[a + 1], uz = vertices[b + 2] - vertices[a + 2];
-    const vx = vertices[c] - vertices[a], vy = vertices[c + 1] - vertices[a + 1], vz = vertices[c + 2] - vertices[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const cx = (vertices[a] + vertices[b] + vertices[c]) / 3;
-    const cy = (vertices[a + 1] + vertices[b + 1] + vertices[c + 1]) / 3;
-    const cz = (vertices[a + 2] + vertices[b + 2] + vertices[c + 2]) / 3;
-    avgDot += nx * cx + ny * cy + nz * cz;
-  }
-  if (avgDot < 0) {
-    for (let i = 0; i < indices.length; i += 3) {
-      const tmp = indices[i + 1];
-      indices[i + 1] = indices[i + 2];
-      indices[i + 2] = tmp;
-    }
-  }
-  return { positions: vertices, indices };
+  return refined;
 }
 
-export { _colorIsValid, _toHexColor, _convertBP, _normQuat, _edgeKey, _getPoleBasis, _toLatLon, _latLonToWorld, _buildOrbitPoints, _createOrbitRing, _createOrbitGlow, _sphericalArcPoints, _gridArcPoints, _buildFaceGeometry };
+export { _toHexColor, _convertBP, _normQuat, _edgeKey, _sphericalArcPoints, _gridArcPoints, _createOrbitRing, _createOrbitGlow, _refineFaceBoundary };

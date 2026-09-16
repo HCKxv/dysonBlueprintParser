@@ -11,7 +11,7 @@
  *   5. setRotationEnabled(enabled)   旋转开关
  *   6. setRotationSpeed(speed)       转速修改（建议 0.01 慢 / 0.05 中 / 0.20 快）
  *   7. setSunColor(luminosity)       根据光度系数更新恒星颜色
- *   8. setPaintingVisible(visible)   涂色网格显示开关
+ *   8. setQuality(level)             画质档位 ('low' | 'high')
  *   9. setBackgroundMode(mode)       背景切换 ('plain'=纯色 | 'star'=星空)
  *  10. exportImage(scale)            导出当前预览画面（返回 PNG 画布）
  *
@@ -45,9 +45,27 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { buildCloudOrbit } from './buildCloud.js';
-import { buildShellLayer } from './buildShell.js';
+import { buildShellLayer, buildNodeGeometries } from './buildShell.js';
+import { ensureShellPatternTextures, onShellPatternReady, applyShellPainting, bakeShellPainting } from './shellPattern.js';
 import { getStarColors } from './starColors.js';
+
+// 泛光参数
+const BLOOM_STRENGTH = 0.4;
+const BLOOM_RADIUS = 0.3;
+const BLOOM_THRESHOLD = 0.8;
+// 画质档位
+const QUALITY_PRESETS = {
+  low: { pixelRatio: 1, bloom: false, msaa: 0, fxaa: false },
+  high: { pixelRatio: 2, bloom: true, msaa: 4, fxaa: true },
+};
+
 
 class DysonSpherePreview {
   constructor() {
@@ -68,8 +86,6 @@ class DysonSpherePreview {
     this._starBgColor = new THREE.Color(0x070D1A);
 
     this._shellGroups = [];
-    this._paintingMeshes = [];
-    this._paintingVisible = true;
     this._shellRotationEnabled = true;
     this._shellSpeed = 0.05;
     this._currentScale = 1;
@@ -77,10 +93,14 @@ class DysonSpherePreview {
     this._animFrameId = null;
     this._needsRender = true;   // 脏标记: 旋转/交互/场景变化时置位，静止时跳过渲染（省电）
     this._resizeObserver = null;
+    this._composer = null;
+    this._bloomPass = null;
+    this._fxaaPass = null;
+    this._quality = 'high';
 
     this._visObjects = new Map();
 
-    this._nodeGeom = null;
+    this._nodeGeoms = null;
     this._sharedBackMaterial = null;
 
     // 绑定的事件回调引用，用于 dispose
@@ -95,8 +115,13 @@ class DysonSpherePreview {
   init(canvas) {
     if (this._renderer) this.dispose();
 
-    if (!this._nodeGeom) this._nodeGeom = new THREE.SphereGeometry(1, 8, 8);
-    if (!this._sharedBackMaterial) this._sharedBackMaterial = new THREE.MeshBasicMaterial({ color: getStarColors(1.0).back, opacity: 1, transparent: true, side: THREE.BackSide, depthWrite: true });
+    // 节点（简化模型）: 主体圆柱 + 朝太阳方向的细圆柱 + 朝外发光端面
+    if (!this._nodeGeoms) this._nodeGeoms = buildNodeGeometries();
+    if (!this._sharedBackMaterial) this._sharedBackMaterial = new THREE.MeshBasicMaterial({ color: getStarColors(1.0).back, side: THREE.BackSide, depthWrite: true });
+
+    // 图案贴图异步加载: 提前开始，到位后强制重画一帧
+    ensureShellPatternTextures();
+    onShellPatternReady(() => { this._needsRender = true; });
 
     this._canvas = canvas;
 
@@ -106,9 +131,12 @@ class DysonSpherePreview {
     this._camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     this._camera.position.set(0, 1.8, -3.2);
 
-    this._renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this._renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this._renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+    // 后处理链
+    this._buildComposer();
 
     this._controls = new OrbitControls(this._camera, canvas);
     this._controls.enableDamping = true;
@@ -164,7 +192,7 @@ class DysonSpherePreview {
     );
     this._scene.add(this._starGlowInner);
 
-    // 星空背景（默认隐藏，可通过 setBackgroundMode('star') 开启）
+    // 星空背景（默认隐藏，可用 setBackgroundMode('star') 打开）
     this._createStarfield();
     this._starfieldGroup.visible = this._backgroundMode === 'star';
 
@@ -183,7 +211,6 @@ class DysonSpherePreview {
    */
   render(body) {
     this.clearScene();
-    this._paintingMeshes = [];
 
     const isSingleShell = body.typeId === 1;
     const cloud = body.dysonCloud;
@@ -226,11 +253,27 @@ class DysonSpherePreview {
         const shData = shell.shells?.[orbit.id] ?? null;
         if (!shData) continue;
         const gv = shell.visibility ? shell.visibility.inGame[orbit.id] : true;
-        const layer = buildShellLayer(shData, orbit, this._currentScale, this._nodeGeom, this._sharedBackMaterial);
+        const layer = buildShellLayer(shData, orbit, this._currentScale, this._nodeGeoms, this._sharedBackMaterial);
         layer.group.visible = gv;
-        this._shellGroups.push({ group: layer.group, pole: layer.pole, radius: orbit.radius });
-        for (const m of layer.paintingMeshes) m.visible = this._paintingVisible;
-        this._paintingMeshes.push(...layer.paintingMeshes);
+        // 涂色（A+）: 烘成立方体贴图后挂到细胞材质，图案压在其上
+        let paintCube = null;
+        if (layer.paintingGroup && layer.cells) {
+          try {
+            paintCube = bakeShellPainting(this._renderer, layer.paintingGroup, 1024);
+            // 涂色只挂正面细胞：背面保持自己的底色（背面要图案，但不要涂色）
+            applyShellPainting(layer.cells, paintCube);
+          } catch (err) {
+            console.warn('[shellPattern] 涂色烘焙失败，回退为不带涂色:', err);
+          } finally {
+            layer.paintingGroup.traverse((obj) => {
+              if (obj.isMesh) {
+                obj.geometry?.dispose?.();
+                obj.material?.dispose?.();
+              }
+            });
+          }
+        }
+        this._shellGroups.push({ group: layer.group, pole: layer.pole, radius: orbit.radius, paintCube });
         this._visObjects.set('shell_' + orbit.id, layer.group);
         this._rootGroup.add(layer.group);
       }
@@ -266,17 +309,6 @@ class DysonSpherePreview {
     this._needsRender = true;
   }
 
-  // ─── 4.5 涂色网格显示开关 ──────────────────────────────────
-
-  /**
-   * @param {boolean} visible
-   */
-  setPaintingVisible(visible) {
-    this._paintingVisible = visible;
-    for (const m of this._paintingMeshes) m.visible = visible;
-    this._needsRender = true;
-  }
-
   // ─── 5. 旋转开关 ──────────────────────────────────────────
 
   /**
@@ -305,10 +337,19 @@ class DysonSpherePreview {
   setSunColor(luminosity) {
     const lum = Math.max(0.01, Math.min(10, luminosity));
     const { back, core } = getStarColors(lum);
+    const sunColor = sunColorOf(core);
 
-    if (this._originSphere) this._originSphere.material.color.copy(new THREE.Color(core));
-    if (this._starGlowInner) this._starGlowInner.material.color.copy(new THREE.Color(core));
+    if (this._originSphere) this._originSphere.material.color.copy(sunColor);
+    if (this._starGlowInner) this._starGlowInner.material.color.copy(sunColor);
     this._sharedBackMaterial.color.copy(new THREE.Color(back));
+    // 背面的克隆材质（带图案补丁）也要跟着换色
+    for (const sg of this._shellGroups) {
+      sg.group.traverse((obj) => {
+        if (obj.userData && obj.userData.shellSharedBack === this._sharedBackMaterial) {
+          obj.material.color.copy(new THREE.Color(back));
+        }
+      });
+    }
     this._needsRender = true;
   }
 
@@ -345,14 +386,19 @@ class DysonSpherePreview {
    * 清空场景中的所有 3D 对象（壳层、云轨道、节点等）
    */
   clearScene() {
+    // 释放各壳层的涂色立方体贴图（A+ 方案烘出来的，不挂在场景图上，要单独释放）
+    for (const sg of this._shellGroups) {
+      if (sg.paintCube) sg.paintCube.dispose();
+    }
     this._shellGroups.length = 0;
-    this._paintingMeshes.length = 0;
     this._visObjects.clear();
     if (!this._rootGroup) return;
     // 递归释放所有子对象的几何体与材质
     this._rootGroup.traverse((obj) => {
-      // 共享的节点球体几何与壳面背面材质由类持有，不可释放
-      if (obj.geometry && obj.geometry !== this._nodeGeom) obj.geometry.dispose();
+// 共享的节点几何由类持有，不在这里释放
+      const shared = this._nodeGeoms
+        && (obj.geometry === this._nodeGeoms.body || obj.geometry === this._nodeGeoms.cap);
+      if (obj.geometry && obj.geometry !== this._sharedBackMaterial && !shared) obj.geometry.dispose();
       if (obj.material && obj.material !== this._sharedBackMaterial) {
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const m of mats) m.dispose();
@@ -364,11 +410,71 @@ class DysonSpherePreview {
 
   // ─── 生命周期 ──────────────────────────────────────────────
 
+  /** 按当前画质档位（重）建后处理链: MSAA/FXAA 变化时需要重建 */
+  _buildComposer() {
+    const q = QUALITY_PRESETS[this._quality] ?? QUALITY_PRESETS.high;
+    const ratio = Math.min(window.devicePixelRatio, q.pixelRatio);
+    const w = this._canvas.clientWidth || 1;
+    const h = this._canvas.clientHeight || 1;
+    this._renderer.setPixelRatio(ratio);
+    this._composer?.dispose();
+    this._composer = null;
+    this._bloomPass = null;
+    this._fxaaPass = null;
+    try {
+      // HalfFloat + samples
+      const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: q.msaa });
+      this._composer = new EffectComposer(this._renderer, rt);
+      this._composer.setPixelRatio(ratio);
+      this._composer.setSize(w, h);
+      this._composer.addPass(new RenderPass(this._scene, this._camera));
+      if (q.bloom) {
+        this._bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+        this._composer.addPass(this._bloomPass);
+      }
+      // OutputPass 负责最终的色调映射与 sRGB 输出（用了 composer 就不能直接靠 renderer 输出）
+      this._composer.addPass(new OutputPass());
+      if (q.fxaa) {
+        this._fxaaPass = new ShaderPass(FXAAShader);
+        this._fxaaPass.material.uniforms.resolution.value.set(1 / (w * ratio), 1 / (h * ratio));
+        this._composer.addPass(this._fxaaPass);   // FXAA 在 sRGB 输出之后做
+      }
+    } catch (err) {
+      console.warn('[preview] 后处理初始化失败，回退为直接渲染:', err);
+      this._composer = null;
+      this._bloomPass = null;
+      this._fxaaPass = null;
+    }
+    this._needsRender = true;
+  }
+
+  /**
+   * 切换画质档位
+   * @param {'low'|'high'} level
+   */
+  setQuality(level) {
+    if (!QUALITY_PRESETS[level] || level === this._quality) return;
+    this._quality = level;
+    this._buildComposer();
+  }
+
+  /** 出图: 有 composer 时走泛光后处理，否则直接渲染 */
+  _draw() {
+    if (this._composer) this._composer.render();
+    else this._renderer.render(this._scene, this._camera);
+  }
+
   resize() {
     if (!this._canvas || !this._renderer || !this._camera) return;
     const w = this._canvas.clientWidth, h = this._canvas.clientHeight;
     if (this._canvas.width !== w || this._canvas.height !== h) {
       this._renderer.setSize(w, h, false);
+      if (this._composer) this._composer.setSize(w, h);
+      // FXAA 需要知道实际像素尺寸
+      if (this._fxaaPass) {
+        const r = this._renderer.getPixelRatio();
+        this._fxaaPass.material.uniforms.resolution.value.set(1 / (w * r), 1 / (h * r));
+      }
     }
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
@@ -383,7 +489,7 @@ class DysonSpherePreview {
   exportImage(scale = 2) {
     if (!this._renderer || !this._scene || !this._camera || !this._canvas) return null;
     this.resize();
-    this._renderer.render(this._scene, this._camera);
+    this._draw();
     const w = Math.max(1, Math.round(this._canvas.width * scale));
     const h = Math.max(1, Math.round(this._canvas.height * scale));
     const out = document.createElement('canvas');
@@ -429,7 +535,12 @@ class DysonSpherePreview {
       this._starfieldGroup = null;
     }
     if (this._sharedBackMaterial) { this._sharedBackMaterial.dispose(); this._sharedBackMaterial = null; }
-    if (this._nodeGeom) { this._nodeGeom.dispose(); this._nodeGeom = null; }
+    if (this._nodeGeoms) {
+      this._nodeGeoms.body.dispose();
+      this._nodeGeoms.cap.dispose();
+      this._nodeGeoms = null;
+    }
+    if (this._composer) { this._composer.dispose(); this._composer = null; this._bloomPass = null; this._fxaaPass = null; }
     if (this._renderer) { this._renderer.dispose(); this._renderer = null; }
     if (this._controls) { this._controls.dispose(); this._controls = null; }
   }
@@ -568,7 +679,7 @@ class DysonSpherePreview {
       // 静止且无交互/变化时跳过渲染（省电）
       if (this._needsRender) {
         this.resize();
-        this._renderer.render(this._scene, this._camera);
+        this._draw();
         this._needsRender = false;
       }
     };
@@ -586,7 +697,7 @@ class DysonSpherePreview {
     const tick = radius * 0.05, midTick = radius * 0.04, minorTick = radius * 0.03;
     const fontSize = radius * 0.04;
 
-    // 刻度标签图集: 36 个 64×32 格（12 列 × 3 行）绘制到一张 canvas，
+    // 刻度标签图集: 36 个 64×32 格
     const CELL_W = 64, CELL_H = 32, COLS = 12, ROWS = 3;
     const atlas = document.createElement('canvas');
     atlas.width = CELL_W * COLS;
@@ -613,7 +724,7 @@ class DysonSpherePreview {
         const s = dir.clone().multiplyScalar(radius);
         const e = dir.clone().multiplyScalar(radius + tick);
         this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([s, e]), new THREE.LineBasicMaterial({ color: 0xffdd99 })));
-        // 标签公告板平面（Sprite 共享内部几何无法按实例设 UV，改用平面 + 图集 UV）
+        // 标签公告板平面（Sprite 共享内部几何无法按实例设 UV
         const k = deg / 10;
         const u0 = (k % COLS) / COLS, u1 = u0 + 1 / COLS;
         const r = Math.floor(k / COLS);
@@ -629,7 +740,7 @@ class DysonSpherePreview {
         const mesh = new THREE.Mesh(geom, labelMat);
         mesh.position.copy(dir.clone().multiplyScalar(radius + tick * 1.35));
         mesh.scale.set(fontSize * 2, fontSize, 1);
-        // 渲染在涂色层(renderOrder=3)之上（renderOrder 必须设在对象上，材质上的设置无效）；
+        // 渲染在涂色层(renderOrder=3)之上
         // 深度测试保留，被球体遮挡时依旧隐藏
         mesh.renderOrder = 4;
         // 平铺在黄道平面上: 文字方向垂直于刻度线（沿切向），数字底部朝向内侧，法线朝上
@@ -659,6 +770,12 @@ class DysonSpherePreview {
     this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: 0x556688 })));
   }
 
+}
+
+function sunColorOf(coreHex) {
+  const c = new THREE.Color(coreHex);
+  const l = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  return c.multiplyScalar(Math.max(1, 0.8 / Math.max(l, 0.02)));
 }
 
 export { DysonSpherePreview };

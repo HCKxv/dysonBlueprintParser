@@ -8,6 +8,7 @@ import {
   setRotationEnabled,
   setRotationSpeed,
   setBackground,
+  setQuality,
 } from '../../stores/preview'
 
 function onSpeedChange(e: Event) {
@@ -17,6 +18,11 @@ function onSpeedChange(e: Event) {
 function onBackgroundChange(e: Event) {
   const v = (e.target as HTMLSelectElement).value
   setBackground(v === 'star' ? 'star' : 'plain')
+}
+
+function onQualityChange(e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  setQuality(v === 'low' ? 'low' : 'high')
 }
 </script>
 
@@ -82,18 +88,22 @@ function onBackgroundChange(e: Event) {
             <option value="plain">纯色背景</option>
             <option value="star">星空背景</option>
           </select>
+          <select class="speed-select" :value="store.quality" @change="onQualityChange">
+            <option value="low">低画质</option>
+            <option value="high">高画质</option>
+          </select>
           <label>
             <input type="checkbox" v-model="store.gridVisible" @change="setGridVisible(store.gridVisible)" /> 刻度
           </label>
           <div class="menu">
-          <label>
-            <input type="checkbox" v-model="store.rotateEnabled" @change="setRotationEnabled(store.rotateEnabled)" /> 旋转
-          </label>
-          <select class="speed-select" :value="String(store.speed)" @change="onSpeedChange">
-            <option value="0.01">慢</option>
-            <option value="0.05">中</option>
-            <option value="0.2">快</option>
-          </select>
+            <label>
+              <input type="checkbox" v-model="store.rotateEnabled" @change="setRotationEnabled(store.rotateEnabled)" /> 旋转
+            </label>
+            <select class="speed-select" :value="String(store.speed)" @change="onSpeedChange">
+              <option value="0.01">慢</option>
+              <option value="0.05">中</option>
+              <option value="0.2">快</option>
+            </select>
           </div>
         </div>
       </div>

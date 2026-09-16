@@ -1,4 +1,4 @@
-import { compareVersion, getBodyTypeId, getCurrentTicks } from './utils.js';
+import { getBodyTypeId, getCurrentTicks } from './utils.js';
 import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from './codec.js';
 import { computeSignature } from './blueprintChecksum.js';
 import { compactAndRebuildIds } from './blueprintEdit.js';
