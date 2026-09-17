@@ -1,14 +1,9 @@
 /**
  * shellPattern — 壳面图案（游戏贴图）
- *
- * 只画图案，不碰六边形细胞结构（见 buildShellCells.js）。
- * 贴图取自游戏材质 dyson-shell-unlit-N 的 _ColorControlTex2（每图案一张线蒙版）。
- * uv 与游戏一致: u = x/3、v = x/6 + (0.5/√3)·y（x、y 以细胞内切半径为单位），
- * 再加格坐标偏移 ((2m-n)/3, (m+n)/3) ⇒ 每格一个 tile 且跨格连续；
- * 这些量由 buildShellCells 写进 aPatternUV / aPatternMN。
  */
 import * as THREE from 'three';
-// 图案线蒙版贴图（取自游戏材质 _ColorControlTex2）
+import { getShellCellGridScale } from './shellCellsCompute.js';
+// 图案线蒙版贴图
 import tex0 from '../../assets/shell-textures/dyson-shell-unlit-0.png';
 import tex1 from '../../assets/shell-textures/dyson-shell-unlit-1.png';
 import tex2 from '../../assets/shell-textures/dyson-shell-unlit-2.png';
@@ -36,12 +31,12 @@ const FINE_MASK_LOW = 0.1;
 const FINE_MASK_HIGH = 0.28;
 const FINE_GAIN = 1.6;    // 细网线亮度倍数
 const FINE_GLOW = 1.0;    // 细网线自发光强度（图案线是 PATTERN_GLOW）
-// 距离降级（对应 viewDistFalloff）: 底色回升早、图案收拢晚
-const INNER_FADE_START = 0.04;   // 一个像素跨 0.04 个细胞（≈25px 一格）开始回升
-const INNER_FADE_END = 0.22;     // ≈4.5px 一格时已完成回升
+// 距离降级（对应 viewDistFalloff）: 底色回升早、图案收拢晚；数值 = 一个像素跨多少个细胞
+const INNER_FADE_START = 0.03;   // ≈33px 一格开始回升
+const INNER_FADE_END = 0.16;     // ≈6px 一格时已完成回升
 // 图案/细网收拢（可以晚）: 让图案在更远的距离仍可见，和游戏的观感一致
-const FALLOFF_START = 0.15;      // ≈6.7px 一格图案开始收拢
-const FALLOFF_END = 0.9;         // ≈1.1px 一格完全收拢
+const FALLOFF_START = 0.11;      // ≈9px 一格图案开始收拢
+const FALLOFF_END = 0.65;        // ≈1.5px 一格完全收拢
 const FALLOFF_INNER_DIM = 0.95;  // 完全降级时底色 = 本色的 95%
 
 const dummyBlack = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
@@ -127,12 +122,15 @@ function bindPatternTexture(material, pattern) {
 /**
  * 给细胞材质挂上壳面图案（贴图 + 着色器补丁）
  *
- * 需要的顶点属性（由 buildShellCells 写入）:
+ * 需要的顶点属性（由 buildShell 的 assembleShellCells 写入）:
  *   aPatternUV vec2 — 该顶点在细胞内的图案 uv（已含格坐标偏移，可直接采样）
  *   aPatternMN vec2 — 该细胞所属格点系数 (m,n)（保留给后续扩展，例如细胞点细网）
  *
  * @param {THREE.Material} material 细胞材质（会就地打补丁）
- * @param {{ pattern?: number }} [options]
+ * @param {object} [options]
+ * @param {number} [options.pattern] 图案 id（0~6），决定用哪张线蒙版贴图
+ * @param {number} [options.gridScale] 细网在一格细胞里的重复次数（= 细胞格距 / 基础格距）
+ * @param {boolean} [options.useFine] 是否画细胞点细网，默认 true；背面传 false
  */
 export function applyShellPattern(material, options = {}) {
   if (!material || material.userData.shellPattern) return material;
@@ -248,8 +246,8 @@ if (uHasFine > 0.5) {
 }
 
 /**
- * 给某个壳层的细胞材质挂上"涂色立方体贴图"（A+ 方案）
- * @param {THREE.Object3D} cellRoot 细胞板（buildShellCells 返回的 Group）
+ * 给某个壳层的细胞材质挂上"涂色立方体贴图"
+ * @param {THREE.Object3D} cellRoot 细胞板（buildShellLayer 返回的 cells）
  * @param {THREE.CubeTexture|null} cube 由烘涂色得到的方向→颜色贴图
  */
 export function applyShellPainting(cellRoot, cube) {
@@ -264,9 +262,86 @@ export function applyShellPainting(cellRoot, cube) {
 }
 
 /**
- * 把涂色网格烘成"方向 → 颜色"的立方体贴图（A+ 方案）
+ * 给一层的细胞材质打图案补丁（按各 mesh 的 userData.shellPattern 取图案）
+ *
+ * 由 preview 在 buildShellLayer 之后调用: 装配层（buildShell.js）只建几何与材质，
+ * 不 import 本模块（贴图），这样装配层保持可在 Node 中单测。
+ * @param {THREE.Object3D|null} cells buildShellLayer 返回的 cells
+ * @param {{radius:number}} orbit
+ */
+export function applyCellPatterns(cells, orbit) {
+  if (!cells) return;
+  const gridScale = getShellCellGridScale(orbit.radius);
+  cells.children.forEach((cell) => {
+    const pattern = cell.userData?.shellPattern ?? 0;
+    applyShellPattern(cell.material, { pattern, gridScale });
+  });
+}
+
+/**
+ * 建背面的图案层: 按图案克隆恒星色背板材质并挂图案补丁（几何与正面共用）
+ *
+ * 只画图案、不画细胞点细网；涂色也不挂背面。克隆材质带
+ * userData.shellSharedBack 标记，preview 的 setSunColor 会顺着它一起换色。
+ * @param {THREE.Object3D|null} cells
+ * @param {THREE.Group} shellGroup 该层的 Group（背面层加到这里）
+ * @param {THREE.Material|null} sharedBackMaterial
+ * @param {{radius:number}} orbit
+ */
+export function buildBackCells(cells, shellGroup, sharedBackMaterial, orbit) {
+  if (!cells || !sharedBackMaterial) return;
+  const gridScale = getShellCellGridScale(orbit.radius);
+  cells.children.forEach((cell, i) => {
+    const pattern = cell.userData.shellPattern ?? 0;
+    const backMat = sharedBackMaterial.clone();
+    backMat.color.copy(sharedBackMaterial.color);
+    applyShellPattern(backMat, { pattern, gridScale, useFine: false });
+    const backCells = new THREE.Mesh(cell.geometry, backMat);
+    backCells.name = `shellBackCells${i ? ':' + i : ''}`;
+    backCells.userData.shellBackPattern = pattern;
+    backCells.userData.shellSharedBack = sharedBackMaterial;
+    backCells.frustumCulled = false;
+    shellGroup.add(backCells);
+  });
+}
+
+/**
+ * 烘涂色并挂到该层细胞上（烘焙 → 挂载 → 释放烘焙源，一步完成）
+ *
+ * 烘焙源是一次性的: 无论成败都在这里释放，调用方不必再管。
+ * 只挂正面细胞——背面保持自己的底色（背面要图案，但不要涂色）。
+ * 出错时只告警并返回 null（该层退化为不带涂色），不抛异常。
+ *
  * @param {THREE.WebGLRenderer} renderer
- * @param {THREE.Object3D} paintingGroup buildPainting() 的结果
+ * @param {{paintingGroup: THREE.Object3D|null, cells: THREE.Object3D|null}} layer buildShellLayer 的返回值
+ * @param {number} [size] 立方体贴图每个面的分辨率
+ * @returns {THREE.CubeTexture|null} 烘出的贴图（由调用方负责在清场时 dispose）
+ */
+export function applyLayerPainting(renderer, layer, size = 1024) {
+  const paintingGroup = layer?.paintingGroup;
+  const cells = layer?.cells;
+  if (!paintingGroup || !cells) return null;
+  let cube = null;
+  try {
+    cube = bakeShellPainting(renderer, paintingGroup, size);
+    applyShellPainting(cells, cube);
+  } catch (err) {
+    console.warn('[shellPattern] 涂色烘焙失败，回退为不带涂色:', err);
+  } finally {
+    paintingGroup.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.geometry?.dispose?.();
+        obj.material?.dispose?.();
+      }
+    });
+  }
+  return cube;
+}
+
+/**
+ * 把涂色网格烘成"方向 → 颜色"的立方体贴图
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Object3D} paintingGroup 涂色烘焙源（buildShellLayer 返回的 paintingGroup）
  * @param {number} [size] 每个面的分辨率（1024 ⇒ 角分辨率约 0.09°，约 1/6 个图案格）
  * @returns {THREE.CubeTexture|null}
  */

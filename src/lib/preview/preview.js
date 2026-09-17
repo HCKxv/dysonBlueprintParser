@@ -52,8 +52,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { buildCloudOrbit } from './buildCloud.js';
-import { buildShellLayer, buildNodeGeometries } from './buildShell.js';
-import { ensureShellPatternTextures, onShellPatternReady, applyShellPainting, bakeShellPainting } from './shellPattern.js';
+import { buildShellLayer, buildNodeGeometries, cancelLayerWorker } from './buildShell.js';
+import { ensureShellPatternTextures, onShellPatternReady, applyLayerPainting } from './shellPattern.js';
 import { getStarColors } from './starColors.js';
 
 // 泛光参数
@@ -65,6 +65,10 @@ const QUALITY_PRESETS = {
   low: { pixelRatio: 1, bloom: false, msaa: 0, fxaa: false },
   high: { pixelRatio: 2, bloom: true, msaa: 4, fxaa: true },
 };
+
+
+/** 让出主线程一帧（顺带让浏览器完成绘制），用于把大场景的构建切成多帧 */
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 
 class DysonSpherePreview {
@@ -97,6 +101,8 @@ class DysonSpherePreview {
     this._bloomPass = null;
     this._fxaaPass = null;
     this._quality = 'high';
+    this._renderToken = 0;
+    this._loadingEl = null;
 
     this._visObjects = new Map();
 
@@ -202,87 +208,127 @@ class DysonSpherePreview {
   // ─── 2. 渲染蓝图数据 ───────────────────────────────────────
 
   /**
+   * 重建场景。逐层构建，每层结束后让出主线程一帧，避免长时间卡住界面；
+   * 期间若又调用了一次 render，旧的那次会在下一层前自动中止。
+   *
    * @param {object} body — 解析后的蓝图数据中的 body 部分（parsed.body）
    *
    * body.typeId         1=单层壳  2=多层壳  3=戴森云  4=壳+云
    * body.singleShell    { nodes, frames, faces, fillGrid? }
    * body.dysonShell     { orbitList, shells, visibility? }
    * body.dysonCloud     { orbits, colors?, visibility? }
+   * @returns {Promise<void>}
    */
-  render(body) {
-    this.clearScene();
+  async render(body) {
+    const token = (this._renderToken = (this._renderToken || 0) + 1);
+    // 中止上一次构建里在飞的层: Worker 单线程，不终止的话新构建的 postMessage 只能排队
+    cancelLayerWorker();
+    // 先建到暂存 group，全部完成后一次性换上：中途界面保持原样（或空白），不出现半成品
+    const staging = new THREE.Group();
+    const stagedShells = [];
+    const stagedVis = new Map();
+    let failed = false;
+    try {
 
-    const isSingleShell = body.typeId === 1;
-    const cloud = body.dysonCloud;
-    const shell = isSingleShell
-      ? { shells: [body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
-      : (body.dysonShell ?? null);
+      const isSingleShell = body.typeId === 1;
+      const cloud = body.dysonCloud;
+      const shell = isSingleShell
+        ? { shells: [body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
+        : (body.dysonShell ?? null);
 
-    // 计算缩放
-    const shellRadii = shell?.orbitList?.filter(Boolean).map(o => o.radius) ?? [];
-    const cloudRadii = cloud?.orbits?.filter(Boolean).map(o => o.radius) ?? [];
-    const allRadii = shellRadii.concat(cloudRadii);
-    let maxRadius;
-    if (allRadii.length > 0) {
-      maxRadius = Math.max(1, ...allRadii);
-    } else if (shell?.shells?.[0]?.nodes) {
-      maxRadius = Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z)));
-    } else {
-      maxRadius = 1;
-    }
-    this._currentScale = 1 / maxRadius;
+      // 计算缩放
+      const shellRadii = shell?.orbitList?.filter(Boolean).map(o => o.radius) ?? [];
+      const cloudRadii = cloud?.orbits?.filter(Boolean).map(o => o.radius) ?? [];
+      const allRadii = shellRadii.concat(cloudRadii);
+      let maxRadius;
+      if (allRadii.length > 0) {
+        maxRadius = Math.max(1, ...allRadii);
+      } else if (shell?.shells?.[0]?.nodes) {
+        maxRadius = Math.max(1, ...shell.shells[0].nodes.slice(1).filter(Boolean).map(n => Math.hypot(n.coordinate.x, n.coordinate.y, n.coordinate.z)));
+      } else {
+        maxRadius = 1;
+      }
+      this._currentScale = 1 / maxRadius;
 
-    // ── 云轨道 ──
-    if (cloud?.orbits) {
-      cloud.orbits.forEach((orb, idx) => {
-        if (!orb) return;
-        const gv = cloud.visibility ? cloud.visibility.inGame[orb.id] : true;
-        const color = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id - 1] ?? cloud.colors?.[idx];
-        const obj = buildCloudOrbit(orb, color, this._currentScale);
-        obj.visible = gv;
-        this._visObjects.set('cloud_' + orb.id, obj);
-        this._rootGroup.add(obj);
-      });
-    }
+      const shellCount = shell?.orbitList
+        ? shell.orbitList.filter((o) => o && shell.shells?.[o.id]).length : 0;
 
-    // ── 壳层 ──
-    if (shell?.orbitList) {
-      for (let i = 0; i < shell.orbitList.length; i++) {
-        const orbit = shell.orbitList[i];
-        if (!orbit) continue;
-        const shData = shell.shells?.[orbit.id] ?? null;
-        if (!shData) continue;
-        const gv = shell.visibility ? shell.visibility.inGame[orbit.id] : true;
-        const layer = buildShellLayer(shData, orbit, this._currentScale, this._nodeGeoms, this._sharedBackMaterial);
-        layer.group.visible = gv;
-        // 涂色（A+）: 烘成立方体贴图后挂到细胞材质，图案压在其上
-        let paintCube = null;
-        if (layer.paintingGroup && layer.cells) {
-          try {
-            paintCube = bakeShellPainting(this._renderer, layer.paintingGroup, 1024);
-            // 涂色只挂正面细胞：背面保持自己的底色（背面要图案，但不要涂色）
-            applyShellPainting(layer.cells, paintCube);
-          } catch (err) {
-            console.warn('[shellPattern] 涂色烘焙失败，回退为不带涂色:', err);
-          } finally {
-            layer.paintingGroup.traverse((obj) => {
-              if (obj.isMesh) {
-                obj.geometry?.dispose?.();
-                obj.material?.dispose?.();
-              }
-            });
+      // ── 云轨道 ──
+      if (cloud?.orbits) {
+        this._setLoading(true, '正在构建戴森云…');
+        cloud.orbits.forEach((orb, idx) => {
+          if (!orb) return;
+          const gv = cloud.visibility ? cloud.visibility.inGame[orb.id] : true;
+          const color = cloud.colors?.[orb.id] ?? cloud.colors?.[orb.id - 1] ?? cloud.colors?.[idx];
+          const obj = buildCloudOrbit(orb, color, this._currentScale);
+          obj.visible = gv;
+          stagedVis.set('cloud_' + orb.id, obj);
+          staging.add(obj);
+        });
+        if (token !== this._renderToken) {
+          for (const sg of stagedShells) sg.paintCube?.dispose();
+          this._disposeTree(staging);
+          return;
+        }
+      }
+
+      // ── 壳层 ──
+      const total = shellCount;
+      let done = 0;
+      if (shell?.orbitList) {
+        for (let i = 0; i < shell.orbitList.length; i++) {
+          const orbit = shell.orbitList[i];
+          if (!orbit) continue;
+          const shData = shell.shells?.[orbit.id] ?? null;
+          if (!shData) continue;
+          const gv = shell.visibility ? shell.visibility.inGame[orbit.id] : true;
+          done += 1;
+          this._setLoading(true, `正在构建壳层 ${done}/${total}`);
+          const layer = await buildShellLayer(shData, orbit, this._currentScale, this._nodeGeoms, this._sharedBackMaterial);
+          layer.group.visible = gv;
+          // 涂色
+          const paintCube = applyLayerPainting(this._renderer, layer, 1024);
+          stagedShells.push({ group: layer.group, pole: layer.pole, radius: orbit.radius, paintCube });
+          stagedVis.set('shell_' + orbit.id, layer.group);
+          staging.add(layer.group);
+
+          if (token !== this._renderToken) {   // 已被新的 render 取代: 丢弃半成品
+            for (const sg of stagedShells) sg.paintCube?.dispose();
+            this._disposeTree(staging);
+            return;
           }
         }
-        this._shellGroups.push({ group: layer.group, pole: layer.pole, radius: orbit.radius, paintCube });
-        this._visObjects.set('shell_' + orbit.id, layer.group);
-        this._rootGroup.add(layer.group);
       }
-    }
 
-    this._camera.position.set(0, 1.8, -3.2);
-    this._controls.target.set(0, 0, 0);
-    this._controls.update();
-    this._needsRender = true; // 新蓝图渲染完成后置脏
+      // 全部建好，一次性换上（释放旧场景 → 接管新场景）
+      if (token !== this._renderToken) {
+        for (const sg of stagedShells) sg.paintCube?.dispose();
+        this._disposeTree(staging);
+        return;
+      }
+      this.clearScene();
+      this._shellGroups = stagedShells;
+      this._visObjects = stagedVis;
+      this._rootGroup.add(staging);
+
+      this._camera.position.set(0, 1.8, -3.2);
+      this._controls.target.set(0, 0, 0);
+      this._controls.update();
+      this._needsRender = true; // 新蓝图渲染完成后置脏
+    } catch (err) {
+      // 构建失败: 丢弃已建的暂存内容，把原因留在提示层上（下次 render 会覆盖）
+      failed = true;
+      for (const sg of stagedShells) sg.paintCube?.dispose();
+      this._disposeTree(staging);
+      console.error('[preview] 场景构建失败:', err);
+      if (token === this._renderToken) {
+        const msg = err && err.message ? err.message : String(err);
+        this._setLoading(true, '构建失败：' + msg, true);
+      }
+    } finally {
+      // 成功才收起提示；被取代的那次不能动新任务的提示层
+      if (token === this._renderToken && !failed) this._setLoading(false);
+    }
   }
 
   // ─── 3. 壳层与云轨道显示控制 ───────────────────────────────
@@ -386,26 +432,61 @@ class DysonSpherePreview {
    * 清空场景中的所有 3D 对象（壳层、云轨道、节点等）
    */
   clearScene() {
-    // 释放各壳层的涂色立方体贴图（A+ 方案烘出来的，不挂在场景图上，要单独释放）
+    // 释放各壳层的涂色立方体贴图
     for (const sg of this._shellGroups) {
       if (sg.paintCube) sg.paintCube.dispose();
     }
     this._shellGroups.length = 0;
     this._visObjects.clear();
     if (!this._rootGroup) return;
-    // 递归释放所有子对象的几何体与材质
-    this._rootGroup.traverse((obj) => {
-// 共享的节点几何由类持有，不在这里释放
-      const shared = this._nodeGeoms
-        && (obj.geometry === this._nodeGeoms.body || obj.geometry === this._nodeGeoms.cap);
-      if (obj.geometry && obj.geometry !== this._sharedBackMaterial && !shared) obj.geometry.dispose();
-      if (obj.material && obj.material !== this._sharedBackMaterial) {
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) m.dispose();
-      }
-    });
+    this._disposeTree(this._rootGroup);
     this._rootGroup.remove(...this._rootGroup.children);
     this._needsRender = true;
+  }
+
+  /** 释放一棵子树的几何体与材质（共享的节点几何与背板材质不释放） */
+  _disposeTree(root) {
+    root.traverse((obj) => {
+      if (obj.isMesh) {
+        const shared = this._nodeGeoms
+          && (obj.geometry === this._nodeGeoms.body || obj.geometry === this._nodeGeoms.cap);
+        if (obj.geometry && obj.geometry !== this._sharedBackMaterial && !shared) obj.geometry.dispose();
+        if (obj.material && obj.material !== this._sharedBackMaterial) {
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const m of mats) m.dispose();
+        }
+      }
+    });
+  }
+
+  /**
+   * 构建期间的进度/错误提示（覆盖在 canvas 上，用完即移除）
+   * @param {boolean} visible
+   * @param {string} [text]
+   * @param {boolean} [isError] 以错误样式显示（偏红），用于构建失败
+   */
+  _setLoading(visible, text, isError) {
+    if (!visible) {
+      if (this._loadingEl) {
+        this._loadingEl.remove();
+        this._loadingEl = null;
+      }
+      return;
+    }
+    if (!this._loadingEl) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+        + 'justify-content:center;background:rgba(8,12,18,.55);color:#dfe7ef;'
+        + 'font:14px/1.6 system-ui,sans-serif;pointer-events:none;z-index:5';
+      const host = this._canvas?.parentElement;
+      if (host) {
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        host.appendChild(el);
+      }
+      this._loadingEl = el;
+    }
+    if (text !== undefined) this._loadingEl.textContent = text;
+    this._loadingEl.style.color = isError ? '#ff9a9a' : '#dfe7ef';
   }
 
   // ─── 生命周期 ──────────────────────────────────────────────
@@ -502,6 +583,7 @@ class DysonSpherePreview {
   }
 
   dispose() {
+    this._renderToken += 1;
     if (this._animFrameId !== null) {
       cancelAnimationFrame(this._animFrameId);
       this._animFrameId = null;
@@ -534,12 +616,21 @@ class DysonSpherePreview {
       this._scene?.remove(this._starfieldGroup);
       this._starfieldGroup = null;
     }
+    for (const m of [this._originSphere, this._starGlowInner]) {
+      if (!m) continue;
+      m.geometry?.dispose?.();
+      m.material?.dispose?.();
+      this._scene?.remove(m);
+    }
+    this._originSphere = null;
+    this._starGlowInner = null;
     if (this._sharedBackMaterial) { this._sharedBackMaterial.dispose(); this._sharedBackMaterial = null; }
     if (this._nodeGeoms) {
       this._nodeGeoms.body.dispose();
       this._nodeGeoms.cap.dispose();
       this._nodeGeoms = null;
     }
+    this._setLoading(false);
     if (this._composer) { this._composer.dispose(); this._composer = null; this._bloomPass = null; this._fxaaPass = null; }
     if (this._renderer) { this._renderer.dispose(); this._renderer = null; }
     if (this._controls) { this._controls.dispose(); this._controls = null; }
@@ -663,6 +754,7 @@ class DysonSpherePreview {
   }
 
   _startLoop() {
+    const rotTmp = new THREE.Quaternion();
     const loop = () => {
       this._animFrameId = requestAnimationFrame(loop);
       const dt = Math.min(this._clock.getDelta(), 0.1);
@@ -671,8 +763,8 @@ class DysonSpherePreview {
         const maxR = this._currentScale > 0 ? 1 / this._currentScale : 1;
         for (const sg of this._shellGroups) {
           const omega = this._shellSpeed * maxR / sg.radius;
-          const rot = new THREE.Quaternion().setFromAxisAngle(sg.pole, omega * dt);
-          sg.group.quaternion.premultiply(rot);
+          rotTmp.setFromAxisAngle(sg.pole, omega * dt);   // 复用临时四元数，避免每帧分配
+          sg.group.quaternion.premultiply(rotTmp);
         }
       }
       this._controls.update(); // 处理阻尼惯性（change 事件会置脏）
@@ -740,8 +832,7 @@ class DysonSpherePreview {
         const mesh = new THREE.Mesh(geom, labelMat);
         mesh.position.copy(dir.clone().multiplyScalar(radius + tick * 1.35));
         mesh.scale.set(fontSize * 2, fontSize, 1);
-        // 渲染在涂色层(renderOrder=3)之上
-        // 深度测试保留，被球体遮挡时依旧隐藏
+        // 刻度标签最后画（renderOrder 高于其它透明物体），但保留深度测试，被球体遮挡时依旧隐藏
         mesh.renderOrder = 4;
         // 平铺在黄道平面上: 文字方向垂直于刻度线（沿切向），数字底部朝向内侧，法线朝上
         const up = new THREE.Vector3(0, 1, 0);

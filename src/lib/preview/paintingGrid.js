@@ -18,8 +18,7 @@ import { GRID_ASSETS, decodeGridAsset } from './paintingGridAssets.js';
  *   geo8 = 正八面体 8×48²，geo4 = 正四面体 4×72²。
  */
 
-// 游戏存储的是 sRGB 颜色；three r152+ 将顶点色视为线性工作空间并在输出时做 sRGB 编码，
-// 因此上传顶点色前需先把 sRGB 转为线性，否则颜色会被二次提亮（发白）
+// three r152+ 视顶点色为线性空间、输出时再做 sRGB 编码，故需先 sRGB→线性，否则颜色二次提亮（发白）
 function srgbToLinear(c) {
   c = Math.min(1, Math.max(0, c));
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
@@ -30,8 +29,7 @@ function paintToVertexColor(c, alpha) {
   return [srgbToLinear(c.r / 255), srgbToLinear(c.g / 255), srgbToLinear(c.b / 255), alpha];
 }
 
-// 超亮涂色的加色发光强度:
-// 总亮度 = 基础色(1) + 发光(0.2) = 1.2× 存储颜色
+// 超亮涂色的加色发光强度: 总亮度 = 基础色 1 + 发光 0.2 = 1.2× 存储颜色
 const BRIGHT_GLOW_STRENGTH = 0.2;
 
 // ─── 经纬线网格常量 ───
@@ -88,8 +86,7 @@ function buildGraticuleBands() {
   const bands = [];
   let base = 0;
   for (let latIdx = -latHalf; latIdx < latHalf; latIdx += 1) {
-    // 分段数取该带最靠赤道一侧的纬度序号:
-    //   南半球带（latIdx<0）取北缘 latIdx+1；北半球带取南缘 latIdx
+    // 分段数取该带最靠赤道一侧的纬度序号: 南半球取北缘 latIdx+1，北半球取南缘 latIdx
     const seg = segByLatIdx(latIdx < 0 ? latIdx + 1 : latIdx, latHalf);
     bands.push({
       latIdx,
@@ -103,8 +100,7 @@ function buildGraticuleBands() {
   return bands;
 }
 
-// 单位球面上的经纬度 → 游戏局部坐标:
-// 纬度 asin(y)，经度 Atan2(x, -z)，经度 0 = -Z 方向，东 = +X）
+// 经纬度 → 游戏局部坐标: 纬度 asin(y)、经度 0 = -Z 方向、东 = +X
 function latLngToLocal(latDeg, lngDeg) {
   const lat = latDeg * Math.PI / 180;
   const lng = lngDeg * Math.PI / 180;
@@ -125,11 +121,8 @@ function localToLatLng(x, y, z) {
   };
 }
 
-// 生成经纬线网格的涂色几何
-// 游戏涂色覆盖层材质为不透明替换混合 (_SrcBlend=One, _DstBlend=Zero, _ZWrite=On)，
-// 壳面颜色不会透过涂色; 超亮涂色在游戏内是 HDR×_SuperBrightness(3.0)+泛光，
-// 预览(无 HDR/泛光)用「基础色替换 + 加色发光叠加」近似
-// 返回 [{ positions, colors, additive }] 或 null
+// 生成经纬线网格的涂色几何: 游戏为不透明替换 (_SrcBlend=One,_DstBlend=Zero)，超亮是 HDR×3+泛光，
+// 预览用「替换+加色发光」近似；返回 [{ positions, colors, additive }] 或 null
 function buildGraticuleGeometry(colors) {
   const bands = buildGraticuleBands();
   const verts = [];
@@ -141,10 +134,7 @@ function buildGraticuleGeometry(colors) {
 
   for (const band of bands) {
     const step = 360 / band.seg;
-    // 经度边细分成多段弧线: 平面四边形在大格子处中部会下沉到球面以下
-    // (两极格子宽 22.5°, 下沉 ~1.9%), 而涂色层只比壳面高 0.15%,
-    // 下沉部分被壳面深度遮挡 → 两极出现"两色块中间有缝隙"。
-    // 细分后弧高 <= 1-cos(1°) ≈ 0.015%, 整面始终在壳面之上。
+    // 细分经度边: 平面四边形两极处下沉 ~1.9%，远超涂色层抬高的 0.15% → 会出现缝隙；细分后 ≤0.015%
     const m = Math.max(1, Math.ceil(step / 2));
     for (let li = 0; li < band.seg; li += 1) {
       const idx = band.base + li;
@@ -153,9 +143,7 @@ function buildGraticuleGeometry(colors) {
 
       const lngLo = li * step;
       // 绕序: 经预览变换（轨道四元数 + z 翻转）后法线朝外，配合 FrontSide 单面渲染
-      // 涂色数据的 a 通道不是透明度（游戏 PaintCells 的编码）:
-      //   a > 0 即已涂色，RGB 已按笔刷强度缩放，应完全不透明显示;
-      //   a > 127 表示超亮涂色，强度 = (a-127)/128
+      // a 通道不是透明度: a>0 即已涂色（RGB 已按笔刷强度缩放，完全不透明）；a>127 为超亮，强度 =(a-127)/128
       const bright = c.a > 127;
       const rgba = paintToVertexColor(c, 1);
       const glowA = (c.a - 127) / 128 * BRIGHT_GLOW_STRENGTH;
@@ -290,9 +278,7 @@ function buildGraticuleMesh(lonStepDeg = 2) {
   let cellBase = 0;
 
   for (const band of bands) {
-    // 剖分数必须与涂色层 buildGraticuleGeometry 的 m = ceil(格宽/2) 一致:
-    // 用 round 的话，格宽/2 的小数部分在 (0,0.5) 时会少分一段，弦长翻倍、下沉更多，
-    // 网格线就会掉到涂色面下面被挡住（纬度 ±70 一带最明显）
+    // 剖分数必须与涂色层的 m = ceil(格宽/2) 一致（用 round 会少分一段 → 下沉更多、线掉到涂色面下面）
     const nLon = Math.max(1, Math.ceil(360 / band.seg / lonStepDeg));
     const rows = [];
     for (const latIdx of [band.latIdx, band.latIdx + 1]) {
@@ -315,10 +301,7 @@ function buildGraticuleMesh(lonStepDeg = 2) {
       if (band.latLo > -90) indices.push(a, c, b);
       if (band.latHi < 90) indices.push(a, d, c);
     }
-    // 网格线只画格子边界，不能拿三角形的三条边来画（那样每个四边形的内部对角线也会画出来）
-    //   纬线段: 沿整条纬线逐段折线（cols 段，保证圆弧平滑）
-    //   经线段: 只画真正的格子边界 —— 每格一条，即列下标 li * nLon。
-    //           极带一格宽 22.5°，被细分成 11 段，若按段画就会出现 11 倍密度的假经线
+    // 网格线只画格子边界（拿三角形三条边会连内部对角线一起画）: 纬线逐段折线，经线每格一条
     for (let li = 0; li < cols; li += 1) {
       if (band.latLo > -90) lineIndices.push(rows[0][li], rows[0][li + 1]);
       if (band.latHi < 90) lineIndices.push(rows[1][li], rows[1][li + 1]);
@@ -380,9 +363,8 @@ function getGridMesh(gridType) {
   return buildGeoMesh(gridType);
 }
 
-// 等距圆柱贴图球面: 顶点位置与 UV 都用游戏经纬度约定生成
-// （u=0 → 经度 0° = -Z 方向，东 = +X，v=1 → 北极）
-// 这样贴图与经纬线网格、测地线网格的 UV 完全同源，不存在缝/方向错位
+// 等距圆柱贴图球面: 顶点与 UV 都用游戏经纬度约定（u=0 → 经度 0° = -Z，东 = +X，v=1 → 北极），
+// 与经纬线网格、测地线网格的 UV 同源，不存在缝/方向错位
 function buildEquirectSphere(lonSegments = 180, latSegments = 90) {
   const positions = new Float32Array((lonSegments + 1) * (latSegments + 1) * 3);
   const uvs = new Float32Array((lonSegments + 1) * (latSegments + 1) * 2);
@@ -422,47 +404,6 @@ function buildEquirectSphere(lonSegments = 180, latSegments = 90) {
   return { positions, uvs, indices };
 }
 
-// 涂色网格 → 烘"方向→颜色"立方体贴图的临时网格组，不加入场景
-function buildPainting(shData, shQuat, renderR, scale) {
-  if (!shData.fillGrid?.colors) return null;
-  const parts = buildPaintingGeometry(shData.fillGrid);
-  if (!parts) return null;
-
-  const group = new THREE.Group();
-  group.name = 'shellPaintingSource';
-// 烘焙源放在轨道半径上: 烘焙场景里只有这层网格，半径只决定方向
-  const paintR = renderR * scale;
-  for (const part of parts) {
-    const posAttr = new THREE.Float32BufferAttribute(part.positions, 3);
-    const qx = shQuat.x, qy = shQuat.y, qz = shQuat.z, qw = shQuat.w;
-    for (let vi = 0; vi < posAttr.count; vi += 1) {
-      const x = posAttr.getX(vi), y = posAttr.getY(vi), z = posAttr.getZ(vi);
-      const tx = 2 * (qy * z - qz * y);
-      const ty = 2 * (qz * x - qx * z);
-      const tz = 2 * (qx * y - qy * x);
-      const rx = x + qw * tx + (qy * tz - qz * ty);
-      const ry = y + qw * ty + (qz * tx - qx * tz);
-      const rz = z + qw * tz + (qx * ty - qy * tx);
-      posAttr.setXYZ(vi, rx * paintR, ry * paintR, -rz * paintR);
-    }
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', posAttr);
-    geom.setAttribute('color', new THREE.Float32BufferAttribute(part.colors, 4));
-    const mat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      depthWrite: true,
-      // 只用于从球心往外的立方体烘焙: 相机在球内看到的是内侧 ⇒ 用 BackSide
-      side: THREE.BackSide,
-      blending: part.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-    });
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.frustumCulled = false;
-    group.add(mesh);
-  }
-  return group;
-}
-
 export {
   buildPaintingGeometry,
   buildGraticuleBands,
@@ -472,5 +413,4 @@ export {
   latLngToLocal,
   localToLatLng,
   segByLatIdx,
-  buildPainting,
 };

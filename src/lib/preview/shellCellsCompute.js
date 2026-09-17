@@ -1,7 +1,10 @@
-/** 六边形细胞板：按游戏点阵生成，裁剪到各自壳面多边形内。 */
+/**
+ * shellCellsCompute — 戴森壳细胞的纯几何计算（可在 Web Worker 中运行）
+ */
 import * as THREE from 'three';
-import { _edgeKey, _toHexColor, _refineFaceBoundary } from './geometry.js';
-import { applyShellPattern } from './shellPattern.js';
+import { _refineFaceBoundary, _toHexColor, _edgeKey } from './geometry.js';
+
+/** 六边形细胞板：按游戏点阵生成，裁剪到各自壳面多边形内。 */
 
 const BASE_GRID_SIZE = 80; // 与 DysonShell.GenerateGeometry 一致
 const SQRT3 = Math.sqrt(3);
@@ -19,7 +22,7 @@ export function getShellCellGridScale(radius) {
   return Math.max(1, Math.floor(Math.pow(r / 4000.0, 0.75) + 0.5));
 }
 
-function getShellCellGridSize(radius, scale = 1) {
+export function getShellCellGridSize(radius, scale = 1) {
   return getShellCellGridScale(radius) * BASE_GRID_SIZE * scale;
 }
 
@@ -265,7 +268,19 @@ function _forEachClippedPiece(subject, clip, convexClip, clipTriangles, subjectB
   callback(_dedupePolygon(_clipConvex(subject, clip)));
 }
 
-export function buildShellCells(shData, nodeMap, shPole, ftMap, orbit, scale, stencilRef) {
+
+/**
+ * 计算一层壳的细胞几何
+ * @param {object} shData 壳层数据（nodes / frames / faces）
+ * @param {Map<number, THREE.Vector3>} nodeMap 节点 id → 世界坐标
+ * @param {THREE.Vector3} shPole 极点方向
+ * @param {Map<string, number>} ftMap 边 → 框架类型
+ * @param {{radius:number}} orbit 轨道（取半径决定格距）
+ * @param {number} scale 缩放系数
+ * @returns {Array<{pattern:number, positions:Float32Array, normals:Float32Array,
+ *   colors:Float32Array, patternUV:Float32Array, patternMN:Float32Array, indices:Uint32Array}>|null}
+ */
+export function computeShellCellBuckets(shData, nodeMap, shPole, ftMap, orbit, scale) {
   // 按图案分组累积（一个材质只能采样一套图案贴图；同一壳面可以混用多种图案）
   const buckets = new Map();   // pattern → 几何缓冲
   const bucketOf = (pattern) => {
@@ -344,7 +359,7 @@ export function buildShellCells(shData, nodeMap, shPole, ftMap, orbit, scale, st
           buf.positions.push(p.x, p.y, p.z);
           buf.normals.push(nx, ny, nz);
           buf.colors.push(color.r, color.g, color.b);
-// 图案 uv: 本坐标系相对游戏整体旋转 180°，故 x/y 项取负
+          // 图案 uv: 本坐标系相对游戏整体旋转 180°，故 x/y 项取负
           const rx = (piece[i].x - cx) * invCellRadius;
           const ry = (piece[i].y - cy) * invCellRadius;
           buf.patternUV.push(-rx / 3 + patternOffU, -rx / 6 - PATTERN_UV_VY * ry + patternOffV);
@@ -359,40 +374,20 @@ export function buildShellCells(shData, nodeMap, shPole, ftMap, orbit, scale, st
     });
   });
 
-  const group = new THREE.Group();
-  group.name = 'shellCells';
+
+  // 转成 TypedArray: 便于 postMessage 转移（零拷贝），也便于单测断言
+  const out = [];
   for (const [pattern, buf] of buckets) {
     if (!buf.positions.length) continue;
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(buf.positions, 3));
-    geom.setAttribute('normal', new THREE.Float32BufferAttribute(buf.normals, 3));
-    geom.setAttribute('color', new THREE.Float32BufferAttribute(buf.colors, 3));
-    geom.setAttribute('aPatternUV', new THREE.Float32BufferAttribute(buf.patternUV, 2));
-    geom.setAttribute('aPatternMN', new THREE.Float32BufferAttribute(buf.patternMN, 2));
-    geom.setIndex(buf.indices);
-
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      side: THREE.FrontSide,
-      depthWrite: true,
-      metalness: 0.25,
-      roughness: 0.55,
+    out.push({
+      pattern,
+      positions: new Float32Array(buf.positions),
+      normals: new Float32Array(buf.normals),
+      colors: new Float32Array(buf.colors),
+      patternUV: new Float32Array(buf.patternUV),
+      patternMN: new Float32Array(buf.patternMN),
+      indices: new Uint32Array(buf.indices),
     });
-    // 壳面图案（游戏贴图）+ 细胞点细网: gridScale 决定细网在一个细胞里重复几次
-    applyShellPattern(mat, { pattern, gridScale: getShellCellGridScale(orbit.radius) });
-    // 写本层 stencil，供涂色层裁剪
-    mat.stencilWrite = true;
-    mat.stencilWriteMask = 0xff;
-    mat.stencilRef = stencilRef;
-    mat.stencilFunc = THREE.AlwaysStencilFunc;
-    mat.stencilZPass = THREE.ReplaceStencilOp;
-
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.name = `shellCells:${pattern}`;
-    mesh.userData.shellPattern = pattern;
-    mesh.frustumCulled = false;
-    group.add(mesh);
   }
-  return group.children.length ? group : null;
+  return out.length ? out : null;
 }
-

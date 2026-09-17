@@ -10,7 +10,7 @@ import { useToast } from '../composables/useToast'
 
 /** DysonSpherePreview 的命令式子集（由 PreviewPanel 注入实例） */
 export interface DysonPreview {
-  render(body: unknown): void
+  render(body: unknown): Promise<void> | void
   clearScene(): void
   setLayerVisible(type: 'shell' | 'cloud', id: number, visible: boolean): void
   setGridVisible(visible: boolean): void

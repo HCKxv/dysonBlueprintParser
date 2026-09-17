@@ -1,31 +1,22 @@
-/** 戴森壳层渲染对象构建：节点、框架、细胞板、涂色（涂色烘成立方体贴图，见 bakeShellPainting）。 */
+/**
+ * buildShell — 壳层渲染对象组装
+ */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildPainting } from './paintingGrid.js';
-import { buildShellCells, getShellCellGridScale } from './buildShellCells.js';
-import { applyShellPattern } from './shellPattern.js';
-import {
-  _toHexColor, _convertBP, _normQuat, _edgeKey,
-  _sphericalArcPoints, _gridArcPoints,
-} from './geometry.js';
-
-const STENCIL_BASE = 200; // 每层模板值 = layerId + 200
-
-const FRAME_BAR_WIDTH = 30;      // 切向宽度（蓝图单位）
-const FRAME_BAR_THICKNESS = 20;  // 径向厚度
+import { applyCellPatterns, buildBackCells } from './shellPattern.js';
 
 // 节点（简化模型）: 主体圆柱 + 朝内的细圆柱 + 朝外发光端面（节点颜色）
 const NODE_BODY_RADIUS = 36;     // 主体圆柱半径（蓝图单位）
 const NODE_BODY_HEIGHT = 46;     // 主体圆柱高度（沿径向）
 const NODE_CAP_RADIUS = 20;      // 朝外发光圆片半径（比主体小一圈）
 const NODE_STALK_RADIUS = 7;     // 细圆柱半径
-const NODE_STALK_LENGTH = 108;    // 细圆柱长度（朝内伸出）
+const NODE_STALK_LENGTH = 108;   // 细圆柱长度（朝内伸出）
 
 /**
  * 构建节点的两套几何（蓝图单位，轴沿 +Y = 径向外）:
  *   body —— 主体圆柱 + 朝内的细圆柱（用节点颜色、受光）
  *   cap  —— 朝外端面（发光，用节点颜色）
- * 真实模型由 buildShellLayer 用每实例的旋转把 +Y 对齐到各自节点的径向。
+ * 真实模型由 assembleNodes 用每实例的旋转把 +Y 对齐到各自节点的径向。
  */
 export function buildNodeGeometries() {
   const yAxis = new THREE.Vector3(0, 1, 0);
@@ -43,18 +34,125 @@ export function buildNodeGeometries() {
   return { body: merged, cap, yAxis };
 }
 
-// 同一十六进制色只创建一个 THREE.Color
-function makeHexColorCache() {
-  const cache = new Map();
-  return (hex) => {
-    let c = cache.get(hex);
-    if (!c) { c = new THREE.Color(hex); cache.set(hex, c); }
-    return c;
-  };
+// ═══════════════════════════════════════════════════════════════
+// Worker: 整层几何计算
+// ═══════════════════════════════════════════════════════════════
+
+// 进程内复用一只；报错/超时/被新构建取代后丢弃，下次重建
+let layerWorker = null;
+// 当前在飞请求的失败回调: 供 cancelLayerWorker() 主动中止
+let pendingAbort = null;
+
+/** 单层构建时限（毫秒）: 超时判定在主线程，超时即终止 Worker 并让 render 的 catch 接手 */
+const LAYER_BUILD_TIMEOUT_MS = 30000;
+
+/**
+ * 立即中止正在进行的层构建（新一次 render 开始时调用）
+ *
+ * 必要性: Worker 单线程，postMessage 只会排队——不终止的话，上一次还在算的那一层
+ * 会把新构建堵在队列里，直到 30s 看门狗误报"超时"。旧的那次 await 会立刻以错误
+ * 退出，render 的 catch 按令牌判断，不会误报错误提示。
+ */
+export function cancelLayerWorker() {
+  pendingAbort?.(new Error('构建已取消'));
 }
 
-function buildNodes(nodeData, shellGroup, nodeGeoms, scale) {
-  if (!nodeData.length || !nodeGeoms) return;
+/**
+ * 把一整层的几何计算交给 Worker，并用主线程的看门狗限时。
+ * 超时（或 Worker 报错）都会 reject —— 由 buildShellLayer 抛出、render 的 catch 接手。
+ * @param {{shData: object, orbit: object, scale: number}} payload
+ * @returns {Promise<object>} { nodes, frames, cells, painting, pole }
+ */
+function computeLayerInWorker(payload, timeoutMs = LAYER_BUILD_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let w;
+    try {
+      if (!layerWorker) {
+        layerWorker = new Worker(new URL('./shellLayer.worker.js', import.meta.url), { type: 'module' });
+      }
+      w = layerWorker;
+    } catch (err) { reject(err); return; }
+    let settled = false;
+    const cleanup = () => {
+      w.removeEventListener('message', onMsg);
+      w.removeEventListener('error', onErr);
+      clearTimeout(timer);
+      pendingAbort = null;
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      layerWorker?.terminate();   // 出错/超时/取消后整只丢弃，下次重建
+      layerWorker = null;
+      reject(err);
+    };
+    pendingAbort = fail;   // 供 cancelLayerWorker() 中止
+    function onMsg(e) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (e.data && e.data.error) { fail(new Error(e.data.error)); return; }
+      resolve((e.data && e.data.layer) || null);
+    }
+    function onErr(e) { fail(new Error((e && e.message) || 'Worker 执行出错')); }
+    // 主线程看门狗: Worker 不参与计时，超时直接终止它（卡住的计算不会继续烧 CPU）
+    const timer = setTimeout(
+      () => fail(new Error(`构建超时`)), timeoutMs);
+    w.addEventListener('message', onMsg);
+    w.addEventListener('error', onErr);
+    w.postMessage(payload);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 组装
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 细胞板: 按图案分组的多个 Mesh（一个材质只能采样一套图案贴图，同一壳面可混用多种图案）
+ *
+ * 图案补丁由 buildShellLayer 统一补上（applyCellPatterns），这里只管几何与材质。
+ * @param {Array<{pattern:number, positions:Float32Array, normals:Float32Array, colors:Float32Array,
+ *   patternUV:Float32Array, patternMN:Float32Array, indices:Uint32Array}>} bucketList
+ * @returns {THREE.Group|null}
+ */
+function assembleShellCells(bucketList) {
+  if (!bucketList || !bucketList.length) return null;
+  const group = new THREE.Group();
+  group.name = 'shellCells';
+  for (const buf of bucketList) {
+    if (!buf.positions.length) continue;
+    const pattern = buf.pattern;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(buf.positions, 3));
+    geom.setAttribute('normal', new THREE.Float32BufferAttribute(buf.normals, 3));
+    geom.setAttribute('color', new THREE.Float32BufferAttribute(buf.colors, 3));
+    geom.setAttribute('aPatternUV', new THREE.Float32BufferAttribute(buf.patternUV, 2));
+    geom.setAttribute('aPatternMN', new THREE.Float32BufferAttribute(buf.patternMN, 2));
+    // 索引显式包 BufferAttribute: setIndex 对 TypedArray 会原样存下，渲染器随后会崩
+    geom.setIndex(new THREE.Uint32BufferAttribute(buf.indices, 1));
+
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      side: THREE.FrontSide,
+      depthWrite: true,
+      metalness: 0.25,
+      roughness: 0.55,
+    });
+
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.name = `shellCells:${pattern}`;
+    mesh.userData.shellPattern = pattern;
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+  return group.children.length ? group : null;
+}
+
+/** 节点: 两个 InstancedMesh（本体 + 发光端面） */
+function assembleNodes(nodes, shellGroup, nodeGeoms, scale) {
+  if (!nodes || !nodes.count || !nodeGeoms) return;
   const { body, cap, yAxis } = nodeGeoms;
   // 双面: 从壳体内侧看节点时，圆柱的内表面同样要挡住后面的端面
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -62,24 +160,25 @@ function buildNodes(nodeData, shellGroup, nodeGeoms, scale) {
   });
   // 端面发光: 用 Basic + 实例色（实例色会乘进材质色），不受光照衰减
   const capMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-  const bodyInst = new THREE.InstancedMesh(body, bodyMat, nodeData.length);
-  const capInst = new THREE.InstancedMesh(cap, capMat, nodeData.length);
+  const bodyInst = new THREE.InstancedMesh(body, bodyMat, nodes.count);
+  const capInst = new THREE.InstancedMesh(cap, capMat, nodes.count);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const dir = new THREE.Vector3();
+  const pos = new THREE.Vector3();
   const sc = new THREE.Vector3(scale, scale, scale);
   const c = new THREE.Color();
-  nodeData.forEach((nd, i) => {
+  for (let i = 0; i < nodes.count; i++) {
+    pos.set(nodes.positions[i * 3], nodes.positions[i * 3 + 1], nodes.positions[i * 3 + 2]);
     // 让几何的 +Y 对齐该节点的径向（朝外），于是细圆柱自动朝太阳
-    dir.copy(nd.pos).normalize();
+    dir.copy(pos).normalize();
     q.setFromUnitVectors(yAxis, dir);
-    m4.compose(nd.pos, q, sc);
+    m4.compose(pos, q, sc);
     bodyInst.setMatrixAt(i, m4);
     capInst.setMatrixAt(i, m4);
-    // 只有朝外端面用节点颜色（发光）；主体保持材质本色（金属灰），与框架一致
-    c.setHex(nd.color);
-    capInst.setColorAt(i, c);
-  });
+    // 只有朝外端面用节点颜色（发光）；主体保持材质本色（金属灰）
+    capInst.setColorAt(i, c.setHex(nodes.colors[i]));
+  }
   for (const inst of [bodyInst, capInst]) {
     inst.instanceMatrix.needsUpdate = true;
     if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
@@ -88,173 +187,102 @@ function buildNodes(nodeData, shellGroup, nodeGeoms, scale) {
   }
 }
 
-// 框架杆件；ftMap: 边键 → 框架类型
-function buildFrames(shData, nodeMap, shPole, shellGroup, scale, sharedBackMaterial) {
-  const ftMap = new Map();
-  const hexColor = makeHexColorCache();
-  const barVerts = [];
-  const barCols = [];
-  const barIdx = [];        // 外侧面 + 两个切向侧面（用框架自身的颜色）
-  const barBackIdx = [];    // 径向内侧面（朝球心，用恒星色）
+/** 框架: 外侧面（框架本色）+ 径向内侧面（恒星色，从壳体内侧看到的就是它） */
+function assembleFrames(frames, shellGroup, sharedBackMaterial) {
+  if (!frames || !frames.indices.length) return;
+  const posAttr = new THREE.Float32BufferAttribute(frames.positions, 3);
+  const colAttr = new THREE.Float32BufferAttribute(frames.colors, 3);
 
-  const halfW = (FRAME_BAR_WIDTH / 2) * scale;
-  const halfT = (FRAME_BAR_THICKNESS / 2) * scale;
-  const tv = new THREE.Vector3();
-  const buildBar = (pts, color) => {
-    const n = pts.length;
-    if (n < 2) return;
-    const base = barVerts.length / 3;
-    let prevT = null;
-    for (let i = 0; i < n; i++) {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
-      const t = tv.subVectors(b, a);
-      if (t.lengthSq() < 1e-12) {
-        if (prevT) t.copy(prevT); else t.set(0, 1, 0);
-      } else {
-        t.normalize();
-        if (!prevT) prevT = t.clone();
-        else prevT.copy(t);
-      }
-      const rad = pts[i].clone().normalize();
-      const u = new THREE.Vector3().crossVectors(t, rad);
-      const bx = pts[i].x - rad.x * halfT, by = pts[i].y - rad.y * halfT, bz = pts[i].z - rad.z * halfT;
-      const tx = pts[i].x + rad.x * halfT, ty = pts[i].y + rad.y * halfT, tz = pts[i].z + rad.z * halfT;
-      const ux = u.x * halfW, uy = u.y * halfW, uz = u.z * halfW;
-      // 断面 4 点: 0/1 = 底部±u（径向内侧）, 2/3 = 顶部±u（径向外侧）
-      barVerts.push(bx + ux, by + uy, bz + uz);
-      barVerts.push(bx - ux, by - uy, bz - uz);
-      barVerts.push(tx + ux, ty + uy, tz + uz);
-      barVerts.push(tx - ux, ty - uy, tz - uz);
-      barCols.push(color.r, color.g, color.b, color.r, color.g, color.b, color.r, color.g, color.b, color.r, color.g, color.b);
-    }
-    for (let i = 0; i < n - 1; i++) {
-      const bi = base + i * 4, bj = bi + 4;
-      // 径向外侧面（顶面）
-      barIdx.push(bi + 3, bi + 2, bj + 2, bi + 3, bj + 2, bj + 3);
-      // 径向内侧面（底面）单独一组: 从壳体内侧看到的就是它，用恒星色
-      barBackIdx.push(bi + 0, bi + 1, bj + 1, bi + 0, bj + 1, bj + 0);
-      // 两个切向侧面
-      barIdx.push(
-        bi + 0, bj + 0, bj + 2, bi + 0, bj + 2, bi + 2,
-        bi + 1, bi + 3, bj + 3, bi + 1, bj + 3, bj + 1,
-      );
-    }
-  };
-  const re = (id1, id2, color, type = 0) => {
-    const k = _edgeKey(id1, id2);
-    if (ftMap.has(k)) return;
-    ftMap.set(k, type);
-    const f = nodeMap.get(id1), t = nodeMap.get(id2);
-    if (!f || !t) return;
-    const pts = (type === 1 && shPole) ? _gridArcPoints(f, t, 18, shPole) : _sphericalArcPoints(f, t, 18);
-    buildBar(pts, hexColor(color));
-  };
-  if (shData.frames) {
-    shData.frames.forEach(fr => {
-      if (!fr) return;
-      re(fr.relation[0], fr.relation[1], _toHexColor(fr.color, 0x175473), fr.type);
-    });
-  }
-  if (barVerts.length) {
-    const posAttr = new THREE.Float32BufferAttribute(barVerts, 3);
-    const colAttr = new THREE.Float32BufferAttribute(barCols, 3);
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', posAttr);
-    geom.setAttribute('color', colAttr);
-    geom.setIndex(barIdx);
-    geom.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.2, roughness: 0.6 });
-    shellGroup.add(new THREE.Mesh(geom, mat));
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', posAttr);
+  geom.setAttribute('color', colAttr);
+  // 索引显式包 BufferAttribute: setIndex 对 TypedArray 会原样存下，渲染器随后会崩
+  geom.setIndex(new THREE.Uint32BufferAttribute(frames.indices, 1));
+  geom.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.2, roughness: 0.6 });
+  shellGroup.add(new THREE.Mesh(geom, mat));
 
-    // 径向内侧面: 从壳体内侧看到的就是这一组面，用恒星色（与细胞背板同一套配色）
-    const backGeom = new THREE.BufferGeometry();
-    backGeom.setAttribute('position', posAttr);
-    backGeom.setAttribute('color', colAttr);
-    backGeom.setIndex(barBackIdx);
-    backGeom.computeVertexNormals();
-    let backMat;
-    if (sharedBackMaterial) {
-      // 与细胞背板同源: 克隆那份恒星色材质，改成双面（内侧面的朝向随弧线变化）
-      backMat = sharedBackMaterial.clone();
-      backMat.side = THREE.DoubleSide;
-      backMat.color.copy(sharedBackMaterial.color);
-      backMat.vertexColors = false;   // 用材质的恒星色，不用框架自身的顶点色
-    } else {
-      backMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
-    }
-    const backMesh = new THREE.Mesh(backGeom, backMat);
-    backMesh.name = 'shellFrameBack';
-    // 标记来源，preview.js 的 setSunColor 会顺着它一起换色
-    backMesh.userData.shellSharedBack = sharedBackMaterial || null;
-    shellGroup.add(backMesh);
+  const backGeom = new THREE.BufferGeometry();
+  backGeom.setAttribute('position', posAttr);
+  backGeom.setAttribute('color', colAttr);
+  backGeom.setIndex(new THREE.Uint32BufferAttribute(frames.backIndices, 1));
+  backGeom.computeVertexNormals();
+  let backMat;
+  if (sharedBackMaterial) {
+    // 与细胞背板同源: 克隆那份恒星色材质，改成双面（内侧面的朝向随弧线变化）
+    backMat = sharedBackMaterial.clone();
+    backMat.side = THREE.DoubleSide;
+    backMat.color.copy(sharedBackMaterial.color);
+    backMat.vertexColors = false;   // 用材质的恒星色，不用框架自身的顶点色
+  } else {
+    backMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   }
-  return ftMap;
+  const backMesh = new THREE.Mesh(backGeom, backMat);
+  backMesh.name = 'shellFrameBack';
+  // 标记来源，preview.js 的 setSunColor 会顺着它一起换色
+  backMesh.userData.shellSharedBack = sharedBackMaterial || null;
+  shellGroup.add(backMesh);
 }
 
-
+/** 涂色: 建烘焙源 Group（不加入场景，交给 bakeShellPainting 烘成立方体贴图） */
+function assemblePainting(parts) {
+  if (!parts || !parts.length) return null;
+  const group = new THREE.Group();
+  group.name = 'shellPaintingSource';
+  for (const part of parts) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(part.positions, 3));
+    geom.setAttribute('color', new THREE.Float32BufferAttribute(part.colors, 4));
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: true,
+      // 只用于从球心往外的立方体烘焙: 相机在球内看到的是内侧 ⇒ 用 BackSide
+      side: THREE.BackSide,
+      blending: part.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+  return group;
+}
 
 /**
  * 构建一个壳层的全部渲染对象（节点、框架、细胞板、背面图案层、涂色烘焙源）。
+ *
+ * 几何在 Worker 里算（不回退主线程）；失败或超时直接抛出，由上层放弃整次构建。
  *
  * @param {object} shData               壳层数据（nodes / frames / faces / fillGrid）
  * @param {object} orbit                轨道对象，取 radius 与姿态四元数
  * @param {number} scale                缩放系数（= 1 / 最大轨道半径）
  * @param {{body: THREE.BufferGeometry, cap: THREE.BufferGeometry}} nodeGeoms  共享的节点几何
  * @param {THREE.Material} sharedBackMaterial  恒星色背板材质（背面与框架内侧面共用配色）
- * @returns {{group: THREE.Group, pole: THREE.Vector3, cells: THREE.Group|null, paintingGroup: THREE.Group}}
+ * @returns {Promise<{group: THREE.Group, pole: THREE.Vector3, cells: THREE.Group|null, paintingGroup: THREE.Group|null}>}
  *          group 为整层（含背面），cells 仅正面细胞，paintingGroup 为涂色烘焙源
  */
-export function buildShellLayer(shData, orbit, scale, nodeGeoms, sharedBackMaterial) {
-  const renderR = orbit.radius;
-  const shQuat = _normQuat(orbit);
-  const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
-  const shPole = _convertBP(poleRaw);
+export async function buildShellLayer(shData, orbit, scale, nodeGeoms, sharedBackMaterial) {
+  const layer = await computeLayerInWorker({ shData, orbit, scale });
+  if (!layer) throw new Error('Worker 未返回壳层数据');
+
   const shellGroup = new THREE.Group();
-  const stencilRef = STENCIL_BASE + (orbit.id || 0);
 
-  const nodeMap = new Map();
-  const nodeData = [];
-  if (shData.nodes) {
-    for (let ni = 1; ni < shData.nodes.length; ni++) {
-      const nd = shData.nodes[ni];
-      if (!nd) continue;
-      const d = new THREE.Vector3(nd.coordinate.x, nd.coordinate.y, nd.coordinate.z).normalize();
-      d.applyQuaternion(shQuat);
-      const pos = _convertBP(d).multiplyScalar(renderR * scale);
-      nodeMap.set(nd.id, pos);
-      nodeData.push({ pos, color: _toHexColor(nd.color, 0x60D6FD) });
-    }
-  }
+  assembleNodes(layer.nodes, shellGroup, nodeGeoms, scale);
+  assembleFrames(layer.frames, shellGroup, sharedBackMaterial);
 
-  buildNodes(nodeData, shellGroup, nodeGeoms, scale);
-  const ftMap = buildFrames(shData, nodeMap, shPole, shellGroup, scale, sharedBackMaterial);
-  const cellMesh = buildShellCells(shData, nodeMap, shPole, ftMap, orbit, scale, stencilRef);
+  const cellMesh = assembleShellCells(layer.cells);
   if (cellMesh) {
-    // cellMesh 是按图案分组的 Group（每种图案一套图案贴图材质）
     shellGroup.add(cellMesh);
-    if (sharedBackMaterial) {
-      // 背面按图案克隆材质并挂图案补丁（几何共用），从缝隙/内侧看也有图案
-      const gridScale = getShellCellGridScale(orbit.radius);
-      cellMesh.children.forEach((cell, i) => {
-        const pattern = cell.userData.shellPattern ?? 0;
-        const backMat = sharedBackMaterial.clone();
-        backMat.color.copy(sharedBackMaterial.color);
-        applyShellPattern(backMat, { pattern, gridScale, useFine: false });   // 背面只画图案，不画细胞点细网
-        const backCells = new THREE.Mesh(cell.geometry, backMat);
-        backCells.name = `shellBackCells${i ? ':' + i : ''}`;
-        backCells.userData.shellBackPattern = pattern;
-        backCells.userData.shellSharedBack = sharedBackMaterial;
-        backCells.frustumCulled = false;
-        shellGroup.add(backCells);
-      });
-    }
+    // 图案补丁（按各细胞的图案）+ 背面图案层（几何共用、只画图案）
+    applyCellPatterns(cellMesh, orbit);
+    buildBackCells(cellMesh, shellGroup, sharedBackMaterial, orbit);
   }
-  // 涂色（A+）: 生成临时网格组，交给 preview 烘成立方体贴图后挂到细胞材质上
-  const paintingGroup = buildPainting(shData, shQuat, renderR, scale);
+
+  const paintingGroup = assemblePainting(layer.painting);
 
   return {
     group: shellGroup,
-    pole: shPole.clone().normalize(),
+    pole: new THREE.Vector3(layer.pole.x, layer.pole.y, layer.pole.z).normalize(),
     cells: cellMesh,
     paintingGroup,
   };
