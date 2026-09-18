@@ -14,12 +14,14 @@ import {
 /** 涂色覆盖层相对壳面的高度 */
 const PAINT_RADIUS_SCALE = 1.0015;
 
+/** 超亮涂色的显示提亮倍数 */
+const BRIGHT_PAINT_GAIN = 1.2;
+
 /**
  * 透明层的绘制顺序: 网格线必须晚于涂色层，否则线先和球面底色合成并写入深度、涂色被挡掉，
  * 线就固定成「白 × 不透明度 + 球面底色」的灰白，看不出底下的颜色。
  */
 const PAINT_RENDER_ORDER = 3;
-const PAINT_GLOW_RENDER_ORDER = 4;
 const GRID_LINE_RENDER_ORDER = 5;
 const GRID_LINE_MAJOR_RENDER_ORDER = 6;
 
@@ -227,21 +229,26 @@ class PaintingPreview {
         posArr[i * 3 + 2] = -part.positions[i * 3 + 2] * paintR;
       }
       geom.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-      // 涂色数据的 a 是笔刷强度（a>0 已涂色、a>127 超亮），不是透明度: 这里一律置 1
+      // a 是涂色状态（0 未涂 / 0.5 普通 / 1 超亮）: 超亮格按倍数提亮，再让片元不透明覆盖
       const src = part.colors;
       const cols = new Float32Array(src.length);
-      cols.set(src);
-      for (let i = 3; i < cols.length; i += 4) cols[i] = 1;
+      for (let i = 0; i < src.length; i += 4) {
+        const k = src[i + 3] > 0.75 ? BRIGHT_PAINT_GAIN : 1;
+        cols[i] = src[i] * k;
+        cols[i + 1] = src[i + 1] * k;
+        cols[i + 2] = src[i + 2] * k;
+        cols[i + 3] = 1;
+      }
       geom.setAttribute('color', new THREE.Float32BufferAttribute(cols, 4));
       const mat = new THREE.MeshBasicMaterial({
         vertexColors: true,
-        transparent: true,
         depthWrite: true,
         side: THREE.FrontSide, // 单面渲染，双面叠加会让超亮格子发白
-        blending: part.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+        // 涂色网格互不重叠，不需要混合
+        blending: THREE.NoBlending,
       });
       const mesh = new THREE.Mesh(geom, mat);
-      mesh.renderOrder = part.additive ? PAINT_GLOW_RENDER_ORDER : PAINT_RENDER_ORDER;
+      mesh.renderOrder = PAINT_RENDER_ORDER;
       mesh.frustumCulled = false;
       this._paintGroup.add(mesh);
       this._paintMeshes.push(mesh);

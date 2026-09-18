@@ -68,6 +68,20 @@ const painting = reactive({
   equatorLat: EQUATOR_DEFAULT_LAT as number,
   /** 沿赤道重复的份数（1 - equatorMaxRepeats） */
   equatorRepeats: 1,
+  /** 垂直裁剪量（0-50%，占图片高度的百分比）: 裁掉的部分相当于放大剩下的内容 */
+  equatorCropV: 0,
+  /**
+   * 垂直裁剪位置（±100%，相对裁剪量）:
+   * 正 = 裁剪窗口往上靠（保留上方内容、裁掉下方）；负反之；0 = 上下均分
+   */
+  equatorCropVPos: 0,
+  /** 水平裁剪量（0-50%，占图片宽度的百分比） */
+  equatorCropH: 0,
+  /**
+   * 水平裁剪位置（±100%，相对裁剪量）:
+   * 正 = 裁剪窗口往右靠（保留右侧内容、裁掉左侧）；负反之；0 = 左右均分
+   */
+  equatorCropHPos: 0,
 
   // ── 投影参数 ──
   /**
@@ -152,6 +166,12 @@ export const currentMode = computed(
   () => PROJ_MODES.find((m) => m.value === painting.projMode) ?? PROJ_MODES[0],
 )
 
+/**
+ * 预览默认视角正视的经线（复位视角也用这条）: 三种模式一致，都是「经度偏移 + 180」
+ * 半球 / 环绕赤道 = 投影落点所在经线；球面全景投影 = 图片中心所在经线（左边缘在经度偏移处）
+ */
+export const defaultViewLng = computed(() => painting.hemiLng + 180)
+
 // ── 环绕赤道 ────────────────────────────────────────────────
 
 /** 图片宽高比（宽 / 高）: 没载入图片时按 1 算，参数区照样能算排布 */
@@ -164,14 +184,19 @@ export const imageAspect = computed(() => (
 /**
  * 环绕赤道的排布参数（份数 / 每份宽度 / 次数上限）
  * 与生成彩绘共用 lib/painting 的 equatorLayout，界面显示的数值就是实际涂出来的
+ * （裁剪量 / 裁剪位置也在里面: 裁掉多少会影响可见宽高比，从而影响次数上限）
  */
 export const equatorInfo = computed(() => equatorLayout({
   latRangeDeg: painting.equatorLat,
   aspect: imageAspect.value,
   repeats: painting.equatorRepeats,
+  cropV: painting.equatorCropV,
+  cropH: painting.equatorCropH,
+  cropVPos: painting.equatorCropVPos,
+  cropHPos: painting.equatorCropHPos,
 }))
 
-/** 环绕赤道: 重复次数上限（纬度范围与图片宽高比共同决定） */
+/** 环绕赤道: 重复次数上限（纬度范围、图片宽高比与裁剪量共同决定） */
 export const equatorMaxRepeats = computed(() => equatorInfo.value.maxRepeats)
 
 // 纬度范围或图片比例变了，上限可能变小 → 份数跟着收敛，避免出现超过上限的值
@@ -246,6 +271,10 @@ export const PAINT_PARAM_DEFAULTS = {
   imgShiftY: 0,
   equatorLat: EQUATOR_DEFAULT_LAT,
   equatorRepeats: 1,
+  equatorCropV: 0,
+  equatorCropVPos: 0,
+  equatorCropH: 0,
+  equatorCropHPos: 0,
   fillMode: 'black',
   fillColor: '#000000',
   resample: 'average',
@@ -268,7 +297,7 @@ export const paintParamsDirty = computed(() => (
 
 /**
  * 重置「参数设置」卡片里的参数
- * 涉及: 经度偏移 / 图片缩放与移动 / 图外填充 / 重采样 / 颜色数量
+ * 涉及: 经度偏移 / 图片缩放与移动 / 环绕赤道（纬度范围、重复次数、裁剪）/ 图外填充 / 重采样 / 颜色数量
  * 不动投影模式、预览栏与已载入的图片
  */
 export function resetPaintParams() {

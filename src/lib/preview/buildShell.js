@@ -13,9 +13,7 @@ const NODE_STALK_RADIUS = 7;     // 细圆柱半径
 const NODE_STALK_LENGTH = 108;   // 细圆柱长度（朝内伸出）
 
 /**
- * 构建节点的两套几何（蓝图单位，轴沿 +Y = 径向外）:
- *   body —— 主体圆柱 + 朝内的细圆柱（用节点颜色、受光）
- *   cap  —— 朝外端面（发光，用节点颜色）
+ * 构建节点几何
  * 真实模型由 assembleNodes 用每实例的旋转把 +Y 对齐到各自节点的径向。
  */
 export function buildNodeGeometries() {
@@ -44,14 +42,10 @@ let layerWorker = null;
 let pendingAbort = null;
 
 /** 单层构建时限（毫秒）: 超时判定在主线程，超时即终止 Worker 并让 render 的 catch 接手 */
-const LAYER_BUILD_TIMEOUT_MS = 30000;
+const LAYER_BUILD_TIMEOUT_MS = 10000;
 
 /**
- * 立即中止正在进行的层构建（新一次 render 开始时调用）
- *
- * 必要性: Worker 单线程，postMessage 只会排队——不终止的话，上一次还在算的那一层
- * 会把新构建堵在队列里，直到 30s 看门狗误报"超时"。旧的那次 await 会立刻以错误
- * 退出，render 的 catch 按令牌判断，不会误报错误提示。
+ * 立即中止正在进行的层构建
  */
 export function cancelLayerWorker() {
   pendingAbort?.(new Error('构建已取消'));
@@ -225,6 +219,33 @@ function assembleFrames(frames, shellGroup, sharedBackMaterial) {
   shellGroup.add(backMesh);
 }
 
+/**
+ * 涂色烘焙材质: 顶点色的 (rgb 原色, a 涂色状态) 原样写进贴图两半，
+ * 亮度与压暗都由壳面着色器按这个状态算（见 shellPattern.js）。
+ *
+ * 要绕开的坑: three 的 color_fragment 会把 diffuseColor 乘上 vColor 整体（含 a），
+ * a 是状态不是透明度，被乘进去颜色就按状态衰减了 —— 这里直接覆写，不做乘法。
+ * 配 NoBlending: 涂色网格互不重叠，没涂色的方向保持清除色（全黑、a=0）。
+ */
+function makePaintingMaterial() {
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    depthWrite: true,
+    // 从球心往外烘焙，相机看到的是内侧 ⇒ BackSide
+    side: THREE.BackSide,
+    blending: THREE.NoBlending,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec4 vPaintColor;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\n\tvPaintColor = vColor;\n');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec4 vPaintColor;')
+      .replace('#include <color_fragment>', '\tdiffuseColor = vPaintColor;');
+  };
+  return mat;
+}
+
 /** 涂色: 建烘焙源 Group（不加入场景，交给 bakeShellPainting 烘成立方体贴图） */
 function assemblePainting(parts) {
   if (!parts || !parts.length) return null;
@@ -234,15 +255,7 @@ function assemblePainting(parts) {
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(part.positions, 3));
     geom.setAttribute('color', new THREE.Float32BufferAttribute(part.colors, 4));
-    const mat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      depthWrite: true,
-      // 只用于从球心往外的立方体烘焙: 相机在球内看到的是内侧 ⇒ 用 BackSide
-      side: THREE.BackSide,
-      blending: part.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-    });
-    const mesh = new THREE.Mesh(geom, mat);
+    const mesh = new THREE.Mesh(geom, makePaintingMaterial());
     mesh.frustumCulled = false;
     group.add(mesh);
   }

@@ -261,7 +261,10 @@ async function stringifyBlueprint(blueprint) {
   if ( t < 1 ) {
     throw new Error(`蓝图 body 格式错误：${t}`);
   }
-  blueprint.header.typeId = t;
+  if ( t === 3 ) {
+    blueprint.header.latLimit = 0
+  }
+  blueprint.header.typeId = blueprint.body.typeId = t;
   blueprint.header.createdTicks = getCurrentTicks();
   blueprint.header.version = BLUEPRINT_VERSION;
 

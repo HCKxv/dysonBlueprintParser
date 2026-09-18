@@ -136,7 +136,8 @@ export function computeFrames(shData, nodeMap, shPole, scale) {
 
 /**
  * 涂色网格: 顶点按轨道姿态旋转并缩放到轨道半径（纯数据，材质留主线程建）
- * @returns {Array<{positions: Float32Array, colors: Float32Array, additive: boolean}>|null}
+ * @returns {Array<{positions: Float32Array, colors: Float32Array}>|null}
+ *          colors 为 RGBA: rgb 线性色 + a = 涂色状态
  */
 export async function computePainting(shData, orbit, scale) {
   // 无涂色数据的壳层直接短路
@@ -162,7 +163,7 @@ export async function computePainting(shData, orbit, scale) {
       out[vi + 1] = ry * paintR;
       out[vi + 2] = -rz * paintR;
     }
-    return { positions: out, colors: part.colors, additive: !!part.additive };
+    return { positions: out, colors: part.colors };
   });
 }
 

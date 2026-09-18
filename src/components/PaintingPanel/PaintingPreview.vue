@@ -7,6 +7,7 @@ import {
   paintResult,
   paintStats,
   generating,
+  defaultViewLng,
 } from '../../stores/painting'
 import { downloadCanvas } from '../../utils/download'
 import { useToast } from '../../composables/useToast'
@@ -24,7 +25,7 @@ onMounted(() => {
   preview.init(canvasEl.value)
   preview.setGridVisible(painting.showGridLines)
   preview.setPainting(paintResult.value)
-  preview.setCenterLongitude(painting.hemiLng)
+  preview.setCenterLongitude(defaultViewLng.value)
   refreshFlatMap()
 })
 
@@ -36,8 +37,8 @@ onBeforeUnmount(() => {
 // store 变化 → 同步给预览
 watch(paintResult, (fg) => preview?.setPainting(fg))
 watch(() => painting.showGridLines, (v) => preview?.setGridVisible(v))
-// 经度偏移（半球投影的中心经线）变了，默认视角跟着转
-watch(() => painting.hemiLng, (v) => preview?.setCenterLongitude(v))
+// 默认视角正视的经线变了（经度偏移或切投影模式），跟着转过去
+watch(defaultViewLng, (v) => preview?.setCenterLongitude(v))
 
 /** 复位视角 */
 function onResetView() {

@@ -426,7 +426,7 @@ function computeLayerPoints(sh, R) {
  *
  * @param {object} body - 解析后的蓝图数据中的 body 部分（parsed.body）
  * @param {number} [r0=10000] - 单层壳的用户输入半径（多层壳使用蓝图原始轨道半径）
- * @returns {object|null} 返回 { layers: [...], nodeSpMax, frameSpMax, cpMax }，无壳数据时返回 null
+ * @returns {object|null} 返回 { layers: [...], nodeSpMax, frameSpMax, cpMax, radiusMin, radiusMax }，无壳数据时返回 null
  */
 function computePoints(body, r0 = 10000) {
   const isSingle = body.typeId === 1;
@@ -442,6 +442,7 @@ function computePoints(body, r0 = 10000) {
 
   const layers = [];
   let tNSP = 0, tFSP = 0, tCP = 0;
+  let radiusMin = Infinity, radiusMax = -Infinity;
 
   for (const orbit of shell.orbitList) {
     if (!orbit) continue;
@@ -454,6 +455,9 @@ function computePoints(body, r0 = 10000) {
     tFSP += layer.frameSpMax;
     tCP += layer.cpMax;
 
+    if (R < radiusMin) radiusMin = R;
+    if (R > radiusMax) radiusMax = R;
+
     layers.push({ orbitId: orbit.id, ...layer });
   }
 
@@ -462,6 +466,8 @@ function computePoints(body, r0 = 10000) {
     nodeSpMax: tNSP,
     frameSpMax: tFSP,
     cpMax: tCP,
+    radiusMin: layers.length ? radiusMin : 0,
+    radiusMax: layers.length ? radiusMax : 0,
   };
 }
 

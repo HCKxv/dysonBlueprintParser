@@ -14,27 +14,31 @@ import tex6 from '../../assets/shell-textures/dyson-shell-unlit-6.png';
 
 const PATTERN_TEXTURES = [tex0, tex1, tex2, tex3, tex4, tex5, tex6];
 
+// 图案线
 // 每个图案一张线蒙版: 中性灰、峰值 1.0，边缘过渡比发光图更细腻
 const PATTERN_COUNT = 7;
 // 图案线覆盖率差别大（2.75%~16.32%），按覆盖率补增益把各图案平均亮度拉平
-const PATTERN_GAIN = [1.67, 2.5, 2.5, 0.83, 2.17, 1.67, 1.25];   // 取自游戏材质的 _EmissionMultiplier（2.0/3.0/3.0/1.0/2.6/2.0/1.5），整体均值归一到与原表一致
-
-// 观感常数
-const INNER_DIM = 0.1;   // 细胞内部（图案线之外）压暗到面颜色的比例（底色压暗，贴近游戏的深底）
-const WALL_GAIN = 2.0;    // 图案线提亮倍数（漫反射部分）
-// 线另加一层自发光（游戏里线是 HDR 发光的，预览无 bloom，只靠漫反射会发灰）
-const PATTERN_GLOW = 1.1;
+const PATTERN_GAIN = [1.67, 2.5, 2.5, 0.83, 2.17, 1.67, 1.25];
+const WALL_GAIN = 2.0;    // 线提亮倍数（漫反射部分）
+const PATTERN_GLOW = 1.1; // 线另加的自发光
 const MASK_LOW = 0.155;   // 蒙版贴图 → 线蒙版的归一化窗口（贴图线是软边，窗口窄一点线才清楚）
 const MASK_HIGH = 1.0;    // 该贴图峰值 = 1.0，所以上界就是 1
-// 细网复用图案 0 的贴图
+
+// 细胞点细网
 const FINE_MASK_LOW = 0.1;
 const FINE_MASK_HIGH = 0.28;
 const FINE_GAIN = 1.6;    // 细网线亮度倍数
 const FINE_GLOW = 1.0;    // 细网线自发光强度（图案线是 PATTERN_GLOW）
-// 距离降级（对应 viewDistFalloff）: 底色回升早、图案收拢晚；数值 = 一个像素跨多少个细胞
+
+// 细胞内部底色
+const INNER_DIM = 0.05;   // 普通涂色/未涂色的内部压暗系数（压暗成深底，贴近游戏观感）
+const BRIGHT_INNER_DIM = 0.4;
+const BRIGHT_PAINT_GAIN = 1.2;
+
+// 底色回升
 const INNER_FADE_START = 0.03;   // ≈33px 一格开始回升
 const INNER_FADE_END = 0.16;     // ≈6px 一格时已完成回升
-// 图案/细网收拢（可以晚）: 让图案在更远的距离仍可见，和游戏的观感一致
+// 图案/细网收拢
 const FALLOFF_START = 0.11;      // ≈9px 一格图案开始收拢
 const FALLOFF_END = 0.65;        // ≈1.5px 一格完全收拢
 const FALLOFF_INNER_DIM = 0.98;  // 完全降级时底色 = 本色的 98%
@@ -195,10 +199,14 @@ vec3 gPatternLineColor = vec3(0.0);
 vec3 gFineLineColor = vec3(0.0);
 `)
       .replace('#include <color_fragment>', `#include <color_fragment>
-// ① 先涂色: 逐像素按方向取涂色（a=0 表示这一格没涂，保留面颜色）
+// ① 先涂色: 贴图 rgb = 原色、alpha = 涂色状态。两档阈值取相邻中点，
+//    「有没有涂色」只能看 alpha
+float paintBright = 0.0;
 if (uHasPaint > 0.5) {
   vec4 paint = textureCube(uPaintCube, vShellLocalDir);
-  diffuseColor.rgb = mix(diffuseColor.rgb, paint.rgb, paint.a);
+  float paintOn = step(0.25, paint.a);
+  paintBright = paintOn * step(0.75, paint.a);
+  diffuseColor.rgb = mix(diffuseColor.rgb, paint.rgb, paintOn);
 }
 // 细胞局部 uv（±1/3 对应一个细胞），去掉格坐标偏移即得
 vec2 localUV = vPatternUV - vec2((-2.0 * vPatternMN.x + vPatternMN.y) / 3.0,
@@ -209,20 +217,22 @@ vec3 baseColor = diffuseColor.rgb;
 float cellSpan = max(fwidth(localUV.x), fwidth(localUV.y)) * 3.0;
 float innerLod = smoothstep(${INNER_FADE_START.toFixed(4)}, ${INNER_FADE_END.toFixed(4)}, cellSpan);
 float maskLod = smoothstep(${FALLOFF_START.toFixed(4)}, ${FALLOFF_END.toFixed(4)}, cellSpan);
+// 细胞内部底色
+float dim = mix(mix(${INNER_DIM.toFixed(4)}, ${BRIGHT_INNER_DIM.toFixed(4)}, paintBright),
+                ${FALLOFF_INNER_DIM.toFixed(4)}, innerLod);
+vec3 innerColor = baseColor * dim * mix(1.0, ${BRIGHT_PAINT_GAIN.toFixed(4)}, paintBright);
 if (uHasPattern > 0.5) {
   // 图案线蒙版: 发光贴图的实测峰值 ≈ 0.38
   float patternMask = smoothstep(uMaskLow, uMaskHigh,
                                  texture2D(uPatternEmis, vPatternUV).r) * (1.0 - maskLod);
   // 线 = 面/涂色颜色 × 提亮倍数 × 图案增益
   vec3 lineColor = baseColor * ${WALL_GAIN.toFixed(4)} * uPatternGain;
-  vec3 innerColor = baseColor * mix(${INNER_DIM.toFixed(4)}, ${FALLOFF_INNER_DIM.toFixed(4)}, innerLod);
   diffuseColor.rgb = mix(innerColor, min(lineColor, vec3(1.0)), patternMask);
   gPatternMask = patternMask;
   gPatternLineColor = lineColor;
 }
-// 细胞点细网: 采样 uv = 局部 uv × gridScale
+// 细胞点细网: 采样 uv = 局部 uv × gridScale；细网线比图案线细 gridScale 倍
 if (uHasFine > 0.5) {
-  // 细网线比图案线细 gridScale 倍
   float fineLod = smoothstep(${FALLOFF_START.toFixed(4)} * uGridScale,
                              ${FALLOFF_END.toFixed(4)} * uGridScale, cellSpan);
   float fineMask = smoothstep(${FINE_MASK_LOW.toFixed(4)}, ${FINE_MASK_HIGH.toFixed(4)},
@@ -317,7 +327,7 @@ export function buildBackCells(cells, shellGroup, sharedBackMaterial, orbit) {
  * @param {number} [size] 立方体贴图每个面的分辨率
  * @returns {THREE.CubeTexture|null} 烘出的贴图（由调用方负责在清场时 dispose）
  */
-export function applyLayerPainting(renderer, layer, size = 1024) {
+export function applyLayerPainting(renderer, layer, size = 1536) {
   const paintingGroup = layer?.paintingGroup;
   const cells = layer?.cells;
   if (!paintingGroup || !cells) return null;
@@ -342,10 +352,10 @@ export function applyLayerPainting(renderer, layer, size = 1024) {
  * 把涂色网格烘成"方向 → 颜色"的立方体贴图
  * @param {THREE.WebGLRenderer} renderer
  * @param {THREE.Object3D} paintingGroup 涂色烘焙源（buildShellLayer 返回的 paintingGroup）
- * @param {number} [size] 每个面的分辨率（1024 ⇒ 角分辨率约 0.09°，约 1/6 个图案格）
+ * @param {number} [size] 每个面的分辨率（1536 ⇒ 角分辨率约 0.06°，一格约 26 texel）
  * @returns {THREE.CubeTexture|null}
  */
-export function bakeShellPainting(renderer, paintingGroup, size = 1024) {
+export function bakeShellPainting(renderer, paintingGroup, size = 1536) {
   if (!renderer || !paintingGroup) return null;
   const rt = new THREE.WebGLCubeRenderTarget(size, {
     format: THREE.RGBAFormat,

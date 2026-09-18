@@ -74,9 +74,11 @@ function fmtShellValue(shData: any, layerData: any): string {
   const structPts = (layerData?.nodeSpMax || 0) + (layerData?.frameSpMax || 0)
   const cellPts = layerData?.cpMax || 0
   const lines = [
-    '节点' + nodeCnt + ' / 框架' + frameCnt + ' / 壳面' + faceCnt,
-    '结构点数' + structPts + ' / 细胞点数' + cellPts,
-    '网格涂色：' + (paintCnt ? gridTypeName(shData.fillGrid.gridType) + ' / ' + paintCnt : '无'),
+    '节点 ' + nodeCnt + ' / 框架 ' + frameCnt + ' / 壳面 ' + faceCnt,
+    ... layerData ? ['结构点数 ' + structPts + ' / 细胞点数 ' + cellPts]
+                  : [],
+    ... paintCnt ? ['网格涂色：' + (gridTypeName(shData.fillGrid.gridType) + ' / ' + paintCnt)]
+                 : [],
   ]
   return lines.join('<br>')
 }
@@ -124,11 +126,17 @@ export function buildStatsTree(
   })
 
   // ── 建造总量 ──
-  if ([1, 2, 4].includes(parsed.body.typeId)) {
+  if (powerResult && [1, 2, 4].includes(parsed.body.typeId)) {
+    const structPts = (powerResult?.nodeSpMax || 0) + (powerResult?.frameSpMax || 0)
+    const cellPts = powerResult?.cpMax || 0
+    const radiusMax = (powerResult?.radiusMax || 0).toFixed(0)
+    const radiusMin = (powerResult?.radiusMin || 0).toFixed(0)
     nodes.push({
       kind: 'stat', label: '戴森壳建造量',
-      value: '小型运载火箭：约 ' + ((powerResult?.nodeSpMax || 0) + (powerResult?.frameSpMax || 0)) + '<br>' +
-        '太阳帆：约 ' + (powerResult?.cpMax || 0),
+      value: '小型运载火箭 约 ' + structPts + '<br>' +
+        '太阳帆 约 ' + cellPts + '<br>' +
+       ( parsed.body.typeId !== 1 ?'最大半径 ' + radiusMax + ' / 最小半径 ' + radiusMin
+                                  :'半径 ' + radiusMax),
     })
   }
 
@@ -173,7 +181,7 @@ export function buildStatsTree(
     const orbits = shell.orbitList.filter(Boolean).sort((a: any, b: any) => a.id - b.id)
     const items: StatNode[] = orbits.map((orbit: any): StatNode => {
       const shData = shell.shells?.[orbit.id] ?? null
-      const layerData = powerResult?.layers.find((l: any) => l.orbitId === orbit.id)
+      const layerData = powerResult?.layers?.find((l: any) => l.orbitId === orbit.id) ?? null
       const ed = shell.visibility ? shell.visibility.editor[orbit.id] : true
       const gv = shell.visibility ? shell.visibility.inGame[orbit.id] : true
       return {

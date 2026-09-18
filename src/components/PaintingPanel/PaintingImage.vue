@@ -24,6 +24,10 @@ const isHemisphere = computed(() => painting.projMode === 'hemisphere')
 /** 环绕赤道参数只在环绕赤道模式下有效 */
 const isEquator = computed(() => painting.projMode === 'equator')
 
+// ── 裁剪（只作用于环绕赤道）──
+/** 单轴裁剪量上限（%），与 projection.js 的限幅一致 */
+const CROP_MAX = 50
+
 /** 缩放滑块用百分比，存的是倍率 */
 const zoomPercent = computed({
   get: () => Math.round(painting.imgZoom * 100),
@@ -94,10 +98,36 @@ const shiftYPct = computed({
 
     <!-- ── 环绕赤道 ── -->
     <div v-if="isEquator" class="paint-params-block">
-      <div class="paint-params-head"><span>环绕参数</span></div>
+      <div class="paint-params-head"><span>环带与裁剪</span></div>
 
       <ParamSlider v-model="painting.equatorLat" :min="30" :max="72" :step="1.5">
         <template #label>纬度范围</template>
+      </ParamSlider>
+
+      <ParamSlider v-model="painting.equatorCropV" :min="0" :max="CROP_MAX" :step="1">
+        <template #label>垂直裁剪</template>
+      </ParamSlider>
+
+      <ParamSlider
+        v-model="painting.equatorCropVPos"
+        :min="-100"
+        :max="100"
+        :step="5"
+      >
+        <template #label>垂直裁剪位置</template>
+      </ParamSlider>
+
+      <ParamSlider v-model="painting.equatorCropH" :min="0" :max="CROP_MAX" :step="1">
+        <template #label>水平裁剪</template>
+      </ParamSlider>
+
+      <ParamSlider
+        v-model="painting.equatorCropHPos"
+        :min="-100"
+        :max="100"
+        :step="5"
+      >
+        <template #label>水平裁剪位置</template>
       </ParamSlider>
 
       <ParamSlider

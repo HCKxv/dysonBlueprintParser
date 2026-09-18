@@ -7,6 +7,10 @@
  *
  * 三种投影（params.projMode）:
  *   hemisphere 半球面（中心经度 hemiLng）、equirect 等矩形、equator 环绕赤道（见 equatorLayout）
+ *   半球与环绕赤道的投影位置都再转 180°，等距圆柱不受影响
+ *
+ * 裁剪（只作用于环绕赤道）: 按 equatorCropV / equatorCropH 把图片上下、左右各裁掉一段，
+ *   裁掉的部分在两侧怎么分由 equatorCropVPos / equatorCropHPos 决定（见 equatorLayout）
  */
 
 import { buildGraticuleBands } from '../preview/paintingGrid.js';
@@ -97,6 +101,8 @@ const EQ_LAT_MAX = 72;
 export const EQUATOR_DEFAULT_LAT = 45;
 /** 重复次数上限 = 赤道带的经向格数（240）: 再细就小于一个格子、涂不出来了 */
 const EQUATOR_MAX_REPEATS = 240;
+/** 单轴裁剪量上限（%） */
+const EQUATOR_MAX_CROP = 50;
 
 /** ±R° 限幅（非法值 → 默认） */
 function clampLatRange(v) {
@@ -105,18 +111,43 @@ function clampLatRange(v) {
   return Math.min(EQ_LAT_MAX, Math.max(EQ_LAT_MIN, r));
 }
 
+/** 裁剪量限幅（0 - 50%，非法值 → 0） */
+function clampCropPercent(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(EQUATOR_MAX_CROP, n);
+}
+
+/** 裁剪位置限幅（±100%，非法值 → 0） */
+function clampCropPosition(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(-100, n));
+}
+
 /**
  * 环绕赤道的排布参数（界面与采样共用）
  *
- * @param {{latRangeDeg?:number, aspect?:number, repeats?:number}} o
- *   latRangeDeg 纬度范围 ±R°、aspect 图片宽高比（宽/高）、repeats 重复份数
+ * @param {{latRangeDeg?:number, aspect?:number, repeats?:number,
+ *          cropV?:number, cropH?:number, cropVPos?:number, cropHPos?:number}} o
+ *   latRangeDeg 纬度范围 ±R°、aspect 图片宽高比（宽/高）、repeats 重复份数、
+ *   cropV / cropH 垂直 / 水平裁剪量（0-50%）、cropVPos / cropHPos 垂直 / 水平裁剪位置（±100%）
  * @returns {{latRange:number, naturalWidth:number, copyWidth:number, copyHeight:number,
- *            maxRepeats:number, repeats:number, period:number}}
- *   依次为: 实际 ±R°、原比例宽度、份内图片宽 / 高（度）、次数上限、实际份数、每份占的经度（度）
+ *            maxRepeats:number, repeats:number, period:number,
+ *            cropU0:number, cropV0:number, cropUSpan:number, cropVSpan:number}}
+ *   依次为: 实际 ±R°、原比例宽度、份内图片宽 / 高（度）、次数上限、实际份数、每份占的经度（度）、
+ *   裁剪窗口（图片 UV 的左下角 + 宽高；不裁剪时 = 0, 0, 1, 1）
  */
-export function equatorLayout({ latRangeDeg, aspect, repeats } = {}) {
+export function equatorLayout({ latRangeDeg, aspect, repeats, cropV, cropH, cropVPos, cropHPos } = {}) {
   const latRange = clampLatRange(latRangeDeg);
-  const a = Math.max(1e-3, Number(aspect) || 1);
+  // 裁剪量按比例取，位置按「裁剪量」取 —— 都先归一化到 0-1
+  const cv = clampCropPercent(cropV) / 100;
+  const ch = clampCropPercent(cropH) / 100;
+  const pv = clampCropPosition(cropVPos) / 200 + 0.5;
+  const ph = clampCropPosition(cropHPos) / 200 + 0.5;
+
+  // 裁剪后的可见宽高比（环带高度仍由 ±R° 决定，所以裁掉的部分 = 放大剩下的内容）
+  const a = Math.max(1e-3, (Number(aspect) || 1) * (1 - ch) / (1 - cv));
   const naturalWidth = 2 * latRange * a;
   // +1e-9: 正好整除时（90° 宽 → 4 份）避免浮点少算一份
   const maxRepeats = Math.max(
@@ -128,6 +159,9 @@ export function equatorLayout({ latRangeDeg, aspect, repeats } = {}) {
   // 份内宽 = 原比例宽（放不进这一份时缩到份宽），高度按比例跟着缩
   const shrunk = naturalWidth > period;
   const copyWidth = shrunk ? period : naturalWidth;
+  // 裁剪窗口: v = 1 在图片顶边，u 沿经度增大方向（位置 +100% = 窗口贴到对应的那一侧）
+  const cropUSpan = 1 - ch;
+  const cropVSpan = 1 - cv;
   return {
     latRange,
     naturalWidth,
@@ -136,6 +170,10 @@ export function equatorLayout({ latRangeDeg, aspect, repeats } = {}) {
     maxRepeats,
     repeats: n,
     period,
+    cropU0: ch * ph,
+    cropV0: cv * pv,
+    cropUSpan,
+    cropVSpan,
   };
 }
 
@@ -156,6 +194,8 @@ export function createProjector(img, params) {
   const shiftPx = isEquirect && hemiLng
     ? ((Math.round((hemiLng / 360) * iw) % iw) + iw) % iw
     : 0;
+  // 半球 / 环绕赤道的投影位置在经度偏移的基础上再转 180°（等距圆柱保持原义、不受影响）
+  const projLng = isEquirect ? hemiLng : hemiLng + 180;
 
   const canvas = document.createElement('canvas');
   canvas.width = iw;
@@ -192,7 +232,7 @@ export function createProjector(img, params) {
     return [cl * Math.sin(lo), Math.sin(la), -cl * Math.cos(lo)];
   };
   // 半球局部坐标系: axis = 中心方向，east = axis × 北（经度增大方向），north = axis × east
-  const AXIS = toVec(0, hemiLng);
+  const AXIS = toVec(0, projLng);
   const REF_N = [0, 1, 0];
   const EAST = [
     AXIS[1] * REF_N[2] - AXIS[2] * REF_N[1],
@@ -249,6 +289,10 @@ export function createProjector(img, params) {
       latRangeDeg: params.equatorLat,
       aspect,
       repeats: params.equatorRepeats,
+      cropV: params.equatorCropV,
+      cropH: params.equatorCropH,
+      cropVPos: params.equatorCropVPos,
+      cropHPos: params.equatorCropHPos,
     })
     : null;
   // 图片在纬度方向的半高: 正常 = R，图被缩到一圈时更小
@@ -262,8 +306,9 @@ export function createProjector(img, params) {
    *
    * 等距圆柱（已用真实涂色蓝图逐格比对确认）: 经度 0° = 图片左边缘，向右经度增大；
    *   图片上 / 下边 = 北 / 南极
-   * 半球投影: 图片中心 → 半球中心（赤道、hemiLng），横向东、纵向北，按自身比例摆放
-   * 环绕赤道: 图片中心 → 赤道 + 份中心经度，横向东、纵向北；出环带或落在空隙即图外
+   * 半球投影: 图片中心 → 半球中心（赤道、projLng），横向东、纵向北，按自身比例摆放
+   * 环绕赤道: 图片中心 → 赤道 + 份中心经度，横向东、纵向北；出环带或落在空隙即图外；
+   *   份内再按裁剪窗口取图片的一块（裁剪量 + 裁剪位置，见 equatorLayout）
    */
   function uvAt(lat, lng) {
     let dx;
@@ -295,12 +340,15 @@ export function createProjector(img, params) {
       // 否则紧贴图片下边（左边）的那圈格子会被染上图片边缘色，南北（东西）多出一格
       if (lat <= -eqHalfLat || lat >= eqHalfLat) return null;
       dy = lat / eq.copyHeight; // 图片中心在赤道，上下边 = ±copyHeight/2
-      // 到最近一份中心的经度差（份中心在 hemiLng + k×period）→ 落在空隙即图外
-      let d = (lng - hemiLng) % eq.period;
+      // 到最近一份中心的经度差（份中心在 projLng + k×period）→ 落在空隙即图外
+      let d = (lng - projLng) % eq.period;
       if (d < 0) d += eq.period;
       if (d > eq.period / 2) d -= eq.period;
       if (Math.abs(d) >= eq.copyWidth / 2) return null;
       dx = d / eq.copyWidth;
+      // 裁剪: 份内的 ±0.5 线性映射到「裁剪窗口」内（不裁剪时窗口 = 整图，映射回原样）
+      dx = eq.cropU0 + (dx + 0.5) * eq.cropUSpan - 0.5;
+      dy = eq.cropV0 + (dy + 0.5) * eq.cropVSpan - 0.5;
     } else {
       // 等距圆柱: 经纬度线性映射；超出图片覆盖的纬度即图外（极冠）
       if (lat < -latLimit || lat > latLimit) return null;

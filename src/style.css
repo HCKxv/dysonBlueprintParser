@@ -1468,10 +1468,14 @@ textarea::-webkit-scrollbar-thumb,
 }
 
 .base-import-hint {
+  min-width: 0;
   padding: 2px 0;
   font-size: 11px;
   line-height: 1.6;
   color: #7b8aa6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .base-import-input {
@@ -1491,7 +1495,25 @@ textarea::-webkit-scrollbar-thumb,
 
 .base-import-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
+}
+
+/* 按钮保持自身宽度，长报错只让右侧文字换行 */
+.base-import-actions > button {
+  flex: 0 0 auto;
+}
+
+/* 导入失败提示: 贴在按钮区右边，单行显示，过长省略 */
+.base-import-error {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #ff8a8a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── 彩绘预览 ── */

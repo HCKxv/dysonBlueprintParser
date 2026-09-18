@@ -3,13 +3,15 @@ import { computed, reactive, ref, toRaw, watch } from 'vue'
 import { store } from '../../stores/preview'
 import { copyShell } from '../../lib/blueprint/blueprintEdit.js'
 import { stringifyBlueprint } from '../../lib/blueprint/blueprintEncoder.js'
-import { computePoints, computePower, fmtKW } from '../../lib/power/power.js'
+import { computePower, fmtKW } from '../../lib/power/power.js'
+import { computePointsAsync, cancelPowerComputes } from '../../lib/power/powerAsync.js'
 import { downloadTxt } from '../../utils/download'
 import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 
 const busy = ref(false)
+const computing = ref(false)
 const previewPowerText = ref('')
 
 const form = reactive({
@@ -20,6 +22,7 @@ const form = reactive({
   step: 1000,
   direction: -1,
   luminosity: 1.0,
+  autoOrbitCloud: false,
 })
 
 watch(
@@ -27,6 +30,7 @@ watch(
   (open) => {
     if (!open) return
     busy.value = false
+    computing.value = false
     previewPowerText.value = ''
     form.radius = 10000
     form.ascendingNode = 0
@@ -35,6 +39,7 @@ watch(
     form.step = 1000
     form.direction = -1
     form.luminosity = store.luminosity
+    form.autoOrbitCloud = false
   },
 )
 
@@ -65,7 +70,7 @@ async function confirm() {
   try{
     const multi = await copyShell(toRaw(parsed), { ...form })
     const text = await stringifyBlueprint(multi)
-    downloadTxt(text, `${form.count}层戴森壳`)
+    downloadTxt(text, `${form.count}层戴森${form.autoOrbitCloud?'球':'壳'}`)
     await navigator.clipboard.writeText(text)
     store.showCopyShellModal = false
     toast.show(`已生成 ${form.count} 层戴森壳，并复制到剪贴板`)
@@ -76,23 +81,30 @@ async function confirm() {
   busy.value = false
 }
 
-function previewPower() {
+/** 发电量预览: 生成多层壳 + 在 Worker 里算点数（算的时候按钮置灰） */
+async function previewPower() {
   const parsed = store.parsed
-  if (invalidText.value || !parsed || parsed.body?.typeId !== 1) return
+  if (computing.value || invalidText.value || !parsed || parsed.body?.typeId !== 1) return
+  computing.value = true
   try {
-    const multi = copyShell(toRaw(parsed), { ...form })
-    const points = computePoints(multi.body, null)
+    const multi = await copyShell(toRaw(parsed), { ...form })
+    const points = await computePointsAsync(multi.body, null, { key: 'copy-shell' })
     const lum = Math.min(10, Math.max(0.1, form.luminosity || 1.0))
     previewPowerText.value = points
       ? fmtKW(computePower(points, lum))
       : '0 W'
-  } catch {
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') return
     previewPowerText.value = '计算失败'
+  } finally {
+    computing.value = false
   }
 }
 
 function closeModal() {
-  if (!busy.value) store.showCopyShellModal = false
+  if (busy.value) return
+  cancelPowerComputes('copy-shell')   // 放弃还在算的发电量预览
+  store.showCopyShellModal = false
 }
 </script>
 
@@ -101,7 +113,7 @@ function closeModal() {
     <div class="modal-backdrop" @click="closeModal"></div>
     <div class="modal-box">
       <div class="modal-header">
-        <span>生成多层壳</span>
+        <span>将单层蓝图复制为多层</span>
         <button class="modal-close" aria-label="关闭" @click="closeModal">✕</button>
       </div>
       <div class="modal-body scroll-y">
@@ -160,6 +172,13 @@ function closeModal() {
             />
           </div>
 
+          <div class="menu">
+            <label>
+              <input type="checkbox" v-model="form.autoOrbitCloud" />
+              添加适用于自动轨道弹射的戴森云
+            </label>
+          </div>
+
           <div v-if="invalidText" class="menu" style="color: #ff6b6b;">
             ⚠ {{ invalidText }}
           </div>
@@ -175,7 +194,9 @@ function closeModal() {
               min="0.1"
               class="input-dark w-70"
             /></form>
-            <button class="btn-sm" :disabled="busy || !!invalidText" @click="previewPower">计算发电量</button>
+            <button class="btn-sm" :disabled="busy || computing || !!invalidText" @click="previewPower">
+              {{ computing ? '计算中...' : '计算发电量' }}
+            </button>
             <span v-if="previewPowerText">⚡ {{ previewPowerText }}</span>
           </div>
 

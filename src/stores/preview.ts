@@ -3,7 +3,8 @@ import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
 import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
 import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
 import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
-import { computePoints, computePower, fmtKW } from '../lib/power/power.js'
+import { computePower, fmtKW } from '../lib/power/power.js'
+import { computePointsAsync } from '../lib/power/powerAsync.js'
 import { buildStatsTree, type StatNode } from '../components/BlueprintPanel/statsTree'
 import { downloadTxt } from '../utils/download'
 import { useToast } from '../composables/useToast'
@@ -180,25 +181,36 @@ function buildTree(parsed: Record<string, any>, powerResult: Record<string, any>
   })
 }
 
-/** 解析成功后：3D 渲染 + 发电量计算 + 信息面板 */
-function renderFromParsed(parsed: Record<string, any>) {
-  preview.value?.render(parsed.body)
-  store.isSingleShell = parsed.body.typeId === 1
-
-  const userRadius = clampRadius(store.radius || 10000)
-  store.radius = userRadius
-  const powerResult = computePoints(parsed.body, store.isSingleShell ? userRadius : null)
-  if (!powerResult) {
-    store.powerText = '0 W'
-    store.powerResult = null
-  } else {
-    const lum = clampLum(store.luminosity)
-    store.luminosity = lum
-    store.powerText = fmtKW(computePower(powerResult, lum, store.isNode, store.isFrame, store.isFaces))
-    store.powerResult = powerResult
-    preview.value?.setSunColor(lum)
+/** 计算结构与细胞点数并更新 */
+async function updatePoints(parsed: Record<string, any>) {
+  let r0: number | null = null
+  if (parsed.body.typeId === 1) {
+    store.radius = clampRadius(store.radius || 10000)
+    r0 = store.radius
   }
 
+  store.powerText = '计算中...'
+  let powerResult: Record<string, any> | null
+  try {
+    powerResult = await computePointsAsync(toRaw(parsed.body), r0, { key: 'preview' })
+  } catch (error) {
+    if ((error as Error).name === 'AbortError' || parsed !== store.parsed) return
+    store.powerText = '计算失败'
+    store.powerResult = null
+    toast.show(`发电量计算失败：\n${(error as Error).message}`)
+    return
+  }
+  if (parsed !== store.parsed) return   // 期间换了蓝图: 这次结果作废
+
+  store.powerResult = powerResult
+  if (powerResult) {
+    const lum = clampLum(store.luminosity)
+    store.luminosity = lum
+    refreshPower()
+    preview.value?.setSunColor(lum)
+  } else {
+    store.powerText = '0 W'   // 没有壳数据（例如只有戴森云）
+  }
   buildTree(parsed, powerResult)
 }
 
@@ -221,12 +233,18 @@ export async function parseBlueprint() {
   try {
     const parsed = await parseBlueprintString(text)
     parsed.validFlag = verifyBlueprintString(text)
-    renderFromParsed(parsed)
+
+    store.isSingleShell = parsed.body.typeId === 1
+    buildTree(parsed, null)
+
     // markRaw：蓝图数据不需要深层响应式（面板由 statsTree / powerResult 驱动）。
     // 若交给 Vue 代理，编码 / 提取时库内 { ...node } 式展开会把嵌套代理写回数据，
     // 之后 structuredClone 就会抛「#<Object> could not be cloned」
     store.parsed = markRaw(parsed)
     toast.show('成功解析蓝图')
+
+    updatePoints(parsed)
+    preview.value?.render(parsed.body)
   } catch (error) {
     store.errorMessage = (error as Error).message
     toast.show(`解析蓝图失败：\n${(error as Error).message}`)
@@ -236,17 +254,10 @@ export async function parseBlueprint() {
 }
 
 /** 单层壳半径变化：重新计算结构与细胞点数（随半径变化） */
-export function onRadiusChange() {
-  const val = clampRadius(store.radius)
-  store.radius = val
-
-  if (store.parsed?.body?.typeId !== 1) return
-  const powerResult = computePoints(toRaw(store.parsed.body), val)
-  if (!powerResult) return
-  store.powerResult = powerResult
-  refreshPower()
-  // 重渲染信息面板（结构/细胞点数随半径变化）
-  buildTree(store.parsed, powerResult)
+export async function onRadiusChange() {
+  const parsed = store.parsed
+  if (parsed?.body?.typeId !== 1) return
+  await updatePoints(parsed)
 }
 
 /** 光度系数变化：更新恒星颜色并刷新发电量 */

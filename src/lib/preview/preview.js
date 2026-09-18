@@ -287,7 +287,7 @@ class DysonSpherePreview {
           const layer = await buildShellLayer(shData, orbit, this._currentScale, this._nodeGeoms, this._sharedBackMaterial);
           layer.group.visible = gv;
           // 涂色
-          const paintCube = applyLayerPainting(this._renderer, layer, 1024);
+          const paintCube = applyLayerPainting(this._renderer, layer, 1536);
           stagedShells.push({ group: layer.group, pole: layer.pole, radius: orbit.radius, paintCube });
           stagedVis.set('shell_' + orbit.id, layer.group);
           staging.add(layer.group);

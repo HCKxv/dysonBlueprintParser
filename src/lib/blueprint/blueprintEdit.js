@@ -5,6 +5,34 @@ function edgeKey(a, b) {
   return a < b ? `${a},${b}` : `${b},${a}`;
 }
 
+/**
+ * 生成戴森云
+ * @param {number} radius - 云轨道半径
+ * @param {Array<[number, number, number]>} orbitParams - 轨道参数 [倾角, 条数, 起始交升点]，
+ *   每条都会自动补一条镜像轨道（倾角 180-x、交升点 +180），所以最多十条
+ * @returns {{visibility: object, orbits: object[], colors: never[]}}
+ */
+function buildCloud(radius, orbitParams) {
+  const orbits = [];
+  const visibility = { editor: {}, inGame: {} };
+
+  const addGroup = (inclination, count, startNode) => {
+    for (let i = 0; i < count; i += 1) {
+      const id = orbits.length + 1;
+      orbits.push({ id, radius, ...orbitParamsToQuaternion(inclination, startNode + (360 / count) * i) });
+      visibility.editor[id] = true;
+      visibility.inGame[id] = true;
+    }
+  };
+
+  for (const [inclination, count, startNode] of orbitParams) {
+    addGroup(inclination, count, startNode);
+    addGroup(180 - inclination, count, startNode + 180);
+  }
+
+  return { visibility, orbits, colors: [] };
+}
+
 // 递归拷贝成纯对象 / 纯数组
 // 蓝图数据可能来自 Vue 响应式代理（reactive）：对象展开（{ ...node }）只剥掉最外层代理，
 // 嵌套对象（coordinate / color）读出来仍是代理，写回数据后 structuredClone 就会失败
@@ -195,6 +223,12 @@ function extractStructure(blueprint, type){
 };
 
 /**
+ * 自动轨道弹射用的云轨道参数: [倾角, 条数, 起始交升点]
+ * 每条镜像出一条（倾角 180-x、交升点 +180），一共 20 条
+ */
+const AUTO_ORBIT_PARAMS = [[90, 1, 0], [75, 3, 0], [40, 6, 30]];
+
+/**
  * 将单层壳复制为多层戴森壳
  *
  * @param {object} blueprint - 单层壳蓝图对象 typeId: 1
@@ -205,7 +239,8 @@ function extractStructure(blueprint, type){
  * @param {number} options.count - 复制次数（最终壳层数，1-10）
  * @param {number} options.step - 相邻层半径步长（不小于 1000）
  * @param {number} options.direction - 1 递增 / -1 递减
- * @returns {object} 多层戴森壳蓝图对象 typeId: 2
+ * @param {boolean} [options.autoOrbitCloud] - 是否附带戴森云
+ * @returns {object} 多层戴森壳蓝图对象（typeId 2；带云时 typeId 4）
  * @throws 蓝图不是单层壳、参数非法或层半径低于 4000 时
  */
 function copyShell(blueprint, options = {}) {
@@ -223,6 +258,7 @@ function copyShell(blueprint, options = {}) {
   const direction = Number(options.direction) < 0 ? -1 : 1;
   const inclination = options.inclination == null ? 0 : Number(options.inclination);
   const ascendingNode = options.ascendingNode == null ? 0 : Number(options.ascendingNode);
+  const withCloud = !!options.autoOrbitCloud;
 
   if (!Number.isFinite(radius) || radius < 4000) {
     throw new Error('轨道半径不能小于 4000');
@@ -249,10 +285,12 @@ function copyShell(blueprint, options = {}) {
 
   const orbitList = [null];
   const shells = [null];
+  let maxLayerRadius = 0;
   for (let i = 0; i < count; i += 1) {
     const layerRadius = Math.round(radius + direction * step * i);
     const id = i + 1;
     orbitList.push({ id, radius: layerRadius, ...quat });
+    if (layerRadius > maxLayerRadius) maxLayerRadius = layerRadius;
 
     shells.push(cloneData(source));
   }
@@ -264,12 +302,17 @@ function copyShell(blueprint, options = {}) {
   }
 
   const header = cloneData(blueprint.header ?? {});
-  header.typeId = 2;
-  header.typeName = blueprintTypeName(2);
+  header.typeId = withCloud ? 4 : 2;
+  header.typeName = blueprintTypeName(header.typeId);
+
+  const body = { typeId: header.typeId, dysonShell: { visibility, orbitList, shells } };
+  if (withCloud) {
+    body.dysonCloud = buildCloud(maxLayerRadius, AUTO_ORBIT_PARAMS);
+  }
 
   return {
     header,
-    body: { typeId: 2, dysonShell: { visibility, orbitList, shells } },
+    body,
   };
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import {
   painting,
   importedBase,
@@ -12,30 +12,45 @@ import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 
+/** 输入框上方的提示（单行省略显示，完整内容靠 title） */
+const IMPORT_HINT = '注意甄别未知来源的蓝图；建议使用全包裹的壳面，否则会影响最终效果。'
+
 /** 导入区是否展开 */
 const importOpen = ref(false)
 const importText = ref('')
 const importing = ref(false)
 
+/** 导入失败提示：显示在按钮区右边，不走全局 toast */
+const importError = ref('')
+
+/** 改动输入内容后旧的报错就不再适用 */
+watch(importText, () => {
+  importError.value = ''
+})
+
 /** 展开/收起输入框 */
 function toggleImport() {
   importOpen.value = !importOpen.value
+  if (!importOpen.value) importError.value = ''
 }
 
 async function applyImport() {
   const text = importText.value.trim()
   if (!text) {
-    toast.show('请先粘贴蓝图内容')
+    importError.value = '请先粘贴蓝图内容'
     return
   }
   importing.value = true
+  importError.value = ''
   try {
     const res = await importBaseBlueprint(text)
-    toast.show(res.message)
-    if (res.ok) {
-      importText.value = ''
-      importOpen.value = false
+    if (!res.ok) {
+      importError.value = res.message
+      return
     }
+    toast.show(res.message)
+    importText.value = ''
+    importOpen.value = false
   } finally {
     importing.value = false
   }
@@ -45,6 +60,7 @@ function onClearImport() {
   clearImportedBase()
   importText.value = ''
   importOpen.value = false
+  importError.value = ''
   toast.show('已清除导入的基底')
 }
 </script>
@@ -97,8 +113,8 @@ function onClearImport() {
         </button>
 
         <div v-if="importOpen" class="base-import">
-          <div class="base-import-hint">
-            注意甄别未知来源的蓝图；建议使用全包裹的壳面，否则会影响最终效果。
+          <div class="base-import-hint" :title="IMPORT_HINT">
+            {{ IMPORT_HINT }}
           </div>
           <textarea
             v-model="importText"
@@ -115,6 +131,12 @@ function onClearImport() {
               type="button"
               @click="onClearImport"
             >清除</button>
+            <span
+              v-if="importError"
+              class="base-import-error"
+              :title="importError"
+              role="alert"
+            >{{ importError }}</span>
           </div>
         </div>
       </div>

@@ -28,13 +28,21 @@ function srgbToLinear(c) {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
-// 涂色颜色 → 顶点色 (r,g,b 线性, a)
-function paintToVertexColor(c, alpha) {
-  return [srgbToLinear(c.r / 255), srgbToLinear(c.g / 255), srgbToLinear(c.b / 255), alpha];
-}
+/**
+ * 顶点色 a 里的涂色状态: 0.5 普通 / 1 超亮（0 = 未涂色，由烘焙的清除色占据）。
+ * 状态独立于颜色 —— 黑色涂色 rgb 全 0，看颜色分不出「涂了黑」和「没涂」。
+ * 下游按相邻两档中点读: >0.25 已涂色、>0.75 超亮。
+ */
+const PAINT_STATE_NORMAL = 0.5;
+const PAINT_STATE_BRIGHT = 1;
 
-// 超亮涂色的加色发光强度: 总亮度 = 基础色 1 + 发光 0.2 = 1.2× 存储颜色
-const BRIGHT_GLOW_STRENGTH = 0.2;
+/** 涂色颜色 → 顶点色 (r,g,b 线性, a=涂色状态) */
+function paintToVertexColor(c, bright = false) {
+  return [
+    srgbToLinear(c.r / 255), srgbToLinear(c.g / 255), srgbToLinear(c.b / 255),
+    bright ? PAINT_STATE_BRIGHT : PAINT_STATE_NORMAL,
+  ];
+}
 
 // ─── 经纬线网格常量 ───
 
@@ -128,16 +136,12 @@ function localToLatLng(x, y, z) {
 /**
  * 生成经纬线网格的涂色几何
  * @param {Array} colors - 18304 格涂色数据（下标 = 游戏格子序号）
- * @returns {Array|null} [{ positions: Float32Array, colors: Float32Array(RGBA 0-1), additive: bool }]
+ * @returns {Array|null} [{ positions: Float32Array, colors: Float32Array(RGBA: rgb 线性 + a=涂色状态) }]
  */
 function buildGraticuleGeometry(colors) {
   const bands = buildGraticuleBands();
   const verts = [];
   const cols = [];
-  const vertsBrightBase = [];
-  const colsBrightBase = [];
-  const vertsBrightGlow = [];
-  const colsBrightGlow = [];
 
   for (const band of bands) {
     const step = 360 / band.seg;
@@ -150,11 +154,9 @@ function buildGraticuleGeometry(colors) {
 
       const lngLo = li * step;
       // 绕序: 经预览变换（轨道四元数 + z 翻转）后法线朝外，配合 FrontSide 单面渲染
-      // a 通道不是透明度: a>0 即已涂色（RGB 已按笔刷强度缩放，完全不透明）；a>127 为超亮，强度 =(a-127)/128
+      // a 不是透明度: a>0 已涂色，a 记涂色状态
       const bright = c.a > 127;
-      const rgba = paintToVertexColor(c, 1);
-      const glowA = (c.a - 127) / 128 * BRIGHT_GLOW_STRENGTH;
-      const glow = [rgba[0], rgba[1], rgba[2], glowA];
+      const rgba = paintToVertexColor(c, bright);
       for (let j = 0; j < m; j += 1) {
         const lngA = lngLo + (j * step) / m;
         const lngB = lngLo + ((j + 1) * step) / m;
@@ -166,28 +168,16 @@ function buildGraticuleGeometry(colors) {
         ];
         // 极点带退化边只保留有效三角形
         const tri = band.latLo <= -90 ? [0, 2, 3] : band.latHi >= 90 ? [0, 1, 2] : [0, 1, 2, 0, 2, 3];
-        if (bright) {
-          for (const vi of tri) {
-            vertsBrightBase.push(...corners[vi]);
-            colsBrightBase.push(...rgba);
-            vertsBrightGlow.push(...corners[vi]);
-            colsBrightGlow.push(...glow);
-          }
-        } else {
-          for (const vi of tri) {
-            verts.push(...corners[vi]);
-            cols.push(...rgba);
-          }
+        for (const vi of tri) {
+          verts.push(...corners[vi]);
+          cols.push(...rgba);
         }
       }
     }
   }
 
-  const result = [];
-  if (verts.length) result.push({ positions: new Float32Array(verts), colors: new Float32Array(cols), additive: false });
-  if (vertsBrightBase.length) result.push({ positions: new Float32Array(vertsBrightBase), colors: new Float32Array(colsBrightBase), additive: false });
-  if (vertsBrightGlow.length) result.push({ positions: new Float32Array(vertsBrightGlow), colors: new Float32Array(colsBrightGlow), additive: true });
-  return result.length ? result : null;
+  if (!verts.length) return null;
+  return [{ positions: new Float32Array(verts), colors: new Float32Array(cols) }];
 }
 
 // ─── 测地线网格 (geo4 / geo8 / geo20) ───
@@ -212,7 +202,10 @@ async function getGeoAsset(gridType) {
   return geoAssetCache.get(gridType);
 }
 
-// 生成测地线网格涂色几何
+/**
+ * 生成测地线网格涂色几何
+ * @returns {Promise<Array|null>} [{ positions, colors }]
+ */
 async function buildGeoGeometry(fillGrid) {
   const colors = fillGrid.colors;
   const asset = await getGeoAsset(fillGrid.gridType);
@@ -225,46 +218,30 @@ async function buildGeoGeometry(fillGrid) {
   const idx = asset.indices;
   const verts = [];
   const cols = [];
-  const vertsBrightBase = [];
-  const colsBrightBase = [];
-  const vertsBrightGlow = [];
-  const colsBrightGlow = [];
 
   for (let t = 0; t < nTris; t += 1) {
     const c = t < colors.length ? colors[t] : null;
     if (!c || c.a <= 0) continue;
-    // a 通道不是透明度: a>0 即已涂色（完全不透明），a>127 为超亮涂色
+    // a 不是透明度: a>0 已涂色，a 记涂色状态
     const bright = c.a > 127;
-    const rgba = paintToVertexColor(c, 1);
-    const glowA = (c.a - 127) / 128 * BRIGHT_GLOW_STRENGTH;
-    const glow = [rgba[0], rgba[1], rgba[2], glowA];
+    const rgba = paintToVertexColor(c, bright);
     // 顶点逆序（翻转绕序）: 经 z 翻转后法线朝外，配合 FrontSide 单面渲染
     for (let k = 2; k >= 0; k -= 1) {
       const vi = idx[t * 3 + k];
       const px = pos[vi * 3], py = pos[vi * 3 + 1], pz = pos[vi * 3 + 2];
-      if (bright) {
-        vertsBrightBase.push(px, py, pz);
-        colsBrightBase.push(...rgba);
-        vertsBrightGlow.push(px, py, pz);
-        colsBrightGlow.push(...glow);
-      } else {
-        verts.push(px, py, pz);
-        cols.push(...rgba);
-      }
+      verts.push(px, py, pz);
+      cols.push(...rgba);
     }
   }
 
-  const result = [];
-  if (verts.length) result.push({ positions: new Float32Array(verts), colors: new Float32Array(cols), additive: false });
-  if (vertsBrightBase.length) result.push({ positions: new Float32Array(vertsBrightBase), colors: new Float32Array(colsBrightBase), additive: false });
-  if (vertsBrightGlow.length) result.push({ positions: new Float32Array(vertsBrightGlow), colors: new Float32Array(colsBrightGlow), additive: true });
-  return result.length ? result : null;
+  if (!verts.length) return null;
+  return [{ positions: new Float32Array(verts), colors: new Float32Array(cols) }];
 }
 
 /**
  * 生成涂色网格几何
  * @param {object} fillGrid - 解析后的 fillGrid: { gridType, colors }
- * @returns {Promise<Array|null>} [{ positions: Float32Array, colors: Float32Array(RGBA 0-1), additive: bool }]
+ * @returns {Promise<Array|null>} [{ positions: Float32Array, colors: Float32Array(RGBA: rgb 线性 + a=涂色状态) }]
  */
 async function buildPaintingGeometry(fillGrid) {
   if (!fillGrid || !fillGrid.colors) return null;
