@@ -5,14 +5,23 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
-  buildEquirectSphere,
+  buildSphere,
   buildGraticuleBands,
-  buildGraticuleMesh,
-  buildPaintingGeometry,
+  buildGraticuleLines,
+  buildGraticuleGeometry,
 } from '../preview/paintingGrid.js';
 
-/** 涂色覆盖层相对壳面的高度（与蓝图预览一致） */
+/** 涂色覆盖层相对壳面的高度 */
 const PAINT_RADIUS_SCALE = 1.0015;
+
+/**
+ * 透明层的绘制顺序: 网格线必须晚于涂色层，否则线先和球面底色合成并写入深度、涂色被挡掉，
+ * 线就固定成「白 × 不透明度 + 球面底色」的灰白，看不出底下的颜色。
+ */
+const PAINT_RENDER_ORDER = 3;
+const PAINT_GLOW_RENDER_ORDER = 4;
+const GRID_LINE_RENDER_ORDER = 5;
+const GRID_LINE_MAJOR_RENDER_ORDER = 6;
 
 /**
  * 展开图基准宽度 1920×960。
@@ -25,7 +34,10 @@ export const FLAT_MAP_BASE_WIDTH = 1920;
 const LAT_BAND_COUNT = 120;
 
 /** 展开图网格线颜色（只用于预览叠加层，比 3D 里的略实一点） */
-const FLAT_MAP_GRID_COLOR = 'rgba(111, 155, 216, 0.45)';
+const FLAT_MAP_GRID_COLOR = 'rgba(255, 255, 255, 0.45)';
+
+/** 展开图粗网格线颜色: 每 4 格一条的「主网格」，与游戏网格资产的粗细两级一致 */
+const FLAT_MAP_GRID_MAJOR_COLOR = 'rgba(255, 255, 255, 0.9)';
 
 /** 默认视角: 正视本初子午线（赤道）时的相机距离 */
 export const DEFAULT_VIEW_DISTANCE = 3.6;
@@ -48,13 +60,13 @@ class PaintingPreview {
     this._scene = null;
     this._camera = null;
     this._controls = null;
-    this._sphere = null;
+    this._occluder = null;
     this._gridLines = null;
+    this._gridLinesMajor = null;
     this._paintGroup = null;
     this._paintMeshes = [];
     this._fillGrid = null;
     this._root = null;
-    this._gridMesh = null;
     this._gridReady = false;
     /** 默认视角的中心经度（度），跟随「经度偏移」更新 */
     this._centerLng = 0;
@@ -70,7 +82,7 @@ class PaintingPreview {
 
     this._canvas = canvas;
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(0x05080e);
+    this._scene.background = new THREE.Color(0x0A0F1A);
 
     this._camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
     // 正视本初子午线、赤道（z 取反后游戏 (0°,0°) 落在 +Z 一侧）
@@ -91,41 +103,44 @@ class PaintingPreview {
     canvas.style.touchAction = 'pan-y';
     this._controls.addEventListener('change', () => { this._needsRender = true; });
 
-    this._scene.add(new THREE.AmbientLight(0xffffff, 2.0));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
-    dir.position.set(2, 3, 2);
-    this._scene.add(dir);
-
     this._root = new THREE.Group();
     this._scene.add(this._root);
 
-    // 壳面（涂色层画在它之上）。顶点 z 取反，理由见文件头
+    // 遮挡球: 只写深度、不写颜色，用来挡住背面的网格线（涂色层和网格线都在它外侧）。
     const sphereGeom = new THREE.BufferGeometry();
-    const sphereMesh = buildEquirectSphere(180, 90);
-    const sPos = new Float32Array(sphereMesh.positions.length);
-    for (let i = 0; i < sphereMesh.positions.length; i += 3) {
-      sPos[i] = sphereMesh.positions[i];
-      sPos[i + 1] = sphereMesh.positions[i + 1];
-      sPos[i + 2] = -sphereMesh.positions[i + 2];
+    const sphere = buildSphere(180, 90);
+    const sPos = new Float32Array(sphere.positions.length);
+    for (let i = 0; i < sphere.positions.length; i += 3) {
+      sPos[i] = sphere.positions[i];
+      sPos[i + 1] = sphere.positions[i + 1];
+      sPos[i + 2] = -sphere.positions[i + 2];
     }
     sphereGeom.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
-    sphereGeom.setAttribute('uv', new THREE.BufferAttribute(sphereMesh.uvs, 2));
-    sphereGeom.setIndex(new THREE.BufferAttribute(sphereMesh.indices, 1));
-    sphereGeom.computeVertexNormals();
-    this._sphere = new THREE.Mesh(
+    sphereGeom.setIndex(new THREE.BufferAttribute(sphere.indices, 1));
+    this._occluder = new THREE.Mesh(
       sphereGeom,
-      new THREE.MeshBasicMaterial({ color: 0x1b2b46 }),
+      new THREE.MeshBasicMaterial({ colorWrite: false }),
     );
-    this._root.add(this._sphere);
+    this._root.add(this._occluder);
 
-    // 涂色网格线
+    // 涂色网格线: 粗细两级（每 4 格一条粗线，权重 1.0:0.2）
+    // renderOrder 晚于涂色层才是透明叠加；不写深度，背面仍由深度测试隐藏
     this._gridLines = new THREE.LineSegments(
       new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: 0x6f9bd8, transparent: true, opacity: 0.28 }),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, depthWrite: false }),
+    );
+    this._gridLinesMajor = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }),
     );
     // 比涂色层再高一点: 两者弦面贴合后要有明确深度差，否则同深度会闪烁
     this._gridLines.scale.setScalar(PAINT_RADIUS_SCALE + 0.0006);
+    this._gridLinesMajor.scale.setScalar(PAINT_RADIUS_SCALE + 0.0006);
+    // 网格线画在涂色层之后（粗线在细线之后，交叉处由粗线压住）
+    this._gridLines.renderOrder = GRID_LINE_RENDER_ORDER;
+    this._gridLinesMajor.renderOrder = GRID_LINE_MAJOR_RENDER_ORDER;
     this._root.add(this._gridLines);
+    this._root.add(this._gridLinesMajor);
 
     // 涂色覆盖层（只画已涂色的格子）
     this._paintGroup = new THREE.Group();
@@ -135,37 +150,41 @@ class PaintingPreview {
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(canvas.parentElement || canvas);
 
-    this.setGrid(true);
+    this.setGridVisible(true);
     this._startLoop();
   }
 
   // ─── 网格线（只用经纬线网格） ─────────────────────────────────
-  setGrid(visible = true) {
+  /** 显示/隐藏网格线（网格几何只在第一次调用时构建） */
+  setGridVisible(visible = true) {
     if (!this._gridReady) {
       this._gridReady = true;
-      this._gridMesh = buildGraticuleMesh();
-
-      const idx = this._gridMesh.lineIndices;
-      const pos = this._gridMesh.positions;
-      const pts = [];
-      // lineIndices 是「线段端点对」，直接用；三角形的边含对角线，会在色块中间画斜线
-      for (let i = 0; i < idx.length; i += 1) {
-        const o = idx[i] * 3;
-        pts.push(pos[o], pos[o + 1], -pos[o + 2]); // z 取反，与其他层一致
+      const grid = buildGraticuleLines();
+      const pos = grid.positions;
+      // z 取反（与其他层一致）；两档共用这份顶点缓冲，各带一串线段索引
+      const pts = new Float32Array(pos.length);
+      for (let i = 0; i < pos.length; i += 3) {
+        pts[i] = pos[i];
+        pts[i + 1] = pos[i + 1];
+        pts[i + 2] = -pos[i + 2];
       }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      // 用线段端点对当索引（三角形的边含内部对角线，会画到色块中间）
+      const posAttr = new THREE.Float32BufferAttribute(pts, 3);
+      const build = (idx) => {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', posAttr);
+        geo.setIndex(new THREE.BufferAttribute(idx, 1));
+        return geo;
+      };
       this._gridLines.geometry.dispose();
-      this._gridLines.geometry = geo;
+      this._gridLines.geometry = build(grid.lineIndices);
+      this._gridLinesMajor.geometry.dispose();
+      this._gridLinesMajor.geometry = build(grid.lineIndicesMajor);
       // 网格建好后重建涂色几何（需要一个网格存在时的初始化时机）
       this._rebuildPainting();
     }
     this._gridLines.visible = visible;
-    this._needsRender = true;
-  }
-
-  setGridVisible(visible) {
-    this._gridLines.visible = visible;
+    this._gridLinesMajor.visible = visible;
     this._needsRender = true;
   }
 
@@ -174,10 +193,6 @@ class PaintingPreview {
   setPainting(fillGrid) {
     this._fillGrid = fillGrid && fillGrid.colors ? fillGrid : null;
     this._rebuildPainting();
-  }
-
-  clearPainting() {
-    this.setPainting(null);
   }
 
   _clearPaintMeshes() {
@@ -197,15 +212,15 @@ class PaintingPreview {
     // 只支持经纬线网格（gridType 0），别的网格类型不渲染涂色
     if ((this._fillGrid.gridType ?? 0) !== 0) return;
 
-    const parts = buildPaintingGeometry(this._fillGrid);
+    const parts = buildGraticuleGeometry(this._fillGrid.colors);
     if (!parts) return;
 
-    const paintR = PAINT_RADIUS_SCALE; // 略高于壳面，避免深度重叠闪烁
+    const paintR = PAINT_RADIUS_SCALE; // 略高于遮挡球，避免深度重叠闪烁
     for (const part of parts) {
       const geom = new THREE.BufferGeometry();
       const count = part.positions.length / 3;
       const posArr = new Float32Array(part.positions.length);
-      // z 取反，理由见文件头
+      // z 取反（与其他层一致），再放大到涂色半径
       for (let i = 0; i < count; i += 1) {
         posArr[i * 3] = part.positions[i * 3] * paintR;
         posArr[i * 3 + 1] = part.positions[i * 3 + 1] * paintR;
@@ -226,7 +241,7 @@ class PaintingPreview {
         blending: part.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       });
       const mesh = new THREE.Mesh(geom, mat);
-      mesh.renderOrder = part.additive ? 4 : 3;
+      mesh.renderOrder = part.additive ? PAINT_GLOW_RENDER_ORDER : PAINT_RENDER_ORDER;
       mesh.frustumCulled = false;
       this._paintGroup.add(mesh);
       this._paintMeshes.push(mesh);
@@ -295,17 +310,25 @@ class PaintingPreview {
     if (!ctx) return 0;
 
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = FLAT_MAP_GRID_COLOR;
     const rowH = h / LAT_BAND_COUNT;
+    const bands = buildGraticuleBands();
 
-    // 纬线: 每条纬度带的上边界
-    for (let k = 0; k < LAT_BAND_COUNT; k += 1) ctx.fillRect(0, k * rowH, w, 1);
-    // 经线: 每个带里每格的左边界
-    for (const band of buildGraticuleBands()) {
-      const cellW = w / band.seg;
-      const y0 = (LAT_BAND_COUNT / 2 - 1 - band.latIdx) * rowH;
-      for (let li = 0; li < band.seg; li += 1) ctx.fillRect(li * cellW, y0, 1, rowH);
-    }
+    // 粗细两级（每 4 格一条粗线，与 3D 网格同源）: 粗、细各扫一遍，细线跳过粗线所在位置
+    const drawPass = (major) => {
+      ctx.fillStyle = major ? FLAT_MAP_GRID_MAJOR_COLOR : FLAT_MAP_GRID_COLOR;
+      const step = major ? 4 : 1;
+      const first = major ? 0 : 1;
+      // 纬线: 每条纬度带的上边界（第 k 行边界 latIdx = 60-k，k%4==0 即粗线）
+      for (let k = first; k < LAT_BAND_COUNT; k += step) ctx.fillRect(0, k * rowH, w, 1);
+      // 经线: 每个带里每格的左边界
+      for (const band of bands) {
+        const cellW = w / band.seg;
+        const y0 = (LAT_BAND_COUNT / 2 - 1 - band.latIdx) * rowH;
+        for (let li = first; li < band.seg; li += step) ctx.fillRect(li * cellW, y0, 1, rowH);
+      }
+    };
+    drawPass(false);
+    drawPass(true);
     return w;
   }
 
@@ -347,20 +370,6 @@ class PaintingPreview {
     this._needsRender = true;
   }
 
-  exportImage(scale = 2) {
-    if (!this._renderer) return null;
-    this._needsRender = true;
-    this._renderer.render(this._scene, this._camera);
-    const size = this._renderer.getSize(new THREE.Vector2());
-    const out = document.createElement('canvas');
-    out.width = Math.round(size.x * scale);
-    out.height = Math.round(size.y * scale);
-    const ctx = out.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(this._canvas, 0, 0, out.width, out.height);
-    return out;
-  }
-
   _startLoop() {
     const tick = () => {
       this._frameId = requestAnimationFrame(tick);
@@ -382,8 +391,10 @@ class PaintingPreview {
     this._clearPaintMeshes();
     this._gridLines?.geometry.dispose();
     this._gridLines?.material.dispose();
-    this._sphere?.geometry.dispose();
-    this._sphere?.material.dispose();
+    this._gridLinesMajor?.geometry.dispose();
+    this._gridLinesMajor?.material.dispose();
+    this._occluder?.geometry.dispose();
+    this._occluder?.material.dispose();
     this._renderer?.dispose();
     this._renderer = null;
     this._scene = null;

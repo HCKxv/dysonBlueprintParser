@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { GRID_ASSETS, decodeGridAsset } from './paintingGridAssets.js';
+// 测地线资产表
+let geoAssetsPromise = null;
+function loadGeoAssets() {
+  return geoAssetsPromise ??= import('./paintingGridAssets.js');
+}
 /**
  * paintingGrid — 戴森球蓝图「涂色网格」(fillGrid) 生成模块
  *
@@ -121,8 +125,11 @@ function localToLatLng(x, y, z) {
   };
 }
 
-// 生成经纬线网格的涂色几何: 游戏为不透明替换 (_SrcBlend=One,_DstBlend=Zero)，超亮是 HDR×3+泛光，
-// 预览用「替换+加色发光」近似；返回 [{ positions, colors, additive }] 或 null
+/**
+ * 生成经纬线网格的涂色几何
+ * @param {Array} colors - 18304 格涂色数据（下标 = 游戏格子序号）
+ * @returns {Array|null} [{ positions: Float32Array, colors: Float32Array(RGBA 0-1), additive: bool }]
+ */
 function buildGraticuleGeometry(colors) {
   const bands = buildGraticuleBands();
   const verts = [];
@@ -193,10 +200,11 @@ const GEO_ASSET_KEYS = {
 
 const geoAssetCache = new Map();
 
-function getGeoAsset(gridType) {
+async function getGeoAsset(gridType) {
   const key = GEO_ASSET_KEYS[gridType];
   if (!key) return null;
   if (!geoAssetCache.has(gridType)) {
+    const { GRID_ASSETS, decodeGridAsset } = await loadGeoAssets();
     const entry = GRID_ASSETS[key];
     if (!entry) return null;
     geoAssetCache.set(gridType, decodeGridAsset(entry));
@@ -205,9 +213,9 @@ function getGeoAsset(gridType) {
 }
 
 // 生成测地线网格涂色几何
-function buildGeoGeometry(fillGrid) {
+async function buildGeoGeometry(fillGrid) {
   const colors = fillGrid.colors;
-  const asset = getGeoAsset(fillGrid.gridType);
+  const asset = await getGeoAsset(fillGrid.gridType);
   if (!asset) return null;
   const nTris = asset.indices.length / 3;
 
@@ -254,11 +262,11 @@ function buildGeoGeometry(fillGrid) {
 }
 
 /**
- * 生成涂色网格几何（单位球面，游戏局部坐标系: 北极 +Y，经度 0 = -Z，东 = +X）
+ * 生成涂色网格几何
  * @param {object} fillGrid - 解析后的 fillGrid: { gridType, colors }
- * @returns {Array|null} [{ positions: Float32Array, colors: Float32Array(RGBA 0-1), additive: bool }]
+ * @returns {Promise<Array|null>} [{ positions: Float32Array, colors: Float32Array(RGBA 0-1), additive: bool }]
  */
-function buildPaintingGeometry(fillGrid) {
+async function buildPaintingGeometry(fillGrid) {
   if (!fillGrid || !fillGrid.colors) return null;
   if (fillGrid.gridType === 0) {
     return buildGraticuleGeometry(fillGrid.colors);
@@ -266,18 +274,13 @@ function buildPaintingGeometry(fillGrid) {
   return buildGeoGeometry(fillGrid);
 }
 
-
-// 经纬线网格: 由带结构生成带 UV 的球面网格（uv.x = 经度 0-1，uv.y = 纬度 0-1，v=1 为北极）
-function buildGraticuleMesh(lonStepDeg = 2) {
-  const bands = buildGraticuleBands();
+// 经纬线网格: 由带结构生成网格线顶点（单位球面、游戏局部坐标）+ 粗细两档的线段索引
+function buildGraticuleLines(lonStepDeg = 2) {
   const positions = [];
-  const uvs = [];
-  const indices = [];
   const lineIndices = [];
-  const bandsMeta = [];
-  let cellBase = 0;
+  const lineIndicesMajor = [];
 
-  for (const band of bands) {
+  for (const band of buildGraticuleBands()) {
     // 剖分数必须与涂色层的 m = ceil(格宽/2) 一致（用 round 会少分一段 → 下沉更多、线掉到涂色面下面）
     const nLon = Math.max(1, Math.ceil(360 / band.seg / lonStepDeg));
     const rows = [];
@@ -289,101 +292,44 @@ function buildGraticuleMesh(lonStepDeg = 2) {
         row.push(positions.length / 3);
         const p = latLngToLocal(lat, lng);
         positions.push(p[0], p[1], p[2]);
-        uvs.push(lng / 360, (lat + 90) / 180);
       }
       rows.push(row);
     }
+    // 网格线只画格子边界: 纬线逐段折线、经线每格一条，每 4 格一条粗线。
+    // 纬度边界 1.5°×k 既是带 k 的下边、也是带 k-1 的上边，两者同档且几乎重合 → 只画 rows[0]。
     const cols = band.seg * nLon;
-    for (let li = 0; li < cols; li += 1) {
-      const a = rows[0][li], b = rows[0][li + 1];
-      const c = rows[1][li + 1], d = rows[1][li];
-      // 绕序: 与 three 的 FrontSide(逆时针朝外) 一致，法线朝球外
-      if (band.latLo > -90) indices.push(a, c, b);
-      if (band.latHi < 90) indices.push(a, d, c);
+    if (band.latLo > -90) {
+      const dst = band.latIdx % 4 === 0 ? lineIndicesMajor : lineIndices;
+      for (let li = 0; li < cols; li += 1) dst.push(rows[0][li], rows[0][li + 1]);
     }
-    // 网格线只画格子边界（拿三角形三条边会连内部对角线一起画）: 纬线逐段折线，经线每格一条
-    for (let li = 0; li < cols; li += 1) {
-      if (band.latLo > -90) lineIndices.push(rows[0][li], rows[0][li + 1]);
-      if (band.latHi < 90) lineIndices.push(rows[1][li], rows[1][li + 1]);
-    }
+    // 经线: 各带剖分不同、不能跨带合并，每带每格一条
     for (let li = 0; li < band.seg; li += 1) {
       const c = li * nLon;
-      lineIndices.push(rows[0][c], rows[1][c]);
+      const dst = li % 4 === 0 ? lineIndicesMajor : lineIndices;
+      dst.push(rows[0][c], rows[1][c]);
     }
-    bandsMeta.push({
-      latIdx: band.latIdx,
-      latLo: band.latLo,
-      latHi: band.latHi,
-      seg: band.seg,
-      base: cellBase,
-    });
-    cellBase += band.seg;
   }
 
   return {
     positions: new Float32Array(positions),
-    uvs: new Float32Array(uvs),
-    indices: new Uint32Array(indices),
     lineIndices: new Uint32Array(lineIndices),
-    bands: bandsMeta,
-    cellCount: cellBase,
+    lineIndicesMajor: new Uint32Array(lineIndicesMajor),
   };
 }
 
-// 测地线网格: 返回游戏精确三角形网格 + 由顶点位置推算的 UV（uv.x = 经度 0-1，uv.y = 纬度 0-1）
-function buildGeoMesh(gridType) {
-  const asset = getGeoAsset(gridType);
-  if (!asset) return null;
-  const n = asset.positions.length / 3;
-  const uvs = new Float32Array(n * 2);
-  for (let i = 0; i < n; i += 1) {
-    const x = asset.positions[i * 3];
-    const y = asset.positions[i * 3 + 1];
-    const z = asset.positions[i * 3 + 2];
-    const r = Math.max(1e-6, Math.hypot(x, y, z));
-    uvs[i * 2] = (Math.atan2(x, -z) / (2 * Math.PI) + 0.5) % 1;
-    uvs[i * 2 + 1] = Math.asin(Math.max(-1, Math.min(1, y / r))) / Math.PI + 0.5;
-  }
-  return {
-    positions: asset.positions,
-    uvs,
-    indices: asset.indices,
-    bands: null,
-    cellCount: asset.indices.length / 3,
-  };
-}
-
-/**
- * 取得涂色网格网格数据
- * @param {number} gridType 0=经纬线 1=geo20 2=geo8 3=geo4
- * @returns {{positions:Float32Array, uvs:Float32Array, indices:Uint32Array, bands:Array|null, cellCount:number}|null}
- */
-function getGridMesh(gridType) {
-  if (gridType === 0) return buildGraticuleMesh();
-  return buildGeoMesh(gridType);
-}
-
-// 等距圆柱贴图球面: 顶点与 UV 都用游戏经纬度约定（u=0 → 经度 0° = -Z，东 = +X，v=1 → 北极），
-// 与经纬线网格、测地线网格的 UV 同源，不存在缝/方向错位
-function buildEquirectSphere(lonSegments = 180, latSegments = 90) {
+// 球面网格: 顶点用游戏经纬度约定（经度 0° = -Z，东 = +X，+Y 为北极），与经纬线网格同源，不存在缝/方向错位
+function buildSphere(lonSegments = 180, latSegments = 90) {
   const positions = new Float32Array((lonSegments + 1) * (latSegments + 1) * 3);
-  const uvs = new Float32Array((lonSegments + 1) * (latSegments + 1) * 2);
   const indices = new Uint32Array(lonSegments * latSegments * 6);
   let vi = 0;
-  let ui = 0;
   for (let iy = 0; iy <= latSegments; iy += 1) {
-    const v = iy / latSegments;
-    const lat = v * 180 - 90;
+    const lat = (iy / latSegments) * 180 - 90;
     for (let ix = 0; ix <= lonSegments; ix += 1) {
-      const u = ix / lonSegments;
-      const p = latLngToLocal(lat, u * 360);
+      const p = latLngToLocal(lat, (ix / lonSegments) * 360);
       positions[vi] = p[0];
       positions[vi + 1] = p[1];
       positions[vi + 2] = p[2];
       vi += 3;
-      uvs[ui] = u;
-      uvs[ui + 1] = v;
-      ui += 2;
     }
   }
   let ii = 0;
@@ -391,7 +337,7 @@ function buildEquirectSphere(lonSegments = 180, latSegments = 90) {
     for (let ix = 0; ix < lonSegments; ix += 1) {
       const a = iy * (lonSegments + 1) + ix;
       const b = a + lonSegments + 1;
-      // 绕序: 逆时针朝外（法线朝球外），贴图朝外可见
+      // 绕序: 逆时针朝外（法线朝球外），外面可见
       indices[ii] = a;
       indices[ii + 1] = b + 1;
       indices[ii + 2] = a + 1;
@@ -401,15 +347,15 @@ function buildEquirectSphere(lonSegments = 180, latSegments = 90) {
       ii += 6;
     }
   }
-  return { positions, uvs, indices };
+  return { positions, indices };
 }
 
 export {
+  buildGraticuleGeometry,
   buildPaintingGeometry,
   buildGraticuleBands,
-  buildGraticuleMesh,
-  buildEquirectSphere,
-  getGridMesh,
+  buildGraticuleLines,
+  buildSphere,
   latLngToLocal,
   localToLatLng,
   segByLatIdx,

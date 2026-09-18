@@ -110,11 +110,11 @@ function computeLayerInWorker(payload, timeoutMs = LAYER_BUILD_TIMEOUT_MS) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * 细胞板: 按图案分组的多个 Mesh（一个材质只能采样一套图案贴图，同一壳面可混用多种图案）
+ * 细胞板: 按「图案 × 空间八分块」分组的多个 Mesh（一个材质只能采样一套图案贴图，同一壳面可混用多种图案；分块后启用视锥剔除，放大看局部时只提交命中视锥的块）
  *
  * 图案补丁由 buildShellLayer 统一补上（applyCellPatterns），这里只管几何与材质。
- * @param {Array<{pattern:number, positions:Float32Array, normals:Float32Array, colors:Float32Array,
- *   patternUV:Float32Array, patternMN:Float32Array, indices:Uint32Array}>} bucketList
+ * @param {Array<{pattern:number, chunk:number, positions:Float32Array, normals:Float32Array,
+ *   colors:Float32Array, patternUV:Float32Array, patternMN:Float32Array, indices:Uint32Array}>} bucketList
  * @returns {THREE.Group|null}
  */
 function assembleShellCells(bucketList) {
@@ -132,6 +132,8 @@ function assembleShellCells(bucketList) {
     geom.setAttribute('aPatternMN', new THREE.Float32BufferAttribute(buf.patternMN, 2));
     // 索引显式包 BufferAttribute: setIndex 对 TypedArray 会原样存下，渲染器随后会崩
     geom.setIndex(new THREE.Uint32BufferAttribute(buf.indices, 1));
+    // 提前算好包围球，供逐块视锥剔除使用（不再整体关闭 frustumCulled）
+    geom.computeBoundingSphere();
 
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -142,9 +144,8 @@ function assembleShellCells(bucketList) {
     });
 
     const mesh = new THREE.Mesh(geom, mat);
-    mesh.name = `shellCells:${pattern}`;
+    mesh.name = `shellCells:${pattern}:${buf.chunk}`;
     mesh.userData.shellPattern = pattern;
-    mesh.frustumCulled = false;
     group.add(mesh);
   }
   return group.children.length ? group : null;

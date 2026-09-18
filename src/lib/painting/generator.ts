@@ -6,7 +6,7 @@
  *   2. projection.createProjector 把球面坐标映射到图片 UV，按格子采样颜色（经纬线网格）
  *   3. encoder 把采样色编码成蓝图里的 RGBA（a = 笔刷强度，满强度普通涂色）
  *   4. 生成 { gridType: 0, colors }，可直接交给
- *      - 预览: paintingGrid.buildPaintingGeometry（只渲染已涂色的壳面格子）
+ *      - 预览: paintingGrid.buildGraticuleGeometry（只渲染已涂色的壳面格子）
  *      - 导出: 写入基底蓝图的 fillGrid
  *
  */
@@ -38,8 +38,8 @@ export interface PaintStats {
 export interface PaintResult {
   fillGrid: FillGrid
   stats: PaintStats
-  /** 本次实际使用的填充色（「图片背景色」模式下 = 检测结果） */
-  fillColor: string
+  /** 本次实际使用的底色（「自动」模式下 = 检测结果）；null = 没有底色 */
+  fillColor: string | null
 }
 
 /** 载入图片（优先用同一张已载入过的 URL，避免重复解码） */
@@ -62,9 +62,10 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
   return p
 }
 
-/** 填充色来源 → 实际颜色 */
-export function resolveFillColor(params: any, img?: HTMLImageElement): string {
+/** 底色来源 → 实际颜色；null = 没有底色 */
+export function resolveFillColor(params: any, img?: HTMLImageElement): string | null {
   switch (params?.fillMode) {
+    case 'none': return null
     case 'white': return '#ffffff'
     case 'bg': return (img && detectImageBackground(img)) || '#000000'
     case 'custom': return params?.fillColor || '#000000'
@@ -84,7 +85,7 @@ export async function generateFillGrid(params: any): Promise<PaintResult> {
   const t0 = performance.now()
   const img = await loadImage(params.imageUrl)
 
-  // 0) 解析填充色
+  // 0) 解析底色
   const fillColor = resolveFillColor(params, img)
 
   // 1) 采样：每个格子取图片颜色（经纬线网格，颜色数组下标 = 游戏格子序号）

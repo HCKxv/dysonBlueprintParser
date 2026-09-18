@@ -25,8 +25,8 @@ export { MAX_COLORS_STOPS, BUILTIN_BASES }
 
 export type ProjMode = 'hemisphere' | 'equirect' | 'equator'
 export type ResampleFilter = 'nearest' | 'average'
-/** 图外填充色来源 */
-export type FillMode = 'black' | 'white' | 'bg' | 'custom'
+/** 底色（图外填充）来源（none = 没有底色） */
+export type FillMode = 'black' | 'white' | 'bg' | 'custom' | 'none'
 
 export interface ProjModeOption {
   value: ProjMode
@@ -39,7 +39,7 @@ export interface ProjModeOption {
 export const PROJ_MODES: ProjModeOption[] = [
   { value: 'hemisphere', icon: hemisphereIcon, label: '半球投影', desc: '正交映射到半球面' },
   { value: 'equator', icon: equatorIcon, label: '环绕赤道', desc: '沿赤道等距重复' },
-  { value: 'equirect', icon: equirectIcon, label: '等矩形投影', desc: '经纬度线性展开成 2:1' },
+  { value: 'equirect', icon: equirectIcon, label: '球面全景投影', desc: '逆等距圆柱投影到球面上' },
 ]
 
 const PAINT_KEY = 'dyson-paint-settings'
@@ -71,13 +71,14 @@ const painting = reactive({
 
   // ── 投影参数 ──
   /**
-   * 图外填充色来源（图外填充一直生效）:
+   * 底色（图外填充）来源
    *   black / white — 固定黑白
    *   bg            — 取图片自身背景色（四角取色、排除明显不一样的角）
    *   custom        — 用 fillColor
+   *   none          — 没有底色，这些格子不涂色
    */
   fillMode: 'black' as FillMode,
-  /** 自定义填充色（fillMode === 'custom' 时生效） */
+  /** 自定义底色（fillMode === 'custom' 时生效） */
   fillColor: '#000000',
 
   // ── 采样与色彩参数 ──
@@ -121,7 +122,6 @@ function loadSettings() {
   if (!data || typeof data !== 'object') return
 
   if (PROJ_MODES.some((m) => m.value === data.projMode)) painting.projMode = data.projMode
-  if (typeof data.showFlatMap === 'boolean') painting.showFlatMap = data.showFlatMap
   if (typeof data.showGridLines === 'boolean') painting.showGridLines = data.showGridLines
 }
 
@@ -129,7 +129,6 @@ function saveSettings() {
   try {
     localStorage.setItem(PAINT_KEY, JSON.stringify({
       projMode: painting.projMode,
-      showFlatMap: painting.showFlatMap,
       showGridLines: painting.showGridLines,
     }))
   } catch {
@@ -140,7 +139,7 @@ function saveSettings() {
 loadSettings()
 
 watch(
-  () => [painting.projMode, painting.showFlatMap, painting.showGridLines] as const,
+  () => [painting.projMode, painting.showGridLines] as const,
   saveSettings,
 )
 

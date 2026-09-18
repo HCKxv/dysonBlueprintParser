@@ -3,10 +3,10 @@
  */
 import { computeLayerGeometry } from './shellLayerCompute.js';
 
-self.onmessage = (e) => {
+self.onmessage = async (e) => {
   let layer;
   try {
-    layer = computeLayerGeometry(e.data.shData, e.data.orbit, e.data.scale);
+    layer = await computeLayerGeometry(e.data.shData, e.data.orbit, e.data.scale);
   } catch (err) {
     self.postMessage({ error: (err && err.message) ? err.message : String(err) });
     return;

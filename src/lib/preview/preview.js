@@ -502,6 +502,15 @@ class DysonSpherePreview {
     this._composer = null;
     this._bloomPass = null;
     this._fxaaPass = null;
+    // 档位没有任何后处理需求（低画质: 无泛光、无 FXAA）时不搭 composer:
+    // 那样每帧只剩 RenderPass + OutputPass 走一遍，等于白付一次全屏 pass 与
+    // HalfFloat 渲染目标的来回带宽。画面与直接渲染等价——本工程从不设置
+    // renderer.toneMapping（保持默认 NoToneMapping），OutputPass 此时只做
+    // sRGB 转换，而直接渲染时着色器里的输出色彩空间转换结果相同。
+    if (!q.bloom && !q.fxaa) {
+      this._needsRender = true;
+      return;
+    }
     try {
       // HalfFloat + samples
       const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: q.msaa });
@@ -786,6 +795,7 @@ class DysonSpherePreview {
       if (c.geometry) c.geometry.dispose();
       if (c.material) c.material.dispose();
     }
+    if (this._gridLabelTexture) { this._gridLabelTexture.dispose(); this._gridLabelTexture = null; }
     const tick = radius * 0.05, midTick = radius * 0.04, minorTick = radius * 0.03;
     const fontSize = radius * 0.04;
 
@@ -806,59 +816,86 @@ class DysonSpherePreview {
     const labelTex = new THREE.CanvasTexture(atlas);
     labelTex.minFilter = THREE.LinearFilter;
     this._gridLabelTexture = labelTex;
-    // 双面显示
-    const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
 
+    // 根刻度线 + 外圈圆环
+    const segPos = [];
+    const segCol = [];
+    const linearColors = new Map();
+    const linearColor = (hex) => {
+      let c = linearColors.get(hex);
+      if (!c) { c = new THREE.Color(hex); linearColors.set(hex, c); }
+      return c;
+    };
+    const addSegment = (ax, ay, az, bx, by, bz, hex) => {
+      segPos.push(ax, ay, az, bx, by, bz);
+      const c = linearColor(hex);
+      segCol.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    };
+
+    const dir = new THREE.Vector3();
+    const s = new THREE.Vector3();
+    const e = new THREE.Vector3();
     for (let deg = 0; deg < 360; deg++) {
       const rad = THREE.MathUtils.degToRad(deg + 180);
-      const dir = new THREE.Vector3(Math.sin(rad), 0, Math.cos(rad));
-      if (deg % 10 === 0) {
-        const s = dir.clone().multiplyScalar(radius);
-        const e = dir.clone().multiplyScalar(radius + tick);
-        this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([s, e]), new THREE.LineBasicMaterial({ color: 0xffdd99 })));
-        // 标签公告板平面（Sprite 共享内部几何无法按实例设 UV
-        const k = deg / 10;
-        const u0 = (k % COLS) / COLS, u1 = u0 + 1 / COLS;
-        const r = Math.floor(k / COLS);
-        const v0 = 1 - (r + 1) / ROWS, v1 = 1 - r / ROWS; // CanvasTexture flipY: v=1 为画布顶部
-        const geom = new THREE.BufferGeometry();
-        geom.setAttribute('position', new THREE.Float32BufferAttribute([
-          -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
-        ], 3));
-        geom.setAttribute('uv', new THREE.Float32BufferAttribute([
-          u0, v0, u1, v0, u1, v1, u0, v1,
-        ], 2));
-        geom.setIndex([0, 1, 2, 0, 2, 3]);
-        const mesh = new THREE.Mesh(geom, labelMat);
-        mesh.position.copy(dir.clone().multiplyScalar(radius + tick * 1.35));
-        mesh.scale.set(fontSize * 2, fontSize, 1);
-        // 刻度标签最后画（renderOrder 高于其它透明物体），但保留深度测试，被球体遮挡时依旧隐藏
-        mesh.renderOrder = 4;
-        // 平铺在黄道平面上: 文字方向垂直于刻度线（沿切向），数字底部朝向内侧，法线朝上
-        const up = new THREE.Vector3(0, 1, 0);
-        const basis = new THREE.Matrix4().makeBasis(
-          new THREE.Vector3().crossVectors(dir, up),  // X: 文字方向 = 切线（垂直于刻度线）
-          dir.clone(),                                 // Y: 字顶朝外（数字底部朝向内侧）
-          up,                                          // Z: 平面法线朝上
-        );
-        mesh.quaternion.setFromRotationMatrix(basis);
-        this._gridGroup.add(mesh);
-      } else if (deg % 5 === 0) {
-        const s = dir.clone().multiplyScalar(radius);
-        const e = dir.clone().multiplyScalar(radius + midTick);
-        this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([s, e]), new THREE.LineBasicMaterial({ color: 0xaabbcc })));
-      } else {
-        const s = dir.clone().multiplyScalar(radius);
-        const e = dir.clone().multiplyScalar(radius + minorTick);
-        this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([s, e]), new THREE.LineBasicMaterial({ color: 0x8899bb })));
-      }
+      dir.set(Math.sin(rad), 0, Math.cos(rad));
+      const isMajor = deg % 10 === 0;
+      const len = isMajor ? tick : (deg % 5 === 0 ? midTick : minorTick);
+      s.copy(dir).multiplyScalar(radius);
+      e.copy(dir).multiplyScalar(radius + len);
+      addSegment(s.x, s.y, s.z, e.x, e.y, e.z, isMajor ? 0xffdd99 : (deg % 5 === 0 ? 0xaabbcc : 0x8899bb));
     }
-    const ringPts = [];
-    for (let i = 0; i <= 128; i++) {
-      const a = (i / 128) * Math.PI * 2;
-      ringPts.push(new THREE.Vector3(Math.sin(a) * radius, 0, Math.cos(a) * radius));
+    for (let i = 0; i < 128; i++) {
+      const a0 = (i / 128) * Math.PI * 2;
+      const a1 = ((i + 1) / 128) * Math.PI * 2;
+      addSegment(
+        Math.sin(a0) * radius, 0, Math.cos(a0) * radius,
+        Math.sin(a1) * radius, 0, Math.cos(a1) * radius,
+        0x556688,
+      );
     }
-    this._gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: 0x556688 })));
+    const lineGeom = new THREE.BufferGeometry();
+    lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(segPos, 3));
+    lineGeom.setAttribute('color', new THREE.Float32BufferAttribute(segCol, 3));
+    this._gridGroup.add(new THREE.LineSegments(lineGeom, new THREE.LineBasicMaterial({ vertexColors: true })));
+
+    // 36 个刻度标签
+    const labelPos = [];
+    const labelUV = [];
+    const labelIdx = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    const tangent = new THREE.Vector3();
+    const origin = new THREE.Vector3();
+    for (let k = 0; k < 36; k++) {
+      const rad = THREE.MathUtils.degToRad(k * 10 + 180);
+      dir.set(Math.sin(rad), 0, Math.cos(rad));
+      tangent.crossVectors(dir, up);
+      origin.copy(dir).multiplyScalar(radius + tick * 1.35);
+      // 原 scale.x = fontSize*2（半宽 0.5 → fontSize）、scale.y = fontSize（半高 0.5 → fontSize/2）
+      const hx = fontSize;
+      const hy = fontSize * 0.5;
+      labelPos.push(
+        origin.x - tangent.x * hx - dir.x * hy, origin.y - tangent.y * hx - dir.y * hy, origin.z - tangent.z * hx - dir.z * hy,
+        origin.x + tangent.x * hx - dir.x * hy, origin.y + tangent.y * hx - dir.y * hy, origin.z + tangent.z * hx - dir.z * hy,
+        origin.x + tangent.x * hx + dir.x * hy, origin.y + tangent.y * hx + dir.y * hy, origin.z + tangent.z * hx + dir.z * hy,
+        origin.x - tangent.x * hx + dir.x * hy, origin.y - tangent.y * hx + dir.y * hy, origin.z - tangent.z * hx + dir.z * hy,
+      );
+      const u0 = (k % COLS) / COLS, u1 = u0 + 1 / COLS;
+      const r = Math.floor(k / COLS);
+      const v0 = 1 - (r + 1) / ROWS, v1 = 1 - r / ROWS; // CanvasTexture flipY: v=1 为画布顶部
+      labelUV.push(u0, v0, u1, v0, u1, v1, u0, v1);
+      const base = k * 4;
+      labelIdx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+    const labelGeom = new THREE.BufferGeometry();
+    labelGeom.setAttribute('position', new THREE.Float32BufferAttribute(labelPos, 3));
+    labelGeom.setAttribute('uv', new THREE.Float32BufferAttribute(labelUV, 2));
+    labelGeom.setIndex(labelIdx);
+    // 双面显示
+    const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const labelMesh = new THREE.Mesh(labelGeom, labelMat);
+    // 刻度标签最后画（renderOrder 高于其它透明物体），但保留深度测试，被球体遮挡时依旧隐藏
+    labelMesh.renderOrder = 4;
+    this._gridGroup.add(labelMesh);
   }
 
 }

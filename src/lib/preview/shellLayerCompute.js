@@ -138,8 +138,10 @@ export function computeFrames(shData, nodeMap, shPole, scale) {
  * 涂色网格: 顶点按轨道姿态旋转并缩放到轨道半径（纯数据，材质留主线程建）
  * @returns {Array<{positions: Float32Array, colors: Float32Array, additive: boolean}>|null}
  */
-export function computePainting(shData, orbit, scale) {
-  const parts = buildPaintingGeometry(shData.fillGrid);
+export async function computePainting(shData, orbit, scale) {
+  // 无涂色数据的壳层直接短路
+  if (!shData.fillGrid || !shData.fillGrid.colors) return null;
+  const parts = await buildPaintingGeometry(shData.fillGrid);
   if (!parts) return null;
   const renderR = orbit.radius;
   const shQuat = _normQuat(orbit);
@@ -171,7 +173,7 @@ export function computePainting(shData, orbit, scale) {
  * @param {number} scale   缩放系数
  * @returns {{nodes: object, frames: object, cells: Array|null, painting: Array|null, pole: {x:number,y:number,z:number}}}
  */
-export function computeLayerGeometry(shData, orbit, scale) {
+export async function computeLayerGeometry(shData, orbit, scale) {
   const shQuat = _normQuat(orbit);
   const poleRaw = new THREE.Vector3(0, 1, 0); poleRaw.applyQuaternion(shQuat);
   const shPole = _convertBP(poleRaw);
@@ -188,7 +190,7 @@ export function computeLayerGeometry(shData, orbit, scale) {
   const frames = computeFrames(shData, nodeMap, shPole, scale);
   const cells = computeShellCellBuckets(
     shData, nodeMap, shPole, new Map(frames.edgeTypes), orbit, scale);
-  const painting = computePainting(shData, orbit, scale);
+  const painting = await computePainting(shData, orbit, scale);
 
   return { nodes, frames, cells, painting, pole: { x: shPole.x, y: shPole.y, z: shPole.z } };
 }

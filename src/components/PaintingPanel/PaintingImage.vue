@@ -9,11 +9,12 @@ import {
   type FillMode,
 } from '../../stores/painting'
 
-// 填充色来源
-const FILL_MODES: Array<{ value: FillMode; label: string }> = [
+// 底色来源
+const FILL_MODES: Array<{ value: FillMode; label: string; title?: string }> = [
   { value: 'black', label: '黑色' },
   { value: 'white', label: '白色' },
   { value: 'bg', label: '自动' },
+  { value: 'none', label: '透明' },
   { value: 'custom', label: '自定义' },
 ]
 
@@ -173,6 +174,7 @@ const shiftYPct = computed({
               type="button"
               class="btn-sm"
               :class="{ 'btn-ghost': painting.fillMode !== m.value }"
+              :title="m.title"
               @click="painting.fillMode = m.value"
             >{{ m.label }}</button>
           </template>

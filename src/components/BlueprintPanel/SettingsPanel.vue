@@ -84,14 +84,18 @@ function onQualityChange(e: Event) {
       <div class="menu">
         显示:
         <div class="menu">
-          <select class="speed-select" :value="store.background" @change="onBackgroundChange">
-            <option value="plain">纯色背景</option>
-            <option value="star">星空背景</option>
-          </select>
-          <select class="speed-select" :value="store.quality" @change="onQualityChange">
-            <option value="low">低画质</option>
-            <option value="high">高画质</option>
-          </select>
+          <div class="menu">画质
+            <select class="speed-select" :value="store.quality" @change="onQualityChange">
+              <option value="low">低</option>
+              <option value="high">高</option>
+            </select>
+          </div>
+          <div class="menu">背景
+            <select class="speed-select" :value="store.background" @change="onBackgroundChange">
+              <option value="plain">纯色</option>
+              <option value="star">星空</option>
+            </select>
+          </div>
           <label>
             <input type="checkbox" v-model="store.gridVisible" @change="setGridVisible(store.gridVisible)" /> 刻度
           </label>

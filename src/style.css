@@ -1260,6 +1260,7 @@ textarea::-webkit-scrollbar-thumb,
 .paint-preset-row {
   margin-left: 0;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 /* 「自定义」按钮 + 取色器: 选中时用一个框圈成同一个控件 */
@@ -1508,7 +1509,7 @@ textarea::-webkit-scrollbar-thumb,
   min-height: 0;
   border-radius: 16px;
   overflow: hidden;
-  background: #05080e;
+  background: #0A0F1A;
 }
 
 .paint-preview-stage canvas {
@@ -1603,7 +1604,8 @@ textarea::-webkit-scrollbar-thumb,
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  background: #05080e;
+  /* 与 3D 预览同一底色 */
+  background: #0A0F1A;
 }
 
 /* 只有「导出展开图」按钮，靠右 */

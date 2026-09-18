@@ -277,17 +277,18 @@ function _forEachClippedPiece(subject, clip, convexClip, clipTriangles, subjectB
  * @param {Map<string, number>} ftMap 边 → 框架类型
  * @param {{radius:number}} orbit 轨道（取半径决定格距）
  * @param {number} scale 缩放系数
- * @returns {Array<{pattern:number, positions:Float32Array, normals:Float32Array,
+ * @returns {Array<{pattern:number, chunk:number, positions:Float32Array, normals:Float32Array,
  *   colors:Float32Array, patternUV:Float32Array, patternMN:Float32Array, indices:Uint32Array}>|null}
  */
 export function computeShellCellBuckets(shData, nodeMap, shPole, ftMap, orbit, scale) {
-  // 按图案分组累积（一个材质只能采样一套图案贴图；同一壳面可以混用多种图案）
-  const buckets = new Map();   // pattern → 几何缓冲
-  const bucketOf = (pattern) => {
-    let b = buckets.get(pattern);
+  // 按「图案 × 空间八分块」分组累积:
+  const buckets = new Map();   // pattern*8+chunk → 几何缓冲
+  const bucketOf = (pattern, chunk) => {
+    const key = pattern * 8 + chunk;
+    let b = buckets.get(key);
     if (!b) {
-      b = { positions: [], normals: [], colors: [], indices: [], patternUV: [], patternMN: [] };
-      buckets.set(pattern, b);
+      b = { pattern, chunk, positions: [], normals: [], colors: [], indices: [], patternUV: [], patternMN: [] };
+      buckets.set(key, b);
     }
     return b;
   };
@@ -329,7 +330,6 @@ export function computeShellCellBuckets(shData, nodeMap, shPole, ftMap, orbit, s
     color.setHex(_toHexColor(fc.color, 0x175473));
 
     const pattern = (fc.pattern | 0) || 0;
-    const buf = bucketOf(pattern);
 
     const maxUsefulDist = gridSize * (CELL_GAP_SCALE / SQRT3 + 0.25);
     const maxUsefulDistSq = maxUsefulDist * maxUsefulDist;
@@ -343,6 +343,12 @@ export function computeShellCellBuckets(shData, nodeMap, shPole, ftMap, orbit, s
       const nx = cellCenterWorld.x / basis.radius;
       const ny = cellCenterWorld.y / basis.radius;
       const nz = cellCenterWorld.z / basis.radius;
+      // 空间八分块: 按细胞中心的符号位划分（cellCenterWorld 即缩放 + 姿态旋转后的世界坐标）。
+      // 整细胞归入中心所在块（不切割细胞），块之间只会有包围球轻微重叠，不影响剔除正确性。
+      const chunk = (cellCenterWorld.x >= 0 ? 1 : 0)
+        | (cellCenterWorld.y >= 0 ? 2 : 0)
+        | (cellCenterWorld.z >= 0 ? 4 : 0);
+      const buf = bucketOf(pattern, chunk);
 
       // 图案 uv 的格坐标偏移: 每格一个 tile
       const patternOffU = (-2 * m + n) / 3;
@@ -377,10 +383,11 @@ export function computeShellCellBuckets(shData, nodeMap, shPole, ftMap, orbit, s
 
   // 转成 TypedArray: 便于 postMessage 转移（零拷贝），也便于单测断言
   const out = [];
-  for (const [pattern, buf] of buckets) {
+  for (const buf of buckets.values()) {
     if (!buf.positions.length) continue;
     out.push({
-      pattern,
+      pattern: buf.pattern,
+      chunk: buf.chunk,
       positions: new Float32Array(buf.positions),
       normals: new Float32Array(buf.normals),
       colors: new Float32Array(buf.colors),

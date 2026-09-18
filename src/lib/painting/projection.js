@@ -205,7 +205,7 @@ export function createProjector(img, params) {
     AXIS[0] * EAST[1] - AXIS[1] * EAST[0],
   ];
   const cosLimit = -1e-9; // cos 90°: 略放宽，让恰好 90° 的点也算图内
-  /** 角距 75° 起渐隐到填充色，90° 全是填充色 */
+  /** 角距 75° 起渐隐到底色，90° 全是底色 */
   const FADE_FROM = Math.cos(75 * DEG);
 
   // 图片调整（仅半球投影）: 缩放 1 = 原样；移动为百分比（1% = 图片半宽/半高），正 = 东/北。
@@ -219,8 +219,16 @@ export function createProjector(img, params) {
   const ex = (iw / 2) / halfLong;
   const ey = (ih / 2) / halfLong;
 
-  // 图外填充色（来源由 store 解析后传入）: 跟图片走同一套亮度/对比度/饱和度，
-  const fillRgb = adjustRgb(parseHexColor(params.fillColor) || [0, 0, 0], params);
+  // 底色（图外填充色；null = 没有底色）
+  // 「自动」跟图片一起做亮度/对比度/饱和度
+  const fillHex = parseHexColor(params.fillColor) || [0, 0, 0];
+  const fillRgb = params.fillColor == null
+    ? null
+    : params.fillMode === 'bg'
+      ? adjustRgb(fillHex, params)
+      : fillHex;
+  /** 取不到图片颜色的格子涂什么: 底色 / null（不涂色） */
+  const outCell = fillRgb ? { r: fillRgb[0], g: fillRgb[1], b: fillRgb[2], a: 255 } : null;
 
   // 是否在图片内: 半开区间 [0,1) + 容限（极点压在图片边界上时，
   // 闭区间会因浮点误差 vv = -8.7e-18 把整条极点带判成图外）
@@ -230,7 +238,7 @@ export function createProjector(img, params) {
   }
 
   // 等距圆柱: 图宽 = 360° 经度（本初子午线 = 左边缘），图高 = 360/aspect 度纬度、以赤道居中
-  //   → 2:1 铺满整球、4:1 只铺到 ±45；超出 ±latLimit 的极冠用填充色
+  //   → 2:1 铺满整球、4:1 只铺到 ±45；超出 ±latLimit 的极冠用底色
   const aspect = iw / ih;
   const halfLat = 180 / aspect;
   const latLimit = Math.min(90, halfLat);
@@ -246,7 +254,7 @@ export function createProjector(img, params) {
   // 图片在纬度方向的半高: 正常 = R，图被缩到一圈时更小
   const eqHalfLat = eq ? eq.copyHeight / 2 : 0;
 
-  // 边缘过渡系数（uvAt 会更新，采样时向填充色靠拢）
+  // 边缘过渡系数（uvAt 会更新，采样时向底色靠拢）
   let blend = 1;
 
   /**
@@ -260,7 +268,7 @@ export function createProjector(img, params) {
   function uvAt(lat, lng) {
     let dx;
     let dy;
-    blend = 1; // 1 = 取原图颜色，0 = 填充色；只有半球边缘过渡会改它
+    blend = 1; // 1 = 取原图颜色，0 = 底色；只有半球边缘过渡会改它
 
     if (isHemisphere) {
       if (lat < -90 || lat > 90) return null;
@@ -309,10 +317,8 @@ export function createProjector(img, params) {
     return [uu, vv];
   }
 
-  // 透明判定（固定）: a >= 128 用像素原色，< 128 一律按纯黑参与采样
-  // —— 透明区域当黑色涂上去，网格里不会留未涂色格子
-  const ALPHA_CUTOFF = 128;
-  const BLACK = { r: 0, g: 0, b: 0, a: 255 };
+  // alpha 判定: a ≤ 85 的像素没有自己的颜色 → 取样时不算采样点；a ≥ 86 用原色
+  const ALPHA_MIN = 86;
 
   // ── 采样 ──────────────────────────────────────────────────
   // 等距圆柱的映射可分离（经度定列、纬度定行），每格在图片上就是一个轴对齐矩形，
@@ -365,7 +371,7 @@ export function createProjector(img, params) {
     // 最近邻取中心像素（不是左上角），与逐点采样的「格子中心」语义对齐
     if (targetSamples <= 1) {
       const i = ((y0 + (h >> 1)) * iw + (x0 + (w >> 1))) * 4;
-      if (data[i + 3] < ALPHA_CUTOFF) return BLACK;
+      if (data[i + 3] < ALPHA_MIN) return outCell; // 透明 → 底色 / 不涂色
       return { r: data[i], g: data[i + 1], b: data[i + 2], a: 255 };
     }
 
@@ -377,15 +383,15 @@ export function createProjector(img, params) {
     for (let y = y0; y < y1; y += stride) {
       let i = (y * iw + x0) * 4;
       for (let x = x0; x < x1; x += stride) {
-        // 透明像素按纯黑参与平均（跨透明边界会向黑过渡）
-        if (data[i + 3] >= ALPHA_CUTOFF) {
+        // 透明像素（a ≤ 85）没有自己的颜色，不算采样点
+        if (data[i + 3] >= ALPHA_MIN) {
           sr += data[i]; sg += data[i + 1]; sb += data[i + 2];
+          n += 1;
         }
-        n += 1;
         i += stride * 4;
       }
     }
-    if (n === 0) return BLACK;
+    if (n === 0) return outCell; // 整格都没有可用颜色 → 底色 / 不涂色
     return {
       r: Math.round(sr / n),
       g: Math.round(sg / n),
@@ -396,21 +402,18 @@ export function createProjector(img, params) {
 
   // ── 逐点采样（半球 / 环绕赤道）: 每格按经纬范围取点，走 uvAt ──
   const AREA_DIV = 4;
-  let accR = 0, accG = 0, accB = 0, accN = 0, accOut = 0;
+  let accR = 0, accG = 0, accB = 0, accN = 0;
 
   function addSampleLatLng(lat, lng) {
     const uv = uvAt(lat, lng);
-    if (!uv) {
-      accOut += 1; // 图外
-      return;
-    }
+    if (!uv) return; // 图外
     const col = texelAt(uv[0], uv[1]);
-    const opaque = col[3] >= ALPHA_CUTOFF; // 透明像素按纯黑参与
-    const cr = opaque ? col[0] : 0;
-    const cg = opaque ? col[1] : 0;
-    const cb = opaque ? col[2] : 0;
-    // 边缘过渡: blend < 1 时向填充色靠拢
-    const b = blend;
+    if (col[3] < ALPHA_MIN) return; // 透明（a ≤ 85）没有自己的颜色，不算采样点
+    const cr = col[0];
+    const cg = col[1];
+    const cb = col[2];
+    // 边缘过渡: blend < 1 时向底色靠拢（没有底色就不过渡）
+    const b = fillRgb ? blend : 1;
     accR += b === 1 ? cr : cr * b + fillRgb[0] * (1 - b);
     accG += b === 1 ? cg : cg * b + fillRgb[1] * (1 - b);
     accB += b === 1 ? cb : cb * b + fillRgb[2] * (1 - b);
@@ -419,7 +422,7 @@ export function createProjector(img, params) {
 
   function sampleCellByPoints(band, li, step) {
     const lngLo = li * step;
-    accR = 0; accG = 0; accB = 0; accN = 0; accOut = 0;
+    accR = 0; accG = 0; accB = 0; accN = 0;
     if (TARGET_SAMPLES > 1) {
       for (let a = 0; a <= AREA_DIV; a += 1) {
         const lat = band.latLo + (band.latHi - band.latLo) * (a / AREA_DIV);
@@ -438,11 +441,8 @@ export function createProjector(img, params) {
         a: 255,
       };
     }
-    // 一个图内采样点都没有 → 整格在图外（半球外 / 环带外 / 份间空隙）→ 填充色
-    if (accOut > 0) {
-      return { r: fillRgb[0], g: fillRgb[1], b: fillRgb[2], a: 255 };
-    }
-    return BLACK;
+    // 没有可用采样点 → 底色 / 不涂色
+    return outCell;
   }
 
   /**
@@ -464,10 +464,10 @@ export function createProjector(img, params) {
         if (useRects) {
           const r = cellRects[c];
           if (!r || r.x1 <= r.x0 || r.y1 <= r.y0) {
-            // 空矩形 = 整格在覆盖纬度之外（极冠）→ 填充色
-            out[c] = { r: fillRgb[0], g: fillRgb[1], b: fillRgb[2], a: 255 };
+            // 空矩形 = 整格在图片覆盖的纬度之外（极冠）
+            out[c] = outCell;
           } else {
-            // 矩形里有像素也可能整块透明 → null（透明 ≠ 图外，不该涂填充色）
+            // 矩形内取像素平均（全是透明像素时 sampleRect 同样落到 outCell）
             out[c] = sampleRect(r, TARGET_SAMPLES);
           }
         } else {

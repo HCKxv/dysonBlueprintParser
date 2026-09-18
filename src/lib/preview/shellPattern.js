@@ -37,7 +37,7 @@ const INNER_FADE_END = 0.16;     // ≈6px 一格时已完成回升
 // 图案/细网收拢（可以晚）: 让图案在更远的距离仍可见，和游戏的观感一致
 const FALLOFF_START = 0.11;      // ≈9px 一格图案开始收拢
 const FALLOFF_END = 0.65;        // ≈1.5px 一格完全收拢
-const FALLOFF_INNER_DIM = 0.95;  // 完全降级时底色 = 本色的 95%
+const FALLOFF_INNER_DIM = 0.98;  // 完全降级时底色 = 本色的 98%
 
 const dummyBlack = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
 dummyBlack.needsUpdate = true;
@@ -300,7 +300,7 @@ export function buildBackCells(cells, shellGroup, sharedBackMaterial, orbit) {
     backCells.name = `shellBackCells${i ? ':' + i : ''}`;
     backCells.userData.shellBackPattern = pattern;
     backCells.userData.shellSharedBack = sharedBackMaterial;
-    backCells.frustumCulled = false;
+    // 与正面块共享同一几何（含已算好的包围球），默认 frustumCulled = true，同样逐块剔除
     shellGroup.add(backCells);
   });
 }
