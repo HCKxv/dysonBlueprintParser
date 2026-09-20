@@ -1,6 +1,5 @@
 import { markRaw, reactive, shallowRef, toRaw, watch } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
-import { verifyBlueprintString } from '../lib/blueprint/blueprintChecksum.js'
 import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
 import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
 import { computePower, fmtKW } from '../lib/power/power.js'
@@ -232,19 +231,17 @@ export async function parseBlueprint() {
 
   try {
     const parsed = await parseBlueprintString(text)
-    parsed.validFlag = verifyBlueprintString(text)
 
     store.isSingleShell = parsed.body.typeId === 1
     buildTree(parsed, null)
-
     // markRaw：蓝图数据不需要深层响应式（面板由 statsTree / powerResult 驱动）。
     // 若交给 Vue 代理，编码 / 提取时库内 { ...node } 式展开会把嵌套代理写回数据，
     // 之后 structuredClone 就会抛「#<Object> could not be cloned」
     store.parsed = markRaw(parsed)
-    toast.show('成功解析蓝图')
-
     updatePoints(parsed)
     preview.value?.render(parsed.body)
+
+    toast.show('成功解析蓝图')
   } catch (error) {
     store.errorMessage = (error as Error).message
     toast.show(`解析蓝图失败：\n${(error as Error).message}`)

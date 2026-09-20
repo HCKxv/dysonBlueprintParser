@@ -1,5 +1,6 @@
 import { ticksTime, compareVersion, blueprintTypeName } from './utils.js';
 import { BinaryReader, decodeBase64Gzip } from './codec.js';
+import { verifyBlueprintString } from './blueprintChecksum.js';
 
 // 解析蓝图头部
 function parseHeader(headerString) {
@@ -24,14 +25,15 @@ function parseHeader(headerString) {
 }
 
 const BLUEPRINT_PREFIX = 'DYBP:';
+const ADAPTED_VERSION = '0.10.34.28524';
 
 // 解析完整蓝图字符串
 async function parseBlueprintString(blueprintString) {
-  blueprintString = blueprintString.trim();
-
   if (typeof blueprintString !== 'string') {
     throw new TypeError('blueprintString must be a string');
   }
+
+  blueprintString = blueprintString.trim();
 
   if (!blueprintString.startsWith(BLUEPRINT_PREFIX)) {
     throw new Error(`蓝图格式错误: 必须以 ${BLUEPRINT_PREFIX} 开头`);
@@ -47,26 +49,39 @@ async function parseBlueprintString(blueprintString) {
   const bodyString = segments[1];
   const signature = segments[2];
 
+  const validFlag = verifyBlueprintString(blueprintString);
+
   const header = parseHeader(headerString);
 
   // 版本 <= 0.9.24.11286 使用旧版格式
   const isOldFormat = compareVersion(header.version, '0.9.24.11286') <= 0;
-  const body = isOldFormat
-    ? await parseOldBlueprintBody(bodyString, header.typeId)
-    : await parseBlueprintBody(bodyString, header.typeId);
+  let body;
+  try {
+    const decoded = await decodeBase64Gzip(bodyString);
+    const reader = new BinaryReader(decoded);
+    body = isOldFormat
+      ? oldBlueprintBody(reader, header.typeId)
+      : parseBlueprintBody(reader, header.typeId);
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `${errMessage}（${validFlag
+        ? `蓝图版本 ${header.version}，适配版本 ${ADAPTED_VERSION}`
+        : '签名不符，蓝图已被修改'
+      }）`,
+      { cause: err },
+    );
+  }
 
   return {
     header,
     body,
-    //signature,
+    validFlag,
   };
 }
 
 // 解析蓝图主体
-async function parseBlueprintBody(bodyString, typeId) {
-  const decoded = await decodeBase64Gzip(bodyString);
-  const reader = new BinaryReader(decoded);
-
+function parseBlueprintBody(reader, typeId) {
   reader.readInt32();  //version?
 
   const body = {
@@ -91,10 +106,7 @@ async function parseBlueprintBody(bodyString, typeId) {
 
 // 旧版蓝图主体解析（版本 <= 0.9.24.11286）
 // 与新版的主要区别：无初始 int32 占位符、轨道无版本前缀、无太阳帆颜色数据
-async function parseOldBlueprintBody(bodyString, typeId) {
-  const decoded = await decodeBase64Gzip(bodyString);
-  const reader = new BinaryReader(decoded);
-
+function oldBlueprintBody(reader, typeId) {
   // 旧版格式没有初始 int32(0) 占位符
 
   const body = {
@@ -103,11 +115,11 @@ async function parseOldBlueprintBody(bodyString, typeId) {
   };
 
   if (typeId === 3 || typeId === 4) {
-    body.dysonCloud = parseOldDysonCloud(reader);
+    body.dysonCloud = oldDysonCloud(reader);
   }
 
   if (typeId === 2 || typeId === 4) {
-    body.dysonShell = parseOldDysonShell(reader);
+    body.dysonShell = oldDysonShell(reader);
   }
 
   if (typeId === 1) {
@@ -139,11 +151,11 @@ function parseDysonCloud(reader) {
 }
 
 // 旧版戴森云解析
-function parseOldDysonCloud(reader) {
+function oldDysonCloud(reader) {
   const visibility = parseVisibility(reader);
   const orbits = [];
   for (let i = 0; i < 20; i += 1) {
-    orbits.push(parseOldOrbit(reader));
+    orbits.push(oldOrbit(reader));
   }
 
   // 旧版没有太阳帆颜色数据
@@ -182,13 +194,13 @@ function parseDysonShell(reader) {
 }
 
 // 旧版戴森壳解析
-function parseOldDysonShell(reader) {
+function oldDysonShell(reader) {
   const visibility = parseVisibility(reader);
   const orbitCount = reader.readInt32();
   const orbitList = new Array(orbitCount).fill(null);
   for (let i = 0; i < orbitCount; i += 1) {
     if (reader.readBool()) {
-      orbitList[i] = parseOldOrbit(reader);
+      orbitList[i] = oldOrbit(reader);
     }
   }
 
@@ -344,10 +356,10 @@ function parseFillGrid(reader) {
   }
 
   const colorCount = reader.readInt32();
-   const colors = [];
-   for (let i = 0; i < colorCount; i += 1) {
-     colors.push(parseRGBColor(reader));
-   }
+  const colors = [];
+  for (let i = 0; i < colorCount; i += 1) {
+    colors.push(parseRGBColor(reader));
+  }
 
   return {
     gridType,
@@ -399,7 +411,7 @@ function parseOrbit(reader) {
 }
 
 // 旧版轨道解析
-function parseOldOrbit(reader) {
+function oldOrbit(reader) {
   const id = reader.readInt32();
   const radius = reader.readFloat32();
   const x = reader.readFloat32();

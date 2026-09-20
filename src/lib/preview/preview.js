@@ -498,15 +498,9 @@ class DysonSpherePreview {
     const w = this._canvas.clientWidth || 1;
     const h = this._canvas.clientHeight || 1;
     this._renderer.setPixelRatio(ratio);
-    this._composer?.dispose();
-    this._composer = null;
-    this._bloomPass = null;
-    this._fxaaPass = null;
+    // 重建前必须自己释放旧的 pass
+    this._teardownComposer();
     // 档位没有任何后处理需求（低画质: 无泛光、无 FXAA）时不搭 composer:
-    // 那样每帧只剩 RenderPass + OutputPass 走一遍，等于白付一次全屏 pass 与
-    // HalfFloat 渲染目标的来回带宽。画面与直接渲染等价——本工程从不设置
-    // renderer.toneMapping（保持默认 NoToneMapping），OutputPass 此时只做
-    // sRGB 转换，而直接渲染时着色器里的输出色彩空间转换结果相同。
     if (!q.bloom && !q.fxaa) {
       this._needsRender = true;
       return;
@@ -531,11 +525,21 @@ class DysonSpherePreview {
       }
     } catch (err) {
       console.warn('[preview] 后处理初始化失败，回退为直接渲染:', err);
-      this._composer = null;
-      this._bloomPass = null;
-      this._fxaaPass = null;
+      this._teardownComposer();
     }
     this._needsRender = true;
+  }
+
+  /**
+   * 释放整条后处理链并清空引用
+   */
+  _teardownComposer() {
+    this._composer?.dispose();
+    this._bloomPass?.dispose();
+    this._fxaaPass?.dispose();
+    this._composer = null;
+    this._bloomPass = null;
+    this._fxaaPass = null;
   }
 
   /**
@@ -640,7 +644,7 @@ class DysonSpherePreview {
       this._nodeGeoms = null;
     }
     this._setLoading(false);
-    if (this._composer) { this._composer.dispose(); this._composer = null; this._bloomPass = null; this._fxaaPass = null; }
+    this._teardownComposer();
     if (this._renderer) { this._renderer.dispose(); this._renderer = null; }
     if (this._controls) { this._controls.dispose(); this._controls = null; }
   }
