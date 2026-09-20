@@ -43,7 +43,7 @@ function onQualityChange(e: Event) {
     </div>
     <div class="menu-div" :class="{ collapsed: store.menuCollapsed }">
       <form novalidate><div class="menu">
-        <div v-show="store.isSingleShell" class="menu">
+        <div v-show="store.showRadiusInput" class="menu">
           <span>半径</span>
           <input
             type="number"

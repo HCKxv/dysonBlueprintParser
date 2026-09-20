@@ -38,7 +38,7 @@ export function cancelPowerComputes(key) {
  * 在 Worker 里算 computePoints
  *
  * @param {object} body - 解析后的蓝图数据 body（必须是原始数据，见文件头「约定」）
- * @param {number|null} r0 - 单层壳的用户半径（多层壳传 null，用蓝图里的轨道半径）
+ * @param {number|null} r0 - 单层壳的用户半径（多层壳不使用）
  * @param {{key?: string, timeoutMs?: number}} [opts] - key: 同一路计算只保留最新一次
  * @returns {Promise<object|null>} computePoints 的返回值（无壳数据时为 null）
  */

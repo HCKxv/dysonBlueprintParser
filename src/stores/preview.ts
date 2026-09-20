@@ -33,7 +33,7 @@ const store = reactive({
   powerText: '0 W',
   statsTree: [] as StatNode[],
   errorMessage: '',
-  isSingleShell: false,
+  showRadiusInput: true,
 
   // 设置
   radius: 10000,
@@ -181,17 +181,14 @@ function buildTree(parsed: Record<string, any>, powerResult: Record<string, any>
 }
 
 /** 计算结构与细胞点数并更新 */
-async function updatePoints(parsed: Record<string, any>) {
-  let r0: number | null = null
-  if (parsed.body.typeId === 1) {
-    store.radius = clampRadius(store.radius || 10000)
-    r0 = store.radius
-  }
+async function updatePoints() {
+  const parsed = store.parsed
+  if (!parsed) return
 
   store.powerText = '计算中...'
   let powerResult: Record<string, any> | null
   try {
-    powerResult = await computePointsAsync(toRaw(parsed.body), r0, { key: 'preview' })
+    powerResult = await computePointsAsync(toRaw(parsed.body), clampRadius(store.radius), { key: 'preview' })
   } catch (error) {
     if ((error as Error).name === 'AbortError' || parsed !== store.parsed) return
     store.powerText = '计算失败'
@@ -203,10 +200,7 @@ async function updatePoints(parsed: Record<string, any>) {
 
   store.powerResult = powerResult
   if (powerResult) {
-    const lum = clampLum(store.luminosity)
-    store.luminosity = lum
     refreshPower()
-    preview.value?.setSunColor(lum)
   } else {
     store.powerText = '0 W'   // 没有壳数据（例如只有戴森云）
   }
@@ -232,13 +226,13 @@ export async function parseBlueprint() {
   try {
     const parsed = await parseBlueprintString(text)
 
-    store.isSingleShell = parsed.body.typeId === 1
+    store.showRadiusInput = parsed.body.typeId === 1
     buildTree(parsed, null)
     // markRaw：蓝图数据不需要深层响应式（面板由 statsTree / powerResult 驱动）。
     // 若交给 Vue 代理，编码 / 提取时库内 { ...node } 式展开会把嵌套代理写回数据，
     // 之后 structuredClone 就会抛「#<Object> could not be cloned」
     store.parsed = markRaw(parsed)
-    updatePoints(parsed)
+    updatePoints()
     preview.value?.render(parsed.body)
 
     toast.show('成功解析蓝图')
@@ -252,9 +246,9 @@ export async function parseBlueprint() {
 
 /** 单层壳半径变化：重新计算结构与细胞点数（随半径变化） */
 export async function onRadiusChange() {
-  const parsed = store.parsed
-  if (parsed?.body?.typeId !== 1) return
-  await updatePoints(parsed)
+  store.radius = clampRadius(store.radius)
+  if (store.parsed?.body?.typeId !== 1) return
+  await updatePoints()
 }
 
 /** 光度系数变化：更新恒星颜色并刷新发电量 */
