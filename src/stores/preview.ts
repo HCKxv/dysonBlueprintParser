@@ -1,7 +1,7 @@
 import { markRaw, reactive, shallowRef, toRaw, watch } from 'vue'
-import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
-import { extractSingleShell, extractStructure } from '../lib/blueprint/blueprintEdit.js'
-import { stringifyBlueprint } from '../lib/blueprint/blueprintEncoder.js'
+import { parseBlueprintString } from '../lib/blueprint/sphere/blueprintParser.js'
+import { extractSingleShell, extractStructure } from '../lib/blueprint/sphere/blueprintEdit.js'
+import { stringifyBlueprint } from '../lib/blueprint/sphere/blueprintEncoder.js'
 import { computePower, fmtKW } from '../lib/power/power.js'
 import { computePointsAsync } from '../lib/power/powerAsync.js'
 import { buildStatsTree, type StatNode } from '../components/BlueprintPanel/statsTree'
@@ -242,6 +242,19 @@ export async function parseBlueprint() {
   } finally {
     store.parsing = false
   }
+}
+
+/** 重置：清空已解析的蓝图 */
+export function resetBlueprint() {
+  store.parsed = null
+  store.powerResult = null
+  store.powerText = '0 W'
+  store.statsTree = []
+  store.errorMessage = ''
+  store.showRadiusInput = true
+  store.parsing = false
+  preview.value?.clearScene()
+  toast.show('已清空蓝图')
 }
 
 /** 单层壳半径变化：重新计算结构与细胞点数（随半径变化） */

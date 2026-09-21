@@ -8,7 +8,7 @@ import {
   infoOf,
   makeBaseFromBlueprint,
 } from '../lib/painting/baseBlueprint.js'
-import { parseBlueprintString } from '../lib/blueprint/blueprintParser.js'
+import { parseBlueprintString } from '../lib/blueprint/sphere/blueprintParser.js'
 // 投影模式图标: 用 ?raw 取内联 SVG，靠 currentColor 跟随卡片的选中态变色
 import hemisphereIcon from '../assets/hemisphere.svg?raw'
 import equirectIcon from '../assets/equirect.svg?raw'

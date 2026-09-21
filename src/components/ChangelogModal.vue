@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import pkg from '../../package.json'
+import BaseModal from './BaseModal.vue'
 
 const fullVersion = `V${pkg.version}`
 
@@ -40,22 +41,13 @@ defineExpose({ open: openModal })
 </script>
 
 <template>
-  <div class="modal" :class="{ hidden: !open }">
-    <div class="modal-backdrop" @click="closeModal"></div>
-    <div class="modal-box">
-      <div class="modal-header">
-        <span>更新日志 {{ fullVersion }}</span>
-        <button class="modal-close" aria-label="关闭" @click="closeModal">✕</button>
-      </div>
-      <div class="modal-body scroll-y">
-        <div v-for="(entry, i) in entries" :key="i" class="changelog-entry">
-          <h3>{{ entry.version }}</h3>
-          <ul>
-            <li v-for="(line, j) in entry.changes" :key="j">{{ line }}</li>
-          </ul>
-        </div>
-        <div v-if="failed" class="changelog-entry">更新日志加载失败</div>
-      </div>
+  <BaseModal :open="open" :title="`更新日志 ${fullVersion}`" @close="closeModal">
+    <div v-for="(entry, i) in entries" :key="i" class="changelog-entry">
+      <h3>{{ entry.version }}</h3>
+      <ul>
+        <li v-for="(line, j) in entry.changes" :key="j">{{ line }}</li>
+      </ul>
     </div>
-  </div>
+    <div v-if="failed" class="changelog-entry">更新日志加载失败</div>
+  </BaseModal>
 </template>

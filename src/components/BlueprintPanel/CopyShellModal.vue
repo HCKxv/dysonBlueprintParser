@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, toRaw, watch } from 'vue'
+import BaseModal from '../BaseModal.vue'
 import { store } from '../../stores/preview'
-import { copyShell } from '../../lib/blueprint/blueprintEdit.js'
-import { stringifyBlueprint } from '../../lib/blueprint/blueprintEncoder.js'
+import { copyShell } from '../../lib/blueprint/sphere/blueprintEdit.js'
+import { stringifyBlueprint } from '../../lib/blueprint/sphere/blueprintEncoder.js'
 import { computePower, fmtKW } from '../../lib/power/power.js'
 import { computePointsAsync, cancelPowerComputes } from '../../lib/power/powerAsync.js'
 import { downloadTxt } from '../../utils/download'
@@ -109,107 +110,98 @@ function closeModal() {
 </script>
 
 <template>
-  <div class="modal" :class="{ hidden: !store.showCopyShellModal }">
-    <div class="modal-backdrop" @click="closeModal"></div>
-    <div class="modal-box">
-      <div class="modal-header">
-        <span>将单层蓝图复制为多层</span>
-        <button class="modal-close" aria-label="关闭" @click="closeModal">✕</button>
+  <BaseModal :open="store.showCopyShellModal" title="将单层蓝图复制为多层" @close="closeModal">
+    <div class="menu-div">
+
+      <div class="menu"><span>复制参数：</span></div>
+      <form novalidate><div class="menu">
+        <span>初始半径</span>
+        <input
+          v-model.number="form.radius"
+          type="number"
+          step="1000"
+          min="4000"
+          max="300000"
+          class="input-dark w-80"
+        />
+        <span>复制次数</span>
+        <input
+          v-model.number="form.count"
+          type="number"
+          step="1"
+          min="1"
+          max="10"
+          class="input-dark w-70"
+        />
+        <span>步长</span>
+        <input
+          v-model.number="form.step"
+          type="number"
+          step="100"
+          min="1000"
+          class="input-dark w-70"
+        />
+        <select v-model.number="form.direction" class="speed-select" style="padding: 3px 4px;">
+          <option :value="1">递增</option>
+          <option :value="-1">递减</option>
+        </select>
+      </div></form>
+
+      <div class="menu">
+        <span>交升点经度</span>
+        <input
+          v-model.number="form.ascendingNode"
+          type="number"
+          min="0"
+          max="360"
+          class="input-dark w-70"
+        />
+        <span>轨道倾角</span>
+        <input
+          v-model.number="form.inclination"
+          type="number"
+          min="0"
+          max="180"
+          class="input-dark w-70"
+        />
       </div>
-      <div class="modal-body scroll-y">
-        <div class="menu-div">
 
-          <div class="menu"><span>复制参数：</span></div>
-          <form novalidate><div class="menu">
-            <span>初始半径</span>
-            <input
-              v-model.number="form.radius"
-              type="number"
-              step="1000"
-              min="4000"
-              max="300000"
-              class="input-dark w-80"
-            />
-            <span>复制次数</span>
-            <input
-              v-model.number="form.count"
-              type="number"
-              step="1"
-              min="1"
-              max="10"
-              class="input-dark w-70"
-            />
-            <span>步长</span>
-            <input
-              v-model.number="form.step"
-              type="number"
-              step="100"
-              min="1000"
-              class="input-dark w-70"
-            />
-            <select v-model.number="form.direction" class="speed-select" style="padding: 3px 4px;">
-              <option :value="1">递增</option>
-              <option :value="-1">递减</option>
-            </select>
-          </div></form>
-
-          <div class="menu">
-            <span>交升点经度</span>
-            <input
-              v-model.number="form.ascendingNode"
-              type="number"
-              min="0"
-              max="360"
-              class="input-dark w-70"
-            />
-            <span>轨道倾角</span>
-            <input
-              v-model.number="form.inclination"
-              type="number"
-              min="0"
-              max="180"
-              class="input-dark w-70"
-            />
-          </div>
-
-          <div class="menu">
-            <label>
-              <input type="checkbox" v-model="form.autoOrbitCloud" />
-              添加适用于自动轨道弹射的戴森云
-            </label>
-          </div>
-
-          <div v-if="invalidText" class="menu" style="color: #ff6b6b;">
-            ⚠ {{ invalidText }}
-          </div>
-
-          <hr class="menu-divider" />
-
-          <div class="menu">
-            <span>光度</span>
-            <form novalidate><input
-              v-model.number="form.luminosity"
-              type="number"
-              step="0.1"
-              min="0.1"
-              class="input-dark w-70"
-            /></form>
-            <button class="btn-sm" :disabled="busy || computing || !!invalidText" @click="previewPower">
-              {{ computing ? '计算中...' : '计算发电量' }}
-            </button>
-            <span v-if="previewPowerText">⚡ {{ previewPowerText }}</span>
-          </div>
-
-          <hr class="menu-divider" />
-
-          <span class="btn-group center">
-            <button class="btn-sm" :disabled="busy || !!invalidText" @click="confirm">
-              {{ busy ? '生成中...' : '确认' }}
-            </button>
-            <button class="btn-sm" :disabled="busy" @click="closeModal">取消</button>
-          </span>
-        </div>
+      <div class="menu">
+        <label>
+          <input type="checkbox" v-model="form.autoOrbitCloud" />
+          添加适用于自动轨道弹射的戴森云
+        </label>
       </div>
+
+      <div v-if="invalidText" class="menu" style="color: #ff6b6b;">
+        ⚠ {{ invalidText }}
+      </div>
+
+      <hr class="menu-divider" />
+
+      <div class="menu">
+        <span>光度</span>
+        <form novalidate><input
+          v-model.number="form.luminosity"
+          type="number"
+          step="0.1"
+          min="0.1"
+          class="input-dark w-70"
+        /></form>
+        <button class="btn-sm" :disabled="busy || computing || !!invalidText" @click="previewPower">
+          {{ computing ? '计算中...' : '计算发电量' }}
+        </button>
+        <span v-if="previewPowerText">⚡ {{ previewPowerText }}</span>
+      </div>
+
+      <hr class="menu-divider" />
+
+      <span class="btn-group center">
+        <button class="btn-sm" :disabled="busy || !!invalidText" @click="confirm">
+          {{ busy ? '生成中...' : '确认' }}
+        </button>
+        <button class="btn-sm" :disabled="busy" @click="closeModal">取消</button>
+      </span>
     </div>
-  </div>
+  </BaseModal>
 </template>

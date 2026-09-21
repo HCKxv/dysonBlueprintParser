@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { store, parseBlueprint, handleBlueprintText } from '../../stores/preview'
+import { computed, ref } from 'vue'
+import { store, parseBlueprint, resetBlueprint, handleBlueprintText } from '../../stores/preview'
 import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 const dragging = ref(false)
+
+const canReset = computed(() => !!(store.parsed || store.errorMessage))
 
 async function onPaste() {
   try {
@@ -73,7 +75,16 @@ function onDrop(e: DragEvent) {
     <div class="input-header">
       <span>蓝图输入</span>
       <div class="btn-group">
-        <button class="btn-sm" :disabled="store.parsing" @click="parseBlueprint()">解析并预览</button>
+        <button
+          class="btn-sm"
+          :disabled="store.parsing"
+          @click="parseBlueprint()"
+        >解析蓝图</button>
+        <button
+          class="btn-sm"
+          :disabled="!canReset || store.parsing"
+          @click="resetBlueprint()"
+        >清空结果</button>
         <button class="btn-sm" @click="onPaste">粘贴</button>
         <button class="btn-sm" @click="onCopy">复制</button>
       </div>

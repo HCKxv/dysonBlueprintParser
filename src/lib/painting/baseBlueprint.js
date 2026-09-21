@@ -1,6 +1,6 @@
 import base60 from './base60.json' with { type: 'json' }
 import base92 from './base92.json' with { type: 'json' }
-import { stringifyBlueprint } from '../blueprint/blueprintEncoder.js'
+import { stringifyBlueprint } from '../blueprint/sphere/blueprintEncoder.js'
 
 /** 单个基底的结构统计 */
 function infoOf(blueprint) {

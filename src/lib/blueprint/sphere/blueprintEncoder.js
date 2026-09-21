@@ -1,6 +1,7 @@
-import { getBodyTypeId, getCurrentTicks } from './utils.js';
-import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from './codec.js';
-import { computeSignature } from './blueprintChecksum.js';
+import { getCurrentTicks } from '../utils.js';
+import { getBodyTypeId } from './sphereUtils.js';
+import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from '../codec.js';
+import { computeSignature } from '../blueprintChecksum.js';
 import { compactAndRebuildIds } from './blueprintEdit.js';
 
 // 写入三维坐标

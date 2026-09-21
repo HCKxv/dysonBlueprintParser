@@ -5,7 +5,7 @@
  *   { kind:'stat',    label, value, toggle{...}, button{...} }
  *   { kind:'section', title, count, children: StatNode[] }
  */
-import { quaternionToOrbitParams, gridTypeName, countPaintedCells } from '../../lib/blueprint/utils.js'
+import { quaternionToOrbitParams, gridTypeName, countPaintedCells } from '../../lib/blueprint/sphere/sphereUtils.js'
 
 /** 信息卡片标题行右侧按钮 */
 export interface StatNodeAction {

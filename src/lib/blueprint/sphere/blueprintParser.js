@@ -1,6 +1,7 @@
-import { ticksTime, compareVersion, blueprintTypeName } from './utils.js';
-import { BinaryReader, decodeBase64Gzip } from './codec.js';
-import { verifyBlueprintString } from './blueprintChecksum.js';
+import { ticksTime, compareVersion } from '../utils.js';
+import { blueprintTypeName } from './sphereUtils.js';
+import { BinaryReader, decodeBase64Gzip } from '../codec.js';
+import { verifyBlueprintString } from '../blueprintChecksum.js';
 
 // 解析蓝图头部
 function parseHeader(headerString) {
