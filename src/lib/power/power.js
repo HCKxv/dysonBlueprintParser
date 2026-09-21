@@ -424,17 +424,17 @@ function computeLayerPoints(sh, R) {
 /**
  * 计算戴森球蓝图的结构点 SP 和细胞点 CP
  *
- * @param {object} body - 解析后的蓝图数据中的 body 部分（parsed.body）
+ * @param {object} blueprint - 解析后的蓝图数据（parseBlueprintString 的返回值）
  * @param {number} [r0=10000] - 单层壳的用户输入半径（多层壳使用蓝图原始轨道半径）
  * @returns {object|null} 返回 { layers: [...], nodeSpMax, frameSpMax, cpMax, radiusMin, radiusMax }，无壳数据时返回 null
  */
-function computePoints(body, r0 = 10000) {
-  const isSingle = body.typeId === 1;
+function computePoints(blueprint, r0 = 10000) {
+  const isSingle = blueprint.typeId === 1;
   let shell;
   if (isSingle) {
-    shell = { shells: [body.singleShell], orbitList: [{ id: 0, radius: r0, x: 0, y: 0, z: 0, w: 1 }] };
-  } else if (body.dysonShell) {
-    shell = body.dysonShell;
+    shell = { shells: [blueprint.singleShell], orbitList: [{ id: 0, radius: r0, x: 0, y: 0, z: 0, w: 1 }] };
+  } else if (blueprint.dysonShell) {
+    shell = blueprint.dysonShell;
   } else {
     return null;
   }

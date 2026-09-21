@@ -162,17 +162,15 @@ function compactAndRebuildIds(shell) {
  * 从蓝图中提取指定壳层，生成单层壳蓝图
  * @param {object} blueprint - 蓝图对象（与 parseBlueprintString 返回值同构）
  * @param {number} shellId - 壳层 id
- * @returns {object} 单层壳蓝图对象 { header, body: { typeId: 1, singleShell } }
- * @throws 蓝图缺少 body、不包含 dysonShell 或壳层不存在时
+ * @returns {object} 单层壳蓝图对象 { header, typeId: 1, singleShell }
+ * @throws 蓝图缺少戴森壳或壳层不存在时
  */
 function extractSingleShell(blueprint, shellId) {
-  const body = blueprint?.body;
-
-  if ( ![2, 4].includes(getBodyTypeId(body)) ) {
+  if ( ![2, 4].includes(getBodyTypeId(blueprint)) ) {
     throw new Error('蓝图不包含戴森壳，无法提取壳层');
   }
 
-  const shell = body.dysonShell.shells?.[shellId];
+  const shell = blueprint.dysonShell.shells?.[shellId];
   if (!shell || typeof shell !== 'object') {
     throw new Error(`未找到壳层 ${shellId}`);
   }
@@ -180,12 +178,12 @@ function extractSingleShell(blueprint, shellId) {
   const copy = cloneData(shell);
 
   const header = cloneData(blueprint.header ?? {});
-  header.typeId = 1;
-  header.typeName = blueprintTypeName(1);
 
   return {
     header,
-    body: { typeId: 1, singleShell: copy },
+    typeId: 1,
+    typeName: blueprintTypeName(1),
+    singleShell: copy,
   };
 }
 
@@ -200,26 +198,23 @@ function extractStructure(blueprint, type){
     throw new Error('Structure 必须是 "shell" 或 "cloud"');
   }
 
-  if (getBodyTypeId(blueprint?.body) !== 4){
+  if (getBodyTypeId(blueprint) !== 4){
     throw new Error('不是戴森球蓝图，无法提取戴森壳或戴森云');
   }
 
   const header = cloneData(blueprint.header ?? {});
-  const body = {}
+  const result = { header }
 
   if (type === 'shell') {
-    body.dysonShell = cloneData(blueprint.body?.dysonShell);
+    result.dysonShell = cloneData(blueprint.dysonShell);
   } if (type === 'cloud') {
-    body.dysonCloud = cloneData(blueprint.body?.dysonCloud);
+    result.dysonCloud = cloneData(blueprint.dysonCloud);
   }
 
-  header.typeId = body.typeId = getBodyTypeId(body);
-  header.typeName = blueprintTypeName(header.typeId);
+  result.typeId = getBodyTypeId(result);
+  result.typeName = blueprintTypeName(result.typeId);
 
-  return {
-    header,
-    body
-  };
+  return result;
 };
 
 /**
@@ -244,10 +239,10 @@ const AUTO_ORBIT_PARAMS = [[90, 1, 0], [75, 3, 0], [40, 6, 30]];
  * @throws 蓝图不是单层壳、参数非法或层半径低于 4000 时
  */
 function copyShell(blueprint, options = {}) {
-  if (getBodyTypeId(blueprint?.body) !== 1) {
+  if (getBodyTypeId(blueprint) !== 1) {
     throw new Error('不是单层壳蓝图，无法复制到多层');
   }
-  const source = blueprint.body.singleShell;
+  const source = blueprint.singleShell;
   if (!source || !Array.isArray(source.nodes)) {
     throw new Error('单层壳缺少节点数据');
   }
@@ -302,18 +297,19 @@ function copyShell(blueprint, options = {}) {
   }
 
   const header = cloneData(blueprint.header ?? {});
-  header.typeId = withCloud ? 4 : 2;
-  header.typeName = blueprintTypeName(header.typeId);
 
-  const body = { typeId: header.typeId, dysonShell: { visibility, orbitList, shells } };
+  const typeId = withCloud ? 4 : 2;
+  const result = {
+    header,
+    typeId,
+    typeName: blueprintTypeName(typeId),
+    dysonShell: { visibility, orbitList, shells },
+  };
   if (withCloud) {
-    body.dysonCloud = buildCloud(maxLayerRadius, AUTO_ORBIT_PARAMS);
+    result.dysonCloud = buildCloud(maxLayerRadius, AUTO_ORBIT_PARAMS);
   }
 
-  return {
-    header,
-    body,
-  };
+  return result;
 }
 
 export { cleanOrphanedComponents, compactAndRebuildIds, extractSingleShell, extractStructure, copyShell };

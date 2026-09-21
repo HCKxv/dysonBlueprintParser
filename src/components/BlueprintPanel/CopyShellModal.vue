@@ -2,8 +2,8 @@
 import { computed, reactive, ref, toRaw, watch } from 'vue'
 import BaseModal from '../BaseModal.vue'
 import { store } from '../../stores/preview'
-import { copyShell } from '../../lib/blueprint/sphere/blueprintEdit.js'
-import { stringifyBlueprint } from '../../lib/blueprint/sphere/blueprintEncoder.js'
+import { copyShell } from '../../lib/blueprint/sphere/sphereEdit.js'
+import { stringifyBlueprint } from '../../lib/blueprint/sphere/sphereEncoder.js'
 import { computePower, fmtKW } from '../../lib/power/power.js'
 import { computePointsAsync, cancelPowerComputes } from '../../lib/power/powerAsync.js'
 import { downloadTxt } from '../../utils/download'
@@ -64,7 +64,7 @@ async function confirm() {
   busy.value = true
 
   const parsed = store.parsed
-  if (invalidText.value || !parsed || parsed.body?.typeId !== 1) {
+  if (invalidText.value || !parsed || parsed?.typeId !== 1) {
     toast.show('没有已解析的蓝图或不是单层壳蓝图')
   }
 
@@ -85,11 +85,11 @@ async function confirm() {
 /** 发电量预览: 生成多层壳 + 在 Worker 里算点数（算的时候按钮置灰） */
 async function previewPower() {
   const parsed = store.parsed
-  if (computing.value || invalidText.value || !parsed || parsed.body?.typeId !== 1) return
+  if (computing.value || invalidText.value || !parsed || parsed?.typeId !== 1) return
   computing.value = true
   try {
     const multi = await copyShell(toRaw(parsed), { ...form })
-    const points = await computePointsAsync(multi.body, null, { key: 'copy-shell' })
+    const points = await computePointsAsync(multi, null, { key: 'copy-shell' })
     const lum = Math.min(10, Math.max(0.1, form.luminosity || 1.0))
     previewPowerText.value = points
       ? fmtKW(computePower(points, lum))

@@ -94,9 +94,9 @@ export function buildStatsTree(
   handlers: BuildStatsTreeHandlers = {},
 ): StatNode[] {
   const nodes: StatNode[] = []
-  const singleShell = parsed.body.singleShell
-  const cloud = parsed.body.dysonCloud
-  const shell = parsed.body.dysonShell
+  const singleShell = parsed.singleShell
+  const cloud = parsed.dysonCloud
+  const shell = parsed.dysonShell
   const onExportShell = handlers.onExportShell
   const onExportStructure = handlers.onExportStructure
   const onLayerVisible = handlers.onLayerVisible
@@ -113,10 +113,10 @@ export function buildStatsTree(
   // ── 蓝图信息 ──
   nodes.push({
     kind: 'stat', label: '蓝图信息',
-    value: '蓝图类型：' + (parsed.header.typeName || '未知') + '<br>' +
+    value: '蓝图类型：' + (parsed.typeName || '未知') + '<br>' +
       '游戏版本：' + parsed.header.version + '<br>' +
       '创建时间：' + parsed.header.createdAt + '<br>' +
-      '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.header.latLimit || 0) / 15)))),
+      '应力系统等级需求：等级 ' + (Math.min(6, Math.max(0, Math.ceil((parsed.latLimit || 0) / 15)))),
     button: onExportBlueprint
       ? {
           label: '导出蓝图',
@@ -126,7 +126,7 @@ export function buildStatsTree(
   })
 
   // ── 建造总量 ──
-  if (powerResult && [1, 2, 4].includes(parsed.body.typeId)) {
+  if (powerResult && [1, 2, 4].includes(parsed.typeId)) {
     const structPts = (powerResult?.nodeSpMax || 0) + (powerResult?.frameSpMax || 0)
     const cellPts = powerResult?.cpMax || 0
     const radiusMax = (powerResult?.radiusMax || 0).toFixed(0)
@@ -135,7 +135,7 @@ export function buildStatsTree(
       kind: 'stat', label: '戴森壳建造量',
       value: '小型运载火箭 约 ' + structPts + '<br>' +
         '太阳帆 约 ' + cellPts + '<br>' +
-       ( parsed.body.typeId !== 1 ?'最大半径 ' + radiusMax + ' / 最小半径 ' + radiusMin
+       ( parsed.typeId !== 1 ?'最大半径 ' + radiusMax + ' / 最小半径 ' + radiusMin
                                   :'半径 ' + radiusMax),
     })
   }

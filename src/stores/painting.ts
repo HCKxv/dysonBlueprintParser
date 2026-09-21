@@ -8,7 +8,7 @@ import {
   infoOf,
   makeBaseFromBlueprint,
 } from '../lib/painting/baseBlueprint.js'
-import { parseBlueprintString } from '../lib/blueprint/sphere/blueprintParser.js'
+import { parseBlueprintString } from '../lib/blueprint/sphere/sphereParser.js'
 // 投影模式图标: 用 ?raw 取内联 SVG，靠 currentColor 跟随卡片的选中态变色
 import hemisphereIcon from '../assets/hemisphere.svg?raw'
 import equirectIcon from '../assets/equirect.svg?raw'
@@ -369,8 +369,8 @@ export async function importBaseBlueprint(
     if (!text) return { ok: false, message: '蓝图内容是空的' }
 
     const bp = await parseBlueprintString(text)
-    if (!bp?.body?.singleShell) {
-      const name = bp?.header?.typeName || `typeId ${bp?.header?.typeId}`
+    if (!bp?.singleShell) {
+      const name = bp?.typeName || `typeId ${bp?.typeId}`
       return { ok: false, message: `只支持单层戴森壳蓝图（这份是「${name}」）` }
     }
 

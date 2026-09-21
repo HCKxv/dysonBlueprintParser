@@ -1,7 +1,7 @@
 import { markRaw, reactive, shallowRef, toRaw, watch } from 'vue'
-import { parseBlueprintString } from '../lib/blueprint/sphere/blueprintParser.js'
-import { extractSingleShell, extractStructure } from '../lib/blueprint/sphere/blueprintEdit.js'
-import { stringifyBlueprint } from '../lib/blueprint/sphere/blueprintEncoder.js'
+import { parseBlueprintString } from '../lib/blueprint/sphere/sphereParser.js'
+import { extractSingleShell, extractStructure } from '../lib/blueprint/sphere/sphereEdit.js'
+import { stringifyBlueprint } from '../lib/blueprint/sphere/sphereEncoder.js'
 import { computePower, fmtKW } from '../lib/power/power.js'
 import { computePointsAsync } from '../lib/power/powerAsync.js'
 import { buildStatsTree, type StatNode } from '../components/BlueprintPanel/statsTree'
@@ -119,7 +119,7 @@ export function setPreview(instance: DysonPreview | null) {
     afterPaint(() => {
       // 这两帧内可能又切走或换了实例，此时不该再渲染
       if (preview.value !== instance || !store.parsed) return
-      instance.render(toRaw(store.parsed.body))
+      instance.render(toRaw(store.parsed))
     })
   }
 }
@@ -188,7 +188,7 @@ async function updatePoints() {
   store.powerText = '计算中...'
   let powerResult: Record<string, any> | null
   try {
-    powerResult = await computePointsAsync(toRaw(parsed.body), clampRadius(store.radius), { key: 'preview' })
+    powerResult = await computePointsAsync(toRaw(parsed), clampRadius(store.radius), { key: 'preview' })
   } catch (error) {
     if ((error as Error).name === 'AbortError' || parsed !== store.parsed) return
     store.powerText = '计算失败'
@@ -226,14 +226,14 @@ export async function parseBlueprint() {
   try {
     const parsed = await parseBlueprintString(text)
 
-    store.showRadiusInput = parsed.body.typeId === 1
+    store.showRadiusInput = parsed.typeId === 1
     buildTree(parsed, null)
     // markRaw：蓝图数据不需要深层响应式（面板由 statsTree / powerResult 驱动）。
     // 若交给 Vue 代理，编码 / 提取时库内 { ...node } 式展开会把嵌套代理写回数据，
     // 之后 structuredClone 就会抛「#<Object> could not be cloned」
     store.parsed = markRaw(parsed)
     updatePoints()
-    preview.value?.render(parsed.body)
+    preview.value?.render(parsed)
 
     toast.show('成功解析蓝图')
   } catch (error) {
@@ -260,7 +260,7 @@ export function resetBlueprint() {
 /** 单层壳半径变化：重新计算结构与细胞点数（随半径变化） */
 export async function onRadiusChange() {
   store.radius = clampRadius(store.radius)
-  if (store.parsed?.body?.typeId !== 1) return
+  if (store.parsed?.typeId !== 1) return
   await updatePoints()
 }
 
@@ -302,7 +302,7 @@ export function openCopyShellModal() {
     toast.show('当前没有已解析的蓝图')
     return
   }
-  if (parsed.body?.typeId !== 1) {
+  if (parsed.typeId !== 1) {
     toast.show('仅单层壳蓝图支持复制到多层')
     return
   }

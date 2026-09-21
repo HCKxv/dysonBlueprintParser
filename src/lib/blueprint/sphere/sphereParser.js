@@ -1,7 +1,7 @@
 import { ticksTime, compareVersion } from '../utils.js';
 import { blueprintTypeName } from './sphereUtils.js';
 import { BinaryReader, decodeBase64Gzip } from '../codec.js';
-import { verifyBlueprintString } from '../blueprintChecksum.js';
+import { verifyBlueprintString } from '../checksum.js';
 
 // 解析蓝图头部
 function parseHeader(headerString) {
@@ -15,12 +15,10 @@ function parseHeader(headerString) {
   const latLimit = Number(values[4]);
 
   return {
-    //raw: headerString,
     createdTicks: ticks,
     createdAt: ticksTime(ticks),
     version: values[2],
     typeId,
-    typeName: blueprintTypeName(typeId),
     latLimit,
   };
 }
@@ -28,7 +26,20 @@ function parseHeader(headerString) {
 const BLUEPRINT_PREFIX = 'DYBP:';
 const ADAPTED_VERSION = '0.10.34.28524';
 
-// 解析完整蓝图字符串
+/**
+ * 解析完整蓝图字符串
+ * @param {string} blueprintString
+ * @returns {Promise<{
+ *   header: object,
+ *   typeId: number,
+ *   typeName: string,
+ *   latLimit: number,
+ *   singleShell?: object,
+ *   dysonShell?: object,
+ *   dysonCloud?: object,
+ *   validFlag: boolean,
+ * }>}
+ */
 async function parseBlueprintString(blueprintString) {
   if (typeof blueprintString !== 'string') {
     throw new TypeError('blueprintString must be a string');
@@ -50,9 +61,10 @@ async function parseBlueprintString(blueprintString) {
   const bodyString = segments[1];
   const signature = segments[2];
 
-  const validFlag = verifyBlueprintString(blueprintString);
+  const validFlag = verifyBlueprintString(blueprintString, BLUEPRINT_PREFIX);
 
-  const header = parseHeader(headerString);
+  // typeId / latLimit 从头部解析
+  const { typeId, latLimit, ...header } = parseHeader(headerString);
 
   // 版本 <= 0.9.24.11286 使用旧版格式
   const isOldFormat = compareVersion(header.version, '0.9.24.11286') <= 0;
@@ -61,8 +73,8 @@ async function parseBlueprintString(blueprintString) {
     const decoded = await decodeBase64Gzip(bodyString);
     const reader = new BinaryReader(decoded);
     body = isOldFormat
-      ? oldBlueprintBody(reader, header.typeId)
-      : parseBlueprintBody(reader, header.typeId);
+      ? oldBlueprintBody(reader, typeId)
+      : parseBlueprintBody(reader, typeId);
   } catch (err) {
     const errMessage = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -76,7 +88,10 @@ async function parseBlueprintString(blueprintString) {
 
   return {
     header,
-    body,
+    typeId,
+    typeName: blueprintTypeName(typeId),
+    ...body,
+    latLimit,
     validFlag,
   };
 }
@@ -85,10 +100,7 @@ async function parseBlueprintString(blueprintString) {
 function parseBlueprintBody(reader, typeId) {
   reader.readInt32();  //version?
 
-  const body = {
-    typeId,
-    typeName: blueprintTypeName(typeId),
-  };
+  const body = {};
 
   if (typeId === 3 || typeId === 4) {
     body.dysonCloud = parseDysonCloud(reader);
@@ -110,10 +122,7 @@ function parseBlueprintBody(reader, typeId) {
 function oldBlueprintBody(reader, typeId) {
   // 旧版格式没有初始 int32(0) 占位符
 
-  const body = {
-    typeId,
-    typeName: blueprintTypeName(typeId),
-  };
+  const body = {};
 
   if (typeId === 3 || typeId === 4) {
     body.dysonCloud = oldDysonCloud(reader);
@@ -465,7 +474,7 @@ function parseRGBColor(reader) {
 export { parseBlueprintString };
 
 // Example usage:
-// import { parseBlueprintString } from './blueprintParser.js';
+// import { parseBlueprintString } from './sphereParser.js';
 // const blueprint = await parseBlueprintString('DYBP:0,637709952000000000,1,4,0"..."ABC');
 // console.log(JSON.stringify(blueprint, null, 2));
 
@@ -474,20 +483,15 @@ export { parseBlueprintString };
  *
  * {
  *   header: {
- *     raw: string,          // 原始头部
  *     createdTicks: string, // .NET ticks
  *     createdAt: string,    // 格式化时间
  *     version: string,      // 游戏版本号
- *     typeId: number,       // 1-4
- *     typeName: string,     // 中文类型名
- *     latLimit: number,     // 纬度限制
  *   },
- *   body: {
- *     typeId, typeName,
- *     singleShell?, // typeId=1   — { nodes: (Node|null)[], frames: (Frame|null)[], faces: (Face|null)[], fillGrid: FillGrid|null }
- *     dysonShell?,  // typeId=2,4 — { visibility, orbitList: (Orbit|null)[], shells: (SingleShell|null)[] }
- *     dysonCloud?,  // typeId=3,4 — { visibility, orbits: (Orbit|null)[20], colors: HSVA[] }
- *   }
+ *   typeId, typeName, latLimit,
+ *   singleShell?, // typeId=1   — { nodes: (Node|null)[], frames: (Frame|null)[], faces: (Face|null)[], fillGrid: FillGrid|null }
+ *   dysonShell?,  // typeId=2,4 — { visibility, orbitList: (Orbit|null)[], shells: (SingleShell|null)[] }
+ *   dysonCloud?,  // typeId=3,4 — { visibility, orbits: (Orbit|null)[20], colors: HSVA[] }
+ *   validFlag,    // 签名校验结果
  * }
  *
  * Node   { id, style, coordinate: {x,y,z}, spMax, color: RGBA? }

@@ -20,8 +20,9 @@
  *     resize()                       手动触发渲染器大小调整
  *     dispose()                      销毁实例，释放资源
  *
- *   render(body) 的 body 结构（即 parsed.body）:
+ *   render(data) 的 data 结构（即 parseBlueprintString 的返回值）:
  *    {
+ *      header: {...},
  *      typeId: 1|2|3|4,
  *      singleShell: { nodes, frames, faces, fillGrid? },  // typeId=1
  *      dysonShell: {
@@ -33,7 +34,8 @@
  *        orbits: [{ id, radius, x, y, z, w }],
  *        colors?: { [id]: color },
  *        visibility?: { editor, inGame }
- *      }
+ *      },
+ *      validFlag?: boolean
  *    }
  *
  *   其中
@@ -211,15 +213,15 @@ class DysonSpherePreview {
    * 重建场景。逐层构建，每层结束后让出主线程一帧，避免长时间卡住界面；
    * 期间若又调用了一次 render，旧的那次会在下一层前自动中止。
    *
-   * @param {object} body — 解析后的蓝图数据中的 body 部分（parsed.body）
+   * @param {object} data — 解析后的蓝图数据（parseBlueprintString 的返回值）
    *
-   * body.typeId         1=单层壳  2=多层壳  3=戴森云  4=壳+云
-   * body.singleShell    { nodes, frames, faces, fillGrid? }
-   * body.dysonShell     { orbitList, shells, visibility? }
-   * body.dysonCloud     { orbits, colors?, visibility? }
+   * data.typeId         1=单层壳  2=多层壳  3=戴森云  4=壳+云
+   * data.singleShell    { nodes, frames, faces, fillGrid? }
+   * data.dysonShell     { orbitList, shells, visibility? }
+   * data.dysonCloud     { orbits, colors?, visibility? }
    * @returns {Promise<void>}
    */
-  async render(body) {
+  async render(data) {
     const token = (this._renderToken = (this._renderToken || 0) + 1);
     // 中止上一次构建里在飞的层: Worker 单线程，不终止的话新构建的 postMessage 只能排队
     cancelLayerWorker();
@@ -230,11 +232,11 @@ class DysonSpherePreview {
     let failed = false;
     try {
 
-      const isSingleShell = body.typeId === 1;
-      const cloud = body.dysonCloud;
+      const isSingleShell = data.typeId === 1;
+      const cloud = data.dysonCloud;
       const shell = isSingleShell
-        ? { shells: [body.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
-        : (body.dysonShell ?? null);
+        ? { shells: [data.singleShell], orbitList: [{ id: 0, radius: 10000.0, x: 0, y: 0, z: 0, w: 1 }] }
+        : (data.dysonShell ?? null);
 
       // 计算缩放
       const shellRadii = shell?.orbitList?.filter(Boolean).map(o => o.radius) ?? [];

@@ -90,6 +90,30 @@ function orbitParamsToQuaternion(inclination, ascendingNode) {
   };
 }
 
+// 经纬度（度）→ 直角坐标。
+// 游戏约定：经度 0° = -Z 方向、东 = +X、+Y 为北极
+function latLonToCoord(lng, lat, radius = 100000) {
+  const lngRad = lng * Math.PI / 180;
+  const latRad = lat * Math.PI / 180;
+  return {
+    x: radius * Math.cos(latRad) * Math.sin(lngRad),
+    y: radius * Math.sin(latRad),
+    z: -radius * Math.cos(latRad) * Math.cos(lngRad),
+  };
+}
+
+// 直角坐标 → 经纬度（度）与半径
+function coordToLatLon(coord) {
+  const radius = Math.hypot(coord.x, coord.y, coord.z) || 1;
+  const latRad = Math.asin(Math.max(-1, Math.min(1, coord.y / radius)));
+  const lngRad = Math.atan2(coord.x, -coord.z);
+  return {
+    lng: lngRad * 180 / Math.PI,
+    lat: latRad * 180 / Math.PI,
+    radius,
+  };
+}
+
 
 const BLUEPRINT_TYPE_NAMES = {
   1: '单层戴森壳',
@@ -104,8 +128,8 @@ function blueprintTypeName(typeId) {
 }
 
 /**
- * 识别蓝图 body 的类型 id（1-4）
- * @param {object} body - parsed.body 或任意疑似 body 的对象
+ * 识别蓝图的类型 id（1-4）
+ * @param {object} blueprint - parseBlueprintString 的返回值或任意疑似蓝图的对象
  * @returns {number|null}
  *   1=单层壳  2=多层壳  3=戴森云  4=壳+云
  *   -1 = 结构非法
@@ -145,12 +169,38 @@ function countPaintedCells(colors) {
   return n;
 }
 
+/**
+ * 计算纬度限制：所有节点最大纬度（度）向下取整
+ * @param {object} blueprint - 蓝图对象
+ * @returns {number} 纯戴森云（无壳数据）时为 0
+ */
+function calcLatLimit(blueprint) {
+  const shells = blueprint.typeId === 1 && blueprint.singleShell
+    ? [blueprint.singleShell]
+    : blueprint.dysonShell?.shells ?? [];
+  let maxLat = 0;
+  for (const shell of shells) {
+    if (!shell) continue;
+    const nodes = shell.nodes ?? [];
+    for (let i = 1; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      if (!node) continue;
+      const { lat } = coordToLatLon(node.coordinate);
+      if (Math.abs(lat) > maxLat) maxLat = Math.abs(lat);
+    }
+  }
+  return Math.floor(maxLat);
+}
+
 export {
   hsvaToRgba,
   quaternionToOrbitParams,
   orbitParamsToQuaternion,
+  latLonToCoord,
+  coordToLatLon,
   blueprintTypeName,
   getBodyTypeId,
   gridTypeName,
   countPaintedCells,
+  calcLatLimit,
 };

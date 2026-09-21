@@ -1,15 +1,14 @@
 import base60 from './base60.json' with { type: 'json' }
 import base92 from './base92.json' with { type: 'json' }
-import { stringifyBlueprint } from '../blueprint/sphere/blueprintEncoder.js'
+import { stringifyBlueprint } from '../blueprint/sphere/sphereEncoder.js'
 
 /** 单个基底的结构统计 */
 function infoOf(blueprint) {
-  const shell = blueprint.body.singleShell
+  const shell = blueprint.singleShell
   return {
     nodes: (shell.nodes || []).filter((n) => n != null).length,
     frames: (shell.frames || []).filter((f) => f != null).length,
     faces: (shell.faces || []).filter((f) => f != null).length,
-    latLimit: blueprint.header.latLimit,
   }
 }
 
@@ -24,23 +23,21 @@ export const BUILTIN_BASES = [
 
 /**
  * 把「解析出来的蓝图」收成基底需要的形状
- * @param {object} bp parseBlueprintString 的结果
+ * @param {object} bp parseBlueprintString 的结果（扁平结构）
  */
 export function makeBaseFromBlueprint(bp) {
-  const shell = bp?.body?.singleShell
+  const shell = bp?.singleShell
   if (!shell) throw new Error('不是单层壳蓝图（只支持单层戴森壳）')
   return {
     header: {
-      typeId: bp.header.typeId,
-      latLimit: bp.header.latLimit,
+      createdTicks: bp.header.createdTicks,
+      version: bp.header.version,
     },
-    body: {
-      typeId: bp.body.typeId,
-      singleShell: {
-        nodes: shell.nodes ?? [],
-        frames: shell.frames ?? [],
-        faces: shell.faces ?? [],
-      },
+    typeId: bp.typeId,
+    singleShell: {
+      nodes: shell.nodes ?? [],
+      frames: shell.frames ?? [],
+      faces: shell.faces ?? [],
     },
   }
 }
@@ -53,9 +50,9 @@ export function makeBaseFromBlueprint(bp) {
  */
 export async function buildPaintedBlueprint(fillGrid, base = base60) {
   if (!fillGrid || !Array.isArray(fillGrid.colors)) throw new Error('没有可导出的彩绘数据')
-  if (!base?.body?.singleShell) throw new Error('基底蓝图无效')
+  if (!base?.singleShell) throw new Error('基底蓝图无效')
   const bp = structuredClone(base)
-  bp.body.singleShell.fillGrid = { gridType: 0, colors: fillGrid.colors }
+  bp.singleShell.fillGrid = { gridType: 0, colors: fillGrid.colors }
   return stringifyBlueprint(bp)
 }
 

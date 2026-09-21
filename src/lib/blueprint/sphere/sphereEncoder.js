@@ -1,8 +1,8 @@
 import { getCurrentTicks } from '../utils.js';
-import { getBodyTypeId } from './sphereUtils.js';
+import { getBodyTypeId, calcLatLimit } from './sphereUtils.js';
 import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from '../codec.js';
-import { computeSignature } from '../blueprintChecksum.js';
-import { compactAndRebuildIds } from './blueprintEdit.js';
+import { computeSignature } from '../checksum.js';
+import { compactAndRebuildIds } from './sphereEdit.js';
 
 // 写入三维坐标
 function writeCoordinate(writer, coord) {
@@ -212,22 +212,22 @@ function writeDysonShell(writer, shell) {
 }
 
 // 写入蓝图主体二进制数据
-function writeBlueprintBody(body) {
+function writeBlueprintBody(blueprint) {
   const writer = new BinaryWriter();
 
   // 初始占位 int32
   writer.writeInt32(0);
 
-  if (body.typeId === 3 || body.typeId === 4) {
-    writeDysonCloud(writer, body.dysonCloud);
+  if (blueprint.typeId === 3 || blueprint.typeId === 4) {
+    writeDysonCloud(writer, blueprint.dysonCloud);
   }
 
-  if (body.typeId === 2 || body.typeId === 4) {
-    writeDysonShell(writer, body.dysonShell);
+  if (blueprint.typeId === 2 || blueprint.typeId === 4) {
+    writeDysonShell(writer, blueprint.dysonShell);
   }
 
-  if (body.typeId === 1) {
-    writeSingleShell(writer, body.singleShell);
+  if (blueprint.typeId === 1) {
+    writeSingleShell(writer, blueprint.singleShell);
   }
 
   return writer.toUint8Array();
@@ -237,11 +237,11 @@ const BLUEPRINT_PREFIX = 'DYBP:';
 const BLUEPRINT_VERSION = '0.10.34.28524';
 
 // 构建头部字符串
-function buildHeader(header) {
-  const ticks = header.createdTicks || '630822816000000000';
-  const version = header.version || '0.10.34.28524';
-  const typeId = header.typeId;
-  const latLimit = header.latLimit || '0';
+function buildHeader(blueprint) {
+  const ticks = getCurrentTicks() || '630822816000000000';
+  const version = BLUEPRINT_VERSION;
+  const typeId = blueprint.typeId;
+  const latLimit = calcLatLimit(blueprint);
   return `0,${ticks},${version},${typeId},${latLimit}`;
 }
 
@@ -251,27 +251,18 @@ function buildHeader(header) {
  * @returns {Promise<string>} 蓝图字符串，格式为 DYBP:<header>"<base64>"<signature>
  */
 async function stringifyBlueprint(blueprint) {
-  if (!blueprint || !blueprint.header || !blueprint.body) {
-    throw new Error('蓝图对象格式错误：缺少 header 或 body');
-  }
-
-  const t = getBodyTypeId(blueprint.body)
+  const t = getBodyTypeId(blueprint)
   if ( !t ){
     throw new Error('无法识别的蓝图');
   } 
   if ( t < 1 ) {
-    throw new Error(`蓝图 body 格式错误：${t}`);
+    throw new Error(`蓝图主体格式错误：${t}`);
   }
-  if ( t === 3 ) {
-    blueprint.header.latLimit = 0
-  }
-  blueprint.header.typeId = blueprint.body.typeId = t;
-  blueprint.header.createdTicks = getCurrentTicks();
-  blueprint.header.version = BLUEPRINT_VERSION;
+  blueprint.typeId = t;
 
 
-  const headerStr = buildHeader(blueprint.header);
-  const bodyData = writeBlueprintBody(blueprint.body);
+  const headerStr = buildHeader(blueprint);
+  const bodyData = writeBlueprintBody(blueprint);
   const compressed = await gzipCompress(bodyData);
   const base64Body = uint8ArrayToBase64(compressed);
 

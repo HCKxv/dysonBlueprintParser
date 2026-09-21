@@ -14,7 +14,7 @@
 import { createProjector, detectImageBackground } from './projection.js'
 import { encodeGrid } from './encoder.js'
 
-/** 蓝图里的涂色数据（与 blueprintParser 输出一致） */
+/** 蓝图里的涂色数据（与 parseBlueprintString 输出一致） */
 export interface FillGrid {
   gridType: number
   colors: Array<{ r: number; g: number; b: number; a: number }> | null

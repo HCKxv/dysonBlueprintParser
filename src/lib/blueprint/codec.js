@@ -65,6 +65,18 @@ class BinaryReader {
     return value;
   }
 
+  readInt16() {
+    const value = this.view.getInt16(this.offset, true);
+    this.offset += 2;
+    return value;
+  }
+
+  readInt8() {
+    const value = this.view.getInt8(this.offset);
+    this.offset += 1;
+    return value;
+  }
+
   readFloat32() {
     const value = this.view.getFloat32(this.offset, true);
     this.offset += 4;
@@ -80,6 +92,24 @@ class BinaryReader {
   readBool() {
     const value = this.readUInt8();
     return value !== 0;
+  }
+
+  // 读取 .NET BinaryWriter.Write(string) 风格的字符串：
+  // 7-bit 编码的字节长度前缀 + UTF-8 内容
+  readString() {
+    let len = 0;
+    let shift = 0;
+    for (;;) {
+      const b = this.readUInt8();
+      len |= (b & 0x7F) << shift;
+      if ((b & 0x80) === 0) break;
+      shift += 7;
+      if (shift > 35) throw new Error('非法 7-bit 编码长度');
+    }
+    if (len === 0) return '';
+    const bytes = this.data.subarray(this.offset, this.offset + len);
+    this.offset += len;
+    return new TextDecoder('utf-8').decode(bytes);
   }
 
   skip(bytes) {
@@ -119,6 +149,18 @@ class BinaryWriter {
     this.offset += 4;
   }
 
+  writeInt16(value) {
+    this._ensureCapacity(2);
+    this.view.setInt16(this.offset, value, true);
+    this.offset += 2;
+  }
+
+  writeInt8(value) {
+    this._ensureCapacity(1);
+    this.view.setInt8(this.offset, value & 0xFF);
+    this.offset += 1;
+  }
+
   writeFloat32(value) {
     this._ensureCapacity(4);
     this.view.setFloat32(this.offset, value, true);
@@ -133,6 +175,21 @@ class BinaryWriter {
 
   writeBool(value) {
     this.writeUInt8(value ? 1 : 0);
+  }
+
+  // 写入 .NET BinaryWriter.Write(string) 风格的字符串：
+  // 7-bit 编码的字节长度前缀 + UTF-8 内容
+  writeString(value) {
+    const bytes = new TextEncoder().encode(value);
+    let len = bytes.length;
+    while (len >= 0x80) {
+      this.writeUInt8((len & 0x7F) | 0x80);
+      len >>>= 7;
+    }
+    this.writeUInt8(len & 0x7F);
+    this._ensureCapacity(bytes.length);
+    new Uint8Array(this.buffer, this.offset, bytes.length).set(bytes);
+    this.offset += bytes.length;
   }
 
   toUint8Array() {
