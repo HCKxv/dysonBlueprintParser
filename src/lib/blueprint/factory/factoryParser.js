@@ -3,6 +3,7 @@ import { BinaryReader, decodeBase64Gzip } from '../codec.js';
 import { computeSignature, getSignatureParts } from '../checksum.js';
 import { itemName, isBeltRange, isSorterRange } from './factoryItems.js';
 import { getParamCodec } from './factoryParams.js';
+import { parseExternalFields } from './externalFields.js';
 
 // 工厂蓝图字符串固定前缀
 const BLUEPRINT_PREFIX = 'BLUEPRINT:';
@@ -60,7 +61,7 @@ function parseHeader(headerString) {
   const gameVersion = cells[versionIdx];
 
   let icons;
-  let createdTicks = null;
+  let timeTicks = null;
   let shortDesc = '';
   let desc = '';
   let author = '';
@@ -70,7 +71,7 @@ function parseHeader(headerString) {
   if (cells.length >= 15 && flag0 === 1) {
     // 新版头部：字段位置固定
     icons = cells.slice(2, 7).map((s) => Number(s) || 0);
-    createdTicks = cells[8];
+    timeTicks = cells[8];
     shortDesc = decodeCell(cells[10]);
     author = decodeCell(cells[11]);
     customVersion = decodeCell(cells[12]);
@@ -79,7 +80,7 @@ function parseHeader(headerString) {
   } else if (cells.length >= 12 && flag0 === 0 && /^\d+$/.test(cells[8])) {
     // 旧版头部（12 字段）
     icons = cells.slice(2, 7).map((s) => Number(s) || 0);
-    createdTicks = cells[8];
+    timeTicks = cells[8];
     shortDesc = decodeCell(cells[10]);
     desc = decodeCell(cells[11]);
   } else {
@@ -89,28 +90,32 @@ function parseHeader(headerString) {
       const v = Number(cells[i]);
       if (!Number.isFinite(v) || !Number.isInteger(v)) continue;
       if (Math.abs(v) >= 1e11) {
-        createdTicks = cells[i]; // 时间戳（.NET ticks）
+        timeTicks = cells[i]; // 时间戳（.NET ticks）
         continue;
       }
       icons.push(v);
     }
     // 有时间戳的格式中，图标数组后固定跟一个占位 0
-    if (createdTicks !== null && icons.length > 2 && icons[icons.length - 1] === 0) {
+    if (timeTicks !== null && icons.length > 2 && icons[icons.length - 1] === 0) {
       icons.pop();
     }
-    if (icons.length === 0) icons = [0, 0];
   }
+
+  // 图标位统一成 5 个: 旧版/早期格式不足的补 0
+  icons = Array.from({ length: 5 }, (_, i) => {
+    return Number(icons[i]) || 0;
+  });
 
   return {
     layout,
     icons,
-    createdTicks,
-    createdAt: createdTicks !== null ? ticksTime(createdTicks) : null,
+    timeTicks,
+    time: timeTicks !== null ? ticksTime(timeTicks) : null,
     gameVersion,
     shortDesc,
     author,
     customVersion,
-    externalFields,
+    properties: parseExternalFields(externalFields),
     desc,
   };
 }
@@ -313,10 +318,21 @@ function parseReformData(reader) {
   for (let i = 0; i < colorCount && i < 2930400; i += 1) {
     customReformColors.push(reader.readUInt32());
   }
+  //   reformCount        = 所有矩形的 w*h 之和
+  //   undecalReformCount = 其中 type == 7（无装饰 = 清除地基）的那些
+  let reformCount = 0;
+  let undecalReformCount = 0;
+  for (const rect of rects) {
+    const cells = rect.w * rect.h;
+    reformCount += cells;
+    if (rect.type === 7) undecalReformCount += cells;
+  }
   return {
     rects,
     customReformColorMask,
     customReformColors,
+    reformCount,
+    undecalReformCount,
   };
 }
 
@@ -424,21 +440,6 @@ async function parseBlueprintString(blueprintString) {
     const reader = new BinaryReader(decoded);
     body = parseBody(reader);
 
-    // 主体必须被完整消费，否则说明格式理解有偏差（或游戏版本又更新了格式）。
-    // 尾部全 0 字节视为无害填充（部分编码器按固定大小分配缓冲区）。
-    const remain = decoded.length - reader.offset;
-    if (remain !== 0) {
-      let allZero = true;
-      for (let i = reader.offset; i < decoded.length; i += 1) {
-        if (decoded[i] !== 0) {
-          allZero = false;
-          break;
-        }
-      }
-      if (!allZero) {
-        throw new Error(`蓝图主体解析不完整：剩余 ${remain} 字节未解析`);
-      }
-    }
   } catch (err) {
     const errMessage = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -469,14 +470,14 @@ export { parseBlueprintString, BLUEPRINT_PREFIX };
  * {
  *   header: {
  *     layout: number,         // 蓝图图标布局 (0-9)
- *     icons: number[],        // 图标物品id（新版 5 个，旧版 2 个）
- *     createdTicks: string,   // .NET ticks（早期格式为 null）
- *     createdAt: string,      // 格式化时间
+ *     icons: number[],        // 图标物品id
+ *     timeTicks: string,      // .NET ticks（早期格式为 null）
+ *     time: string,           // 格式化时间
  *     gameVersion: string,    // 游戏版本号
  *     shortDesc: string,      // 缩略图文字
  *     author: string,         // 作者（0.10.32.25699+）
  *     customVersion: string,  // 自定义版本（0.10.32.25699+）
- *     externalFields: string, // 额外的新建属性（0.10.32.25699+）
+ *     properties: [{ key, value }], // 自定义属性（0.10.32.25699+）
  *     desc: string,           // 蓝图介绍
  *   },
  *   version: number,          // 主体版本，1 或 2（0.10.33.26934+ 为 2）

@@ -192,6 +192,13 @@ class BinaryWriter {
     this.offset += bytes.length;
   }
 
+  // 原样写入字节数组
+  writeBytes(bytes) {
+    this._ensureCapacity(bytes.length);
+    new Uint8Array(this.buffer, this.offset, bytes.length).set(bytes);
+    this.offset += bytes.length;
+  }
+
   toUint8Array() {
     return new Uint8Array(this.buffer, 0, this.offset);
   }

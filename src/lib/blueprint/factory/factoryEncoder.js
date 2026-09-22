@@ -1,8 +1,9 @@
-import { getCurrentTicks } from '../utils.js';
+import { ticksTime, getCurrentTicks } from '../utils.js';
 import { BinaryWriter, uint8ArrayToBase64, gzipCompress } from '../codec.js';
 import { computeSignature } from '../checksum.js';
 import { isBeltRange, isSorterRange } from './factoryItems.js';
 import { getParamCodec } from './factoryParams.js';
+import { buildExternalFields } from './externalFields.js';
 
 // 工厂蓝图字符串固定前缀
 const BLUEPRINT_PREFIX = 'BLUEPRINT:';
@@ -73,8 +74,8 @@ function writeBuilding(writer, b) {
     writer.writeFloat32(round4(b.pitch2));
   }
 
-  writer.writeInt32(b.outputObjIdx ?? 0);
-  writer.writeInt32(b.inputObjIdx ?? 0);
+  writer.writeInt32(b.outputObjIdx ?? -1);
+  writer.writeInt32(b.inputObjIdx ?? -1);
   writer.writeInt8(b.outputToSlot ?? 0);
   writer.writeInt8(b.inputFromSlot ?? 0);
   writer.writeInt8(b.outputFromSlot ?? 0);
@@ -124,8 +125,9 @@ function writeReformData(writer, reformData) {
   for (const rect of rects) {
     writeReformRect(writer, rect);
   }
-  writer.writeUInt32(reformData?.customReformColorMask ?? 0);
-  const colors = reformData?.customReformColors ?? [];
+  const mask = reformData?.customReformColorMask ?? 0;
+  writer.writeUInt32(mask);
+  const colors = mask !== 0 ? (reformData?.customReformColors ?? []) : [];
   writer.writeInt32(colors.length);
   for (const color of colors) {
     writer.writeUInt32(color);
@@ -137,12 +139,12 @@ function buildHeader(blueprint) {
   const header = blueprint.header ?? {};
   const layout = header.layout ?? 0;
   const icons = normalizeIcons(header.icons);
-  const ticks = header.createdTicks ?? getCurrentTicks();
+  const ticks = header.timeTicks ?? getCurrentTicks();
   const gameVersion = header.gameVersion ?? DEFAULT_GAME_VERSION;
   const shortDesc = header.shortDesc ?? '';
   const author = header.author ?? '';
   const customVersion = header.customVersion ?? '';
-  const externalFields = header.externalFields ?? '';
+  const externalFields = buildExternalFields(header.properties);
   const desc = header.desc ?? '';
 
   let result = `1,${layout},${icons.join(',')},0,${ticks},${gameVersion},`;
