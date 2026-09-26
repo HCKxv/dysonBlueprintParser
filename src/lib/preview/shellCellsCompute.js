@@ -1,6 +1,4 @@
-/**
- * shellCellsCompute — 戴森壳细胞的纯几何计算（可在 Web Worker 中运行）
- */
+/** shellCellsCompute — 戴森壳细胞的纯几何计算（可在 Web Worker 中运行） */
 import * as THREE from 'three';
 import { _refineFaceBoundary, _toHexColor, _edgeKey } from './geometry.js';
 

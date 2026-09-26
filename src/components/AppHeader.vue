@@ -12,9 +12,14 @@ const logo =
 // 滑动按钮的指示块位置
 const sliderIndex = computed(() => Math.max(0, TOOLS.findIndex((t) => t.id === activeTool.value)))
 
-const titleTool = computed(
-  () => TOOLS.find((t) => t.id === activeTool.value)?.label ?? TOOLS[0].label,
-)
+/** 指示块按工具数量等分容器宽度 */
+const sliderStyle = computed(() => ({ '--tool-count': String(TOOLS.length) }))
+
+// 顶栏标题
+const titleTool = computed(() => {
+  const tool = TOOLS.find((t) => t.id === activeTool.value) ?? TOOLS[0]
+  return tool.title ?? tool.label
+})
 </script>
 
 <template>
@@ -22,12 +27,13 @@ const titleTool = computed(
     <a href="?" title="重置页面">
       <img class="app-logo" :src="logo" alt="戴森球蓝图预览" />
     </a>
-    戴森球{{ titleTool }} V{{ version }}
+    戴森球计划·{{ titleTool }} V{{ version }}
 
     <div
       class="tool-slider"
       role="tablist"
       aria-label="工具切换"
+      :style="sliderStyle"
     >
       <span class="tool-slider-thumb" :style="{ transform: `translateX(${sliderIndex * 100}%)` }"></span>
       <button

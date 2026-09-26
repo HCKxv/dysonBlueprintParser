@@ -115,7 +115,7 @@ export function setPreview(instance: DysonPreview | null) {
 
   instance.setSunColor(clampLum(store.luminosity))
   if (store.parsed) {
-    // 切回「蓝图预览」时先把工具界面绘制出来，再重建 3D 场景：
+    // 切回「球体预览」时先把工具界面绘制出来，再重建 3D 场景：
     afterPaint(() => {
       // 这两帧内可能又切走或换了实例，此时不该再渲染
       if (preview.value !== instance || !store.parsed) return
@@ -142,9 +142,7 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
 }
 
-/**
- * 等界面真正绘制出一帧后再执行回调
- */
+/** 等界面真正绘制出一帧后再执行回调 */
 function afterPaint(callback: () => void): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => callback())
@@ -278,7 +276,7 @@ export function setLayerVisible(type: 'shell' | 'cloud', id: number, visible: bo
 }
 
 /** 提取多层壳中的某个壳层 */
-export async function exportShellLayer(orbitId: number) {
+async function exportShellLayer(orbitId: number) {
   const parsed = store.parsed
   if (!parsed) {
     toast.show('当前没有已解析的蓝图')
@@ -296,7 +294,7 @@ export async function exportShellLayer(orbitId: number) {
 }
 
 /** 打开生成多层弹窗 */
-export function openCopyShellModal() {
+function openCopyShellModal() {
   const parsed = store.parsed
   if (!parsed) {
     toast.show('当前没有已解析的蓝图')
@@ -310,12 +308,12 @@ export function openCopyShellModal() {
 }
 
 /** 关闭生成多层弹窗 */
-export function closeCopyShellModal() {
+function closeCopyShellModal() {
   store.showCopyShellModal = false
 }
 
 /** 提取戴森壳或云 */
-export async function exportStructure(type:'shell'|'cloud') {
+async function exportStructure(type:'shell'|'cloud') {
   const parsed = store.parsed
   if (!parsed) {
     toast.show('当前没有已解析的蓝图')
@@ -333,7 +331,7 @@ export async function exportStructure(type:'shell'|'cloud') {
 }
 
 /** 导出蓝图 */
-export async function exportBlueprint() {
+async function exportBlueprint() {
   const parsed = store.parsed
   if (!parsed) {
     toast.show('当前没有已解析的蓝图')

@@ -15,6 +15,7 @@ interface FooterLink {
 
 const links = ref<FooterLink[]>([])
 
+const visitorStatsAllowed = import.meta.env.PROD
 const showVisitorStats = ref(false)
 
 // 页脚配置从 footer-links.json 加载
@@ -25,7 +26,7 @@ async function loadLinks() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     links.value = Array.isArray(data?.links) ? data.links : []
-    if (typeof data?.showVisitorStats === 'boolean') {
+    if (visitorStatsAllowed && typeof data?.showVisitorStats === 'boolean') {
       showVisitorStats.value = data.showVisitorStats
     }
   } catch {

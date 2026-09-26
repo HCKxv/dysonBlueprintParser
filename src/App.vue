@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import BlueprintParse from './components/BlueprintParse.vue'
 import PaintingParse from './components/PaintingParse.vue'
+import FactoryParse from './components/FactoryParse.vue'
 import FooterBar from './components/FooterBar.vue'
 import AppToast from './components/AppToast.vue'
 import CopyShellModal from './components/BlueprintPanel/CopyShellModal.vue'
@@ -58,7 +59,8 @@ onBeforeUnmount(() => {
   <div class="app">
     <AppHeader />
     <BlueprintParse v-if="activeTool === 'preview'" />
-    <PaintingParse v-else />
+    <PaintingParse v-else-if="activeTool === 'paint'" />
+    <FactoryParse v-else />
   </div>
 
   <FooterBar />

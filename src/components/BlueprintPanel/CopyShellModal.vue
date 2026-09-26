@@ -64,8 +64,10 @@ async function confirm() {
   busy.value = true
 
   const parsed = store.parsed
-  if (invalidText.value || !parsed || parsed?.typeId !== 1) {
+  if (!parsed || parsed?.typeId !== 1) {
+    busy.value = false
     toast.show('没有已解析的蓝图或不是单层壳蓝图')
+    return
   }
 
   try{

@@ -66,21 +66,6 @@ const emit = defineEmits<{
   font-weight: bold;
 }
 
-.modal-close {
-  background: none;
-  border: none;
-  color: #bcc8e0;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 6px;
-}
-
-.modal-close:hover {
-  background: #1a2a44;
-  color: #fff;
-}
-
 .modal-body {
   padding: 12px 16px;
   overflow-y: auto;

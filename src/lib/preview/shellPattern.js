@@ -1,6 +1,4 @@
-/**
- * shellPattern — 壳面图案（游戏贴图）
- */
+/** shellPattern — 壳面图案（游戏贴图） */
 import * as THREE from 'three';
 import { getShellCellGridScale } from './shellCellsCompute.js';
 // 图案线蒙版贴图

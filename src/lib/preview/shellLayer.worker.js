@@ -1,6 +1,4 @@
-/**
- * shellLayer.worker — 在 Worker 线程里算整层壳的几何
- */
+/** shellLayer.worker — 在 Worker 线程里算整层壳的几何 */
 import { computeLayerGeometry } from './shellLayerCompute.js';
 
 self.onmessage = async (e) => {

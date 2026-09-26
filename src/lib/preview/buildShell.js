@@ -1,6 +1,4 @@
-/**
- * buildShell — 壳层渲染对象组装
- */
+/** buildShell — 壳层渲染对象组装 */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { applyCellPatterns, buildBackCells } from './shellPattern.js';
@@ -44,9 +42,7 @@ let pendingAbort = null;
 /** 单层构建时限（毫秒）: 超时判定在主线程，超时即终止 Worker 并让 render 的 catch 接手 */
 const LAYER_BUILD_TIMEOUT_MS = 10000;
 
-/**
- * 立即中止正在进行的层构建
- */
+/** 立即中止正在进行的层构建 */
 export function cancelLayerWorker() {
   pendingAbort?.(new Error('构建已取消'));
 }

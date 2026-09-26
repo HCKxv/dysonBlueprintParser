@@ -430,9 +430,7 @@ class DysonSpherePreview {
   /** 返回当前缩放系数 */
   getScale() { return this._currentScale; }
 
-  /**
-   * 清空场景中的所有 3D 对象（壳层、云轨道、节点等）
-   */
+  /** 清空场景中的所有 3D 对象（壳层、云轨道、节点等） */
   clearScene() {
     // 释放各壳层的涂色立方体贴图
     for (const sg of this._shellGroups) {
@@ -532,9 +530,7 @@ class DysonSpherePreview {
     this._needsRender = true;
   }
 
-  /**
-   * 释放整条后处理链并清空引用
-   */
+  /** 释放整条后处理链并清空引用 */
   _teardownComposer() {
     this._composer?.dispose();
     this._bloomPass?.dispose();

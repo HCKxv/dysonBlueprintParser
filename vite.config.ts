@@ -43,6 +43,7 @@ export default defineConfig({
     format: 'es',
   },
   build: {
+    assetsInlineLimit: 0,
     rollupOptions: {
       output: {
         manualChunks(id) {

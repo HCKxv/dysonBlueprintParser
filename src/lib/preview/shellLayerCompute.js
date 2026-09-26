@@ -1,6 +1,4 @@
-/**
- * shellLayerCompute — 整层戴森壳的纯几何计算（节点 / 框架 / 细胞 / 涂色网格）
- */
+/** shellLayerCompute — 整层戴森壳的纯几何计算（节点 / 框架 / 细胞 / 涂色网格） */
 import * as THREE from 'three';
 import {
   _toHexColor, _convertBP, _normQuat, _edgeKey,
