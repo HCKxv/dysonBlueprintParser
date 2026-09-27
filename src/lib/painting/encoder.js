@@ -1,6 +1,11 @@
 /**
  * encoder.js — 采样色 → 蓝图涂色数据（fillGrid.colors）
+ *
+ * 调色板量化算法见 quantizeAlgorithms.js:
+ *   median = 中位切分（默认） / oklab = OKLab + K-means++（随机种子决定初始中心）
  */
+
+import { buildPalette, metricOf, nearestPaletteIndex } from './quantizeAlgorithms.js'
 
 /** 普通涂色的满强度 a 值 */
 export const PAINT_A_FULL = 127
@@ -8,10 +13,19 @@ export const PAINT_A_FULL = 127
 /** 「限制颜色数量」的挡位，界面与编码器共用 */
 export const MAX_COLORS_STOPS = [16, 64, 256, 1024, 2048, 0]
 
-// 亮度权重（感知近似），用于挑最接近的保留色
-const W_R = 0.299
-const W_G = 0.587
-const W_B = 0.114
+/** 地基彩绘固定用色数: 地基蓝图每格只有 5 位色号，正好对应 16 个自定义色槽 */
+export const FOUNDATION_COLOR_COUNT = 16
+
+/** 地基彩绘里「这一格不铺」的色号 */
+export const FOUNDATION_NO_COLOR = 255
+
+/**
+ * 采样色 → 32 位压缩色（地基采样用）
+ * 高 24 位 RGB、低 8 位只表示「有没有颜色」（0 由调用方用作「不铺」）
+ */
+export function packSample(r, g, b) {
+  return (((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | 0xff) >>> 0
+}
 
 function packColor(r, g, b, a) {
   return ((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff)
@@ -30,83 +44,15 @@ function unpackColor(packed) {
 const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v))
 
 /**
- * 中位切分（median cut）: 把「每种颜色 → 用了多少格」切成 n 个盒子，每盒取加权平均色
- *
- * @param {Array<{key:number,r:number,g:number,b:number,n:number}>} list
- * @param {number} n 目标盒数
- * @returns {Array<{r:number,g:number,b:number}>}
- */
-function medianCut(list, n) {
-  const makeBox = (items) => {
-    let rMin = 255; let rMax = 0; let gMin = 255; let gMax = 0; let bMin = 255; let bMax = 0; let total = 0;
-    for (const c of items) {
-      if (c.r < rMin) rMin = c.r
-      if (c.r > rMax) rMax = c.r
-      if (c.g < gMin) gMin = c.g
-      if (c.g > gMax) gMax = c.g
-      if (c.b < bMin) bMin = c.b
-      if (c.b > bMax) bMax = c.b
-      total += c.n
-    }
-    return {
-      items, total, rMin, rMax, gMin, gMax, bMin, bMax,
-      range: Math.max(rMax - rMin, gMax - gMin, bMax - bMin),
-    }
-  }
-
-  const boxes = [makeBox(list)]
-  while (boxes.length < n) {
-    // 选「跨度大 × 格子多」的盒子先切
-    let bi = -1
-    let bestScore = -1
-    for (let i = 0; i < boxes.length; i += 1) {
-      const b = boxes[i]
-      if (b.items.length < 2) continue
-      const score = b.range * Math.sqrt(b.total)
-      if (score > bestScore) { bestScore = score; bi = i }
-    }
-    if (bi < 0) break // 剩下的盒子都只有一种颜色，切不动了
-
-    const b = boxes[bi]
-    const dr = b.rMax - b.rMin
-    const dg = b.gMax - b.gMin
-    const db = b.bMax - b.bMin
-    const ch = dr >= dg && dr >= db ? 'r' : dg >= db ? 'g' : 'b'
-    b.items.sort((x, y) => x[ch] - y[ch])
-
-    // 在「格子数」的中位处切开（不是颜色种数的中点）
-    const half = b.total / 2
-    let acc = 0
-    let cut = 1
-    for (let i = 0; i < b.items.length; i += 1) {
-      acc += b.items[i].n
-      if (acc >= half) { cut = i + 1; break }
-    }
-    if (cut < 1) cut = 1
-    if (cut > b.items.length - 1) cut = b.items.length - 1
-
-    boxes.splice(bi, 1, makeBox(b.items.slice(0, cut)), makeBox(b.items.slice(cut)))
-  }
-
-  return boxes.map((b) => {
-    let sr = 0; let sg = 0; let sb = 0
-    for (const c of b.items) { sr += c.r * c.n; sg += c.g * c.n; sb += c.b * c.n }
-    return {
-      r: Math.round(sr / b.total),
-      g: Math.round(sg / b.total),
-      b: Math.round(sb / b.total),
-    }
-  })
-}
-
-/**
  * 采样结果 → 蓝图涂色数据
  * @param {Array<{r:number,g:number,b:number,a:number}|null>} samples 每格的采样色（null/a<=0 = 不涂色）
- * @param {{maxColors?:number}} [opts] maxColors: 限制用色数量（0 = 不限制）
+ * @param {{maxColors?:number, method?:string, seed?:number}} [opts]
+ *   maxColors: 限制用色数量（0 = 不限制）；method: 量化算法（median / oklab）；seed: K-means++ 的随机种子
  * @returns {{ colors: Array<{r:number,g:number,b:number,a:number}>, stats: object }}
  */
 export function encodeGrid(samples, opts = {}) {
   const maxColors = Math.max(0, opts.maxColors || 0)
+  const method = metricOf(opts.method) // 归色度量跟着算法走
 
   const total = samples.length
   const packed = new Int32Array(total) // 0 = 未涂色
@@ -127,26 +73,18 @@ export function encodeGrid(samples, opts = {}) {
 
   let usedColors = counts.size
 
-  // 限制颜色数量: 中位切分得到 maxColors 种代表色，其余颜色改用最接近的代表色
+  // 限制颜色数量: 按选定算法（中位切分 / OKLab + K-means++）取 maxColors 种代表色，其余颜色改用最接近的代表色
   if (maxColors > 0 && counts.size > maxColors) {
     const list = []
     for (const [key, cnt] of counts) {
       list.push({ key, r: (key >> 16) & 0xff, g: (key >> 8) & 0xff, b: key & 0xff, n: cnt })
     }
-    const reps = medianCut(list, maxColors)
+    const reps = buildPalette(list, maxColors, { method: opts.method, seed: opts.seed })
 
     // 每种颜色 → 最接近的代表色（在「不同颜色」上搜索，不是每格都搜一遍）
     const assign = new Map()
     for (const c of list) {
-      let best = reps[0]
-      let bestD = Infinity
-      for (const p of reps) {
-        const dr = c.r - p.r
-        const dg = c.g - p.g
-        const db = c.b - p.b
-        const d = W_R * dr * dr + W_G * dg * dg + W_B * db * db
-        if (d < bestD) { bestD = d; best = p }
-      }
+      const best = reps[nearestPaletteIndex(c.r, c.g, c.b, reps, method)]
       assign.set(c.key, (best.r << 16) | (best.g << 8) | best.b)
     }
 
@@ -172,5 +110,85 @@ export function encodeGrid(samples, opts = {}) {
   return {
     colors,
     stats: { total, painted: paintedCells, colorsUsed: usedColors },
+  }
+}
+
+/**
+ * 采样结果 → 调色板 + 每格色号（地基彩绘）
+ *
+ * 与 encodeGrid 的区别: 戴森球涂色是每格一个 RGBA、直接写进蓝图；
+ * 地基蓝图是「一张最多 16 色的调色板 + 每格 5 位色号」，所以这里输出编号而不是颜色本身。
+ *
+ * @param {Uint32Array|number[]} packed packSample 的压缩色（0 = 不铺地基）
+ * @param {{maxColors?:number, method?:string, seed?:number}} [opts]
+ *   maxColors: 调色板最多几种颜色（地基固定 16）；method: 量化算法；seed: K-means++ 随机种子
+ * @returns {{palette:Array<{r:number,g:number,b:number}>, index:Uint8Array,
+ *            stats:{total:number,painted:number,colorsUsed:number}}}
+ *   index: FOUNDATION_NO_COLOR(255) = 不铺地基，其余 = palette 下标
+ */
+export function encodeIndexed(packed, opts = {}) {
+  const maxColors = Math.max(1, Math.min(255, Math.trunc(opts.maxColors) || FOUNDATION_COLOR_COUNT))
+  const total = packed.length
+  const metric = metricOf(opts.method) // 归色度量跟着算法走
+
+  // 1) 统计每种颜色用了多少格
+  const counts = new Map()
+  let painted = 0
+  for (let i = 0; i < total; i += 1) {
+    const p = packed[i]
+    if (!p) continue
+    painted += 1
+    const key = p >>> 8
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
+  const list = []
+  for (const [key, n] of counts) {
+    list.push({ key, r: (key >>> 16) & 0xff, g: (key >>> 8) & 0xff, b: key & 0xff, n })
+  }
+
+  // 2) 调色板: 颜色本来就够少就原样用，否则按选定算法取 maxColors 种代表色
+  //    地基只有 16 个色位，再加一道「合并过于相近的颜色」，别让两个几乎一样的颜色各占一个位置
+  const palette = buildPalette(list, maxColors, { method: opts.method, seed: opts.seed, mergeNear: true })
+
+  // 3) 每种颜色 → 最接近的代表色下标（在「不同颜色」上搜索，不是每格都搜一遍）
+  const assign = new Map()
+  for (const c of list) {
+    assign.set(c.key, nearestPaletteIndex(c.r, c.g, c.b, palette, metric))
+  }
+
+  // 4) 逐格写色号
+  const index = new Uint8Array(total).fill(FOUNDATION_NO_COLOR)
+  const used = new Uint8Array(palette.length)
+  for (let i = 0; i < total; i += 1) {
+    const p = packed[i]
+    if (!p) continue
+    const ci = assign.get(p >>> 8)
+    index[i] = ci
+    used[ci] = 1
+  }
+
+  // 5) 压缩调色板: 中位切分出的代表色可能一个格子都没分到，去掉它们再重编号
+  let paletteSize = 0
+  for (let i = 0; i < palette.length; i += 1) if (used[i]) paletteSize += 1
+  let finalPalette = palette
+  if (paletteSize !== palette.length) {
+    const remap = new Int16Array(palette.length).fill(-1)
+    finalPalette = []
+    for (let i = 0; i < palette.length; i += 1) {
+      if (!used[i]) continue
+      remap[i] = finalPalette.length
+      finalPalette.push(palette[i])
+    }
+    for (let i = 0; i < total; i += 1) {
+      const ci = index[i]
+      if (ci !== FOUNDATION_NO_COLOR) index[i] = remap[ci]
+    }
+  }
+
+  return {
+    palette: finalPalette,
+    index,
+    stats: { total, painted, colorsUsed: finalPalette.length },
   }
 }

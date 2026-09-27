@@ -12,7 +12,8 @@
  */
 
 import { createProjector, detectImageBackground } from './projection.js'
-import { encodeGrid } from './encoder.js'
+import { encodeGrid, encodeIndexed, FOUNDATION_COLOR_COUNT } from './encoder.js'
+import { loadImage } from './imageLoader.js'
 
 /** 蓝图里的涂色数据（与 parseBlueprintString 输出一致） */
 export interface FillGrid {
@@ -38,32 +39,21 @@ export interface PaintStats {
 export interface PaintResult {
   fillGrid: FillGrid
   stats: PaintStats
-  /** 本次实际使用的底色（「自动」模式下 = 检测结果）；null = 没有底色 */
-  fillColor: string | null
 }
 
-/** 载入图片（优先用同一张已载入过的 URL，避免重复解码） */
-const imageCache = new Map<string, Promise<HTMLImageElement>>()
+/** 地基彩绘数据: 一张调色板 + 每格一个色号（255 = 不铺地基） */
+export interface FoundationPaint {
+  palette: Array<{ r: number; g: number; b: number }>
+  index: Uint8Array
+}
 
-export function loadImage(src: string): Promise<HTMLImageElement> {
-  const cached = imageCache.get(src)
-  if (cached) return cached
-  const p = new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => {
-      imageCache.delete(src)
-      reject(new Error('图片载入失败'))
-    }
-    img.src = src
-  })
-  imageCache.set(src, p)
-  return p
+export interface FoundationResult {
+  paint: FoundationPaint
+  stats: PaintStats
 }
 
 /** 底色来源 → 实际颜色；null = 没有底色 */
-export function resolveFillColor(params: any, img?: HTMLImageElement): string | null {
+function resolveFillColor(params: any, img?: HTMLImageElement): string | null {
   switch (params?.fillMode) {
     case 'none': return null
     case 'white': return '#ffffff'
@@ -94,13 +84,64 @@ export async function generateFillGrid(params: any): Promise<PaintResult> {
   const samples = projector.sampleCells()
   const t2 = performance.now()
 
-  // 2) 编码成蓝图 RGBA
-  const { colors, stats } = encodeGrid(samples, { maxColors: params.maxColors })
+  // 2) 编码成蓝图 RGBA（量化算法与随机种子来自参数）
+  const { colors, stats } = encodeGrid(samples, {
+    maxColors: params.maxColors,
+    method: params.quantizeMethod,
+    seed: params.quantizeSeed,
+  })
   const t3 = performance.now()
 
   return {
     fillGrid: { gridType: 0, colors },
-    fillColor,
+    stats: {
+      total: stats.total,
+      painted: stats.painted,
+      colorsUsed: stats.colorsUsed,
+      sampleMs: Math.round(t2 - t1),
+      encodeMs: Math.round(t3 - t2),
+      totalMs: Math.round(t3 - t0),
+    },
+  }
+}
+
+/**
+ * 生成地基彩绘数据（图片 → 行星地基网格的每格颜色）
+ *
+ * 与戴森球那条的区别:
+ *   - 网格是行星地基网格（32 万格，见 lib/grid/planetGrid.js），不是壳面涂色网格
+ *   - 颜色固定量化成 FOUNDATION_COLOR_COUNT(16) 种，输出「调色板 + 每格色号」
+ *
+ * @param {any} params stores/painting.ts 的 painting 对象
+ * @param {any} grid createPlanetGrid() 的结果
+ * @returns {Promise<FoundationResult>} 地基彩绘数据 + 统计
+ */
+export async function generateFoundationPaint(params: any, grid: any): Promise<FoundationResult> {
+  if (!params?.imageUrl) throw new Error('请先载入图片')
+  if (!grid?.total) throw new Error('行星地基网格无效')
+
+  const t0 = performance.now()
+  const img = await loadImage(params.imageUrl)
+
+  // 0) 解析底色
+  const fillColor = resolveFillColor(params, img)
+
+  // 1) 采样: 每个格子取格内的点（行星网格比戴森球密，见 projection.js 的档位）
+  const projector = createProjector(img, { ...params, fillColor })
+  const t1 = performance.now()
+  const samples = projector.samplePlanetGrid(grid)
+  const t2 = performance.now()
+
+  // 2) 量化成 16 色调色板 + 每格色号（中位切分 / OKLab + K-means++）
+  const { palette, index, stats } = encodeIndexed(samples, {
+    maxColors: FOUNDATION_COLOR_COUNT,
+    method: params.quantizeMethod,
+    seed: params.quantizeSeed,
+  })
+  const t3 = performance.now()
+
+  return {
+    paint: { palette, index },
     stats: {
       total: stats.total,
       painted: stats.painted,

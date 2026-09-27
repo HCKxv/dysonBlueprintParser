@@ -21,10 +21,25 @@ const emit = defineEmits<{ 'update:modelValue': [number] }>()
 /** 挡位表 */
 const stopList = computed(() => (props.stops && props.stops.length > 1 ? props.stops : null))
 
+/** 步长的小数位数（把浮点误差抹掉，比如步长 0.36 时不要出现 28.860000000000003） */
+function decimalsOf(step: number) {
+  const s = String(step)
+  const i = s.indexOf('.')
+  return i < 0 ? 0 : s.length - i - 1
+}
+
+/** 夹到区间并吸附到 min + k×step */
+function snapStep(v: number) {
+  const clamped = Math.min(props.max, Math.max(props.min, v))
+  const step = props.step > 0 ? props.step : 1
+  const k = Math.round((clamped - props.min) / step)
+  return Number((props.min + k * step).toFixed(decimalsOf(step)))
+}
+
 /** 就近吸附到挡位 */
 function snap(v: number): number {
   const list = stopList.value
-  if (!list) return Math.min(props.max, Math.max(props.min, v))
+  if (!list) return snapStep(v)
   let best = list[0]
   let bestD = Infinity
   for (const s of list) {

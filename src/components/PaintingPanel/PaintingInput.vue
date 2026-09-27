@@ -19,8 +19,8 @@ function onFileChange(e: Event) {
   input.value = '' // 允许重复选择同一文件
 }
 
-function pickFile(file: File) {
-  const res = loadImageFile(file)
+async function pickFile(file: File) {
+  const res = await loadImageFile(file)
   if (!res.ok) {
     toast.show(res.message)
     return

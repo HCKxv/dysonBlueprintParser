@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+// segmentTable / DetermineLongitudeSegmentCount 与行星地基网格共用（戴森球涂色网格 segment 固定 60）
+import { determineLongitudeSegmentCount } from './planetGrid.js';
 // 测地线资产表
 let geoAssetsPromise = null;
 function loadGeoAssets() {
@@ -7,19 +9,13 @@ function loadGeoAssets() {
 /**
  * paintingGrid — 戴森球蓝图「涂色网格」(fillGrid) 生成模块
  *
- * 经纬线网格 (gridType 0) —— 已通过真实蓝图数据 + 游戏本体网格资产双重验证:
+ * 经纬线网格 (gridType 0)，已与游戏网格资产逐格比对一致（18304/18304）:
  *   - 120 个纬度带（各 1.5°），带序号 latIdx ∈ [-60, 59]，从南向北编号
- *   - 每带经向分段数 = GetSegByLatitudeIdx(带的最靠赤道一侧的纬度序号)，
- *     即南半球带取 (latIdx+1)（北缘），北半球带取 latIdx（南缘）
- *   - 格子序号 = 带内累计偏移 + 带内经向序号（南半球优先，经度最快索引）
- *   - 从游戏 resources.assets 提取的 dyson-grid-graticule-painting 网格
- *     18304 个格子与本公式逐格比对全部一致 (18304/18304)
+ *   - 每带分段数按「最靠赤道一侧」的纬度序号取: 南半球带取 latIdx+1，北半球带取 latIdx
+ *   - 格子序号 = 带内累计偏移 + 带内经向序号（南半球优先，经度最快）
  *
- * 测地线网格 (gridType 1/2/3 = geo20/geo8/geo4):
- *   从游戏本体提取的精确网格数据。格子 = 三角形，格子编号 = 网格三角形序号
- *   （与游戏 PickColorFromCell 的 cellColors[triId] 一致）。
- *   结构: geo20 = 正二十面体 20×24² 三角形，
- *   geo8 = 正八面体 8×48²，geo4 = 正四面体 4×72²。
+ * 测地线网格 (gridType 1/2/3 = geo20/geo8/geo4): 格子 = 三角形，编号 = 网格三角形序号
+ *   （同游戏 PickColorFromCell）: geo20 = 20×24²、geo8 = 8×48²、geo4 = 4×72²
  */
 
 // three r152+ 视顶点色为线性空间、输出时再做 sRGB 编码，故需先 sRGB→线性，否则颜色二次提亮（发白）
@@ -46,43 +42,7 @@ function paintToVertexColor(c, bright = false) {
 
 // ─── 经纬线网格常量 ───
 
-// segmentTable: DetermineLongitudeSegmentCount 的量化查找表
-const SEGMENT_TABLE = [
-  1,4,4,4,4,4,4,4,8,8, 8,8,8,8,8,8,16,16,16,16,
-  20,20,20,20,20,20,20,20,32,32, 32,32,32,32,32,32,32,32,32,32,
-  40,40,40,40,40,40,40,40,40,40, 40,40,40,40,60,60,60,60,60,60,
-  60,60,60,60,60,60,60,60,60,60, 60,60,60,80,80,80,80,80,80,80,
-  80,80,80,80,80,80,80,80,80,80, 80,100,100,100,100,100,100,100,100,100,
-  100,100,100,100,100,100,100,100,100,100, 100,100,100,100,120,120,120,120,120,120,
-  120,120,120,120,120,120,120,120,120,120, 120,120,120,120,120,120,120,120,120,120,
-  160,160,160,160,160,160,160,160,160,160, 160,160,160,160,160,160,160,160,160,160,
-  160,160,160,160,160,160,160,160,160,160, 160,160,160,160,160,160,160,160,200,200,
-  200,200,200,200,200,200,200,200,200,200, 200,200,200,200,200,200,200,200,200,200,
-  200,200,200,200,200,200,200,200,200,200, 200,200,200,200,200,200,200,200,200,200,
-  200,200,200,200,200,200,200,200,200,200, 200,240,240,240,240,240,240,240,240,240,
-  240,240,240,240,240,240,240,240,240,240, 240,240,240,240,240,240,240,240,240,240,
-  240,240,240,240,240,240,240,240,240,240, 240,240,240,240,240,240,240,240,240,240,
-  240,240,240,240,240,240,240,240,240,240, 240,300,300,300,300,300,300,300,300,300,
-  300,300,300,300,300,300,300,300,300,300, 300,300,300,300,300,300,300,300,300,300,
-  300,300,300,300,300,300,300,300,300,300, 300,300,300,300,300,300,300,300,300,300,
-  300,300,300,300,300,300,300,300,300,300, 300,300,300,300,300,300,300,300,300,300,
-  300,400,400,400,400,400,400,400,400,400, 400,400,400,400,400,400,400,400,400,400,
-  400,400,400,400,400,400,400,400,400,400, 400,400,400,400,400,400,400,400,400,400,
-  400,400,400,400,400,400,400,400,400,400, 400,400,400,400,400,400,400,400,400,400,
-  400,400,400,400,400,400,400,400,400,400, 400,400,400,400,400,400,400,400,400,400,
-  400,400,400,400,400,400,400,400,400,400, 400,400,400,400,400,400,400,400,400,400,
-  400,400,400,400,400,400,400,400,400,400, 400,500,500,500,500,500,500,500,500,500,
-  500,500,500,500,500,500,500,500,500,500, 500,500,500,500,500,500,500,500,500,500,
-  500,500,500,500,500,500,500,500,500,500, 500,500
-];
-
-function determineLongitudeSegmentCount(latitudeIndex, segment = 60) {
-  let num = Math.ceil(Math.abs(Math.cos(latitudeIndex / (segment / 4) * Math.PI * 0.5)) * segment);
-  if (num < 500) return SEGMENT_TABLE[num];
-  return Math.floor((num + 49) / 100) * 100;
-}
-
-function segByLatIdx(latIdx, latHalf = 60) {
+function segByLatIdx(latIdx, latHalf) {
   let num = latIdx / latHalf * 90;
   num = Math.ceil(Math.max(0, Math.abs(num) + 0.1));
   const num2 = num * Math.PI / 180 / (2 * Math.PI) * 60;
@@ -92,14 +52,16 @@ function segByLatIdx(latIdx, latHalf = 60) {
 
 // ─── 经纬线网格 ──────────────────────────────────────────────
 
+/** 半球分多少条纬度带（每带 1.5°）: 赤道那一档的经向段数就是它 */
+const LAT_HALF = determineLongitudeSegmentCount(0, 60);
+
 // 计算经纬线网格的带结构（从南向北），返回 [{ latIdx, latLo, latHi, seg, base }]
 function buildGraticuleBands() {
-  const latHalf = determineLongitudeSegmentCount(0, 60) * 4 / 4; // = 60
   const bands = [];
   let base = 0;
-  for (let latIdx = -latHalf; latIdx < latHalf; latIdx += 1) {
+  for (let latIdx = -LAT_HALF; latIdx < LAT_HALF; latIdx += 1) {
     // 分段数取该带最靠赤道一侧的纬度序号: 南半球取北缘 latIdx+1，北半球取南缘 latIdx
-    const seg = segByLatIdx(latIdx < 0 ? latIdx + 1 : latIdx, latHalf);
+    const seg = segByLatIdx(latIdx < 0 ? latIdx + 1 : latIdx, LAT_HALF);
     bands.push({
       latIdx,
       latLo: latIdx * 1.5,
@@ -122,15 +84,6 @@ function latLngToLocal(latDeg, lngDeg) {
     Math.sin(lat),
     -cosLat * Math.cos(lng),
   ];
-}
-
-// 游戏局部坐标 → 经纬度（度）: lat = asin(y)，lng = atan2(x, -z)
-function localToLatLng(x, y, z) {
-  const r = Math.max(1e-9, Math.hypot(x, y, z));
-  return {
-    lat: Math.asin(Math.max(-1, Math.min(1, y / r))) * 180 / Math.PI,
-    lng: Math.atan2(x, -z) * 180 / Math.PI,
-  };
 }
 
 /**
@@ -252,7 +205,7 @@ async function buildPaintingGeometry(fillGrid) {
 }
 
 // 经纬线网格: 由带结构生成网格线顶点（单位球面、游戏局部坐标）+ 粗细两档的线段索引
-function buildGraticuleLines(lonStepDeg = 2) {
+function buildGraticuleLines(lonStepDeg) {
   const positions = [];
   const lineIndices = [];
   const lineIndicesMajor = [];
@@ -334,6 +287,4 @@ export {
   buildGraticuleLines,
   buildSphere,
   latLngToLocal,
-  localToLatLng,
-  segByLatIdx,
 };

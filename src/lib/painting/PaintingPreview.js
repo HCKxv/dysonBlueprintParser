@@ -1,6 +1,4 @@
-/**
- * PaintingPreview — 彩绘生成的球面预览
- */
+/** PaintingPreview — 彩绘生成的球面预览 */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -9,7 +7,16 @@ import {
   buildGraticuleBands,
   buildGraticuleLines,
   buildGraticuleGeometry,
-} from '../preview/paintingGrid.js';
+} from '../grid/paintingGrid.js';
+import {
+  buildPlanetGridLines,
+  buildPlanetPaintGeometry,
+  createPlanetGridFlatMap,
+  drawPlanetGridFlatMap,
+  drawPlanetPaintFlatMap,
+  PLANET_FINE_GRID_MAX_DISTANCE,
+  PLANET_FLAT_MAP_WIDTH,
+} from '../grid/planetGridMesh.js';
 
 /** 涂色覆盖层相对壳面的高度 */
 const PAINT_RADIUS_SCALE = 1.0015;
@@ -30,10 +37,17 @@ const GRID_LINE_MAJOR_RENDER_ORDER = 6;
  * 1920 是各纬度带格数 {16,32,64,80,128,160,240} 的公倍数、960 是带数 120 的倍数，
  * 所以取它的整数倍时每格都是整数像素、边界正好落在像素上（不需要取整）。
  */
-export const FLAT_MAP_BASE_WIDTH = 1920;
+const FLAT_MAP_BASE_WIDTH = 1920;
 
-/** 纬度带数（180° / 1.5°） */
-const LAT_BAND_COUNT = 120;
+/** 经纬线网格的纬度带（从南到北）: 带数就是展开图的纬线档数，不另写死 */
+const BANDS = buildGraticuleBands();
+/** 纬度带数（180° / 1.5° = 120） */
+const LAT_BAND_COUNT = BANDS.length;
+/** 半个球的带数（北极为第 0 行时用来算行号） */
+const LAT_HALF = LAT_BAND_COUNT / 2;
+
+/** 展开图上经线每隔多少度画一条（和 grid/planetGridMesh.js 的细分口径一致） */
+const FLAT_MAP_LON_STEP = 2;
 
 /** 展开图网格线颜色（只用于预览叠加层，比 3D 里的略实一点） */
 const FLAT_MAP_GRID_COLOR = 'rgba(255, 255, 255, 0.45)';
@@ -42,7 +56,7 @@ const FLAT_MAP_GRID_COLOR = 'rgba(255, 255, 255, 0.45)';
 const FLAT_MAP_GRID_MAJOR_COLOR = 'rgba(255, 255, 255, 0.9)';
 
 /** 默认视角: 正视本初子午线（赤道）时的相机距离 */
-export const DEFAULT_VIEW_DISTANCE = 3.6;
+const DEFAULT_VIEW_DISTANCE = 3.6;
 
 /**
  * 默认视角的相机位置: 正视「中心经线、赤道」
@@ -50,7 +64,7 @@ export const DEFAULT_VIEW_DISTANCE = 3.6;
  * @param {number} lng 中心经度（度），与 store 的 painting.hemiLng 相同
  * @param {number} distance 相机到球心的距离
  */
-export function centerViewPosition(lng, distance) {
+function centerViewPosition(lng, distance) {
   const rad = ((Number.isFinite(Number(lng)) ? Number(lng) : 0) * Math.PI) / 180;
   return { x: Math.sin(rad) * distance, y: 0, z: Math.cos(rad) * distance };
 }
@@ -70,6 +84,14 @@ class PaintingPreview {
     this._fillGrid = null;
     this._root = null;
     this._gridReady = false;
+    /** 网格类型: 'dyson' = 戴森球涂色网格 / 'planet' = 行星地基网格 */
+    this._gridKind = 'dyson';
+    /** 行星地基网格模型（kind = 'planet' 时用，见 lib/grid/planetGrid.js） */
+    this._planetGrid = null;
+    /** 地基涂色数据: { palette, index }（kind = 'planet' 时用） */
+    this._foundation = null;
+    /** 网格线开关（细网格还要再按相机距离判断一次） */
+    this._gridVisible = true;
     /** 默认视角的中心经度（度），跟随「经度偏移」更新 */
     this._centerLng = 0;
     /** 默认视角的相机距离（滚轮缩放后同步） */
@@ -156,44 +178,84 @@ class PaintingPreview {
     this._startLoop();
   }
 
-  // ─── 网格线（只用经纬线网格） ─────────────────────────────────
-  /** 显示/隐藏网格线（网格几何只在第一次调用时构建） */
-  setGridVisible(visible = true) {
-    if (!this._gridReady) {
-      this._gridReady = true;
-      const grid = buildGraticuleLines();
-      const pos = grid.positions;
-      // z 取反（与其他层一致）；两档共用这份顶点缓冲，各带一串线段索引
-      const pts = new Float32Array(pos.length);
-      for (let i = 0; i < pos.length; i += 3) {
-        pts[i] = pos[i];
-        pts[i + 1] = pos[i + 1];
-        pts[i + 2] = -pos[i + 2];
-      }
-      // 用线段端点对当索引（三角形的边含内部对角线，会画到色块中间）
-      const posAttr = new THREE.Float32BufferAttribute(pts, 3);
-      const build = (idx) => {
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', posAttr);
-        geo.setIndex(new THREE.BufferAttribute(idx, 1));
-        return geo;
-      };
-      this._gridLines.geometry.dispose();
-      this._gridLines.geometry = build(grid.lineIndices);
-      this._gridLinesMajor.geometry.dispose();
-      this._gridLinesMajor.geometry = build(grid.lineIndicesMajor);
-      // 网格建好后重建涂色几何（需要一个网格存在时的初始化时机）
-      this._rebuildPainting();
-    }
-    this._gridLines.visible = visible;
-    this._gridLinesMajor.visible = visible;
+  // ─── 网格线 ─────────────────────────────────────────────────
+  /**
+   * 切换要显示的网格
+   * @param {'dyson'|'planet'} kind 戴森球涂色网格 / 行星地基网格
+   * @param {object} [planetGrid] createPlanetGrid() 的结果（kind = 'planet' 时用）
+   */
+  setGridKind(kind, planetGrid) {
+    const next = kind === 'planet' ? 'planet' : 'dyson';
+    const grid = next === 'planet' ? (planetGrid ?? null) : null;
+    if (next === this._gridKind && grid === this._planetGrid) return;
+    this._gridKind = next;
+    this._planetGrid = grid;
+    this._gridReady = false; // 下一次 setGridVisible 时重建几何
+    if (!this._gridLines) return; // init 之前只记状态
+    this.setGridVisible(this._gridVisible);
     this._needsRender = true;
   }
 
+  /** 显示/隐藏网格线（网格几何只在需要时构建一次） */
+  setGridVisible(visible = true) {
+    this._gridVisible = visible;
+    this._ensureGrid();
+    this._updateGridVisibility();
+    this._needsRender = true;
+  }
+
+  /** 按当前网格类型建几何（戴森球经纬线网格 / 行星地基网格） */
+  _ensureGrid() {
+    if (this._gridReady) return;
+    this._gridReady = true;
+
+    const usePlanet = this._gridKind === 'planet' && !!this._planetGrid;
+    const grid = usePlanet ? buildPlanetGridLines(this._planetGrid) : buildGraticuleLines(FLAT_MAP_LON_STEP);
+    const pos = grid.positions;
+    // z 取反（与其他层一致）；两档共用这份顶点缓冲，各带一串线段索引
+    const pts = new Float32Array(pos.length);
+    for (let i = 0; i < pos.length; i += 3) {
+      pts[i] = pos[i];
+      pts[i + 1] = pos[i + 1];
+      pts[i + 2] = -pos[i + 2];
+    }
+    // 用线段端点对当索引（三角形的边含内部对角线，会画到色块中间）
+    const posAttr = new THREE.Float32BufferAttribute(pts, 3);
+    const build = (idx) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', posAttr);
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      return geo;
+    };
+    this._gridLines.geometry.dispose();
+    this._gridLines.geometry = build(grid.lineIndices);
+    this._gridLinesMajor.geometry.dispose();
+    this._gridLinesMajor.geometry = build(grid.lineIndicesMajor);
+    // 行星网格的细线密 5 倍，压暗一点才不至于糊成一片
+    this._gridLines.material.opacity = usePlanet ? 0.22 : 0.28;
+    this._gridLinesMajor.material.opacity = usePlanet ? 0.8 : 0.9;
+    // 网格建好后重建涂色几何（需要一个网格存在时的初始化时机）
+    this._rebuildPainting();
+  }
+
+  /** 细网格跟着相机距离显示: 行星网格的 0.36° 格子离远了看不清 */
+  _updateGridVisibility() {
+    const fine = this._gridKind !== 'planet'
+      || this._camera.position.length() <= PLANET_FINE_GRID_MAX_DISTANCE;
+    this._gridLines.visible = this._gridVisible && fine;
+    this._gridLinesMajor.visible = this._gridVisible;
+  }
+
   // ─── 涂色覆盖层 ─────────────────────────────────────────────
-  /** 设置要显示的涂色数据（只渲染已涂色的格子） */
+  /** 设置要显示的涂色数据（戴森球: { gridType, colors }） */
   setPainting(fillGrid) {
     this._fillGrid = fillGrid && fillGrid.colors ? fillGrid : null;
+    this._rebuildPainting();
+  }
+
+  /** 设置要显示的地基涂色数据（{ palette, index }；null = 清空） */
+  setFoundationPaint(paint) {
+    this._foundation = paint && paint.palette?.length && paint.index ? paint : null;
     this._rebuildPainting();
   }
 
@@ -209,12 +271,29 @@ class PaintingPreview {
   _rebuildPainting() {
     this._clearPaintMeshes();
     this._needsRender = true;
+
+    // 行星地基网格: 用「调色板 + 每格色号」，几何由 planetGridMesh 建
+    if (this._gridKind === 'planet') {
+      if (!this._foundation || !this._planetGrid) return;
+      this._addPaintParts(
+        buildPlanetPaintGeometry(this._planetGrid, this._foundation.palette, this._foundation.index),
+      );
+      return;
+    }
+
     if (!this._fillGrid) return;
 
     // 只支持经纬线网格（gridType 0），别的网格类型不渲染涂色
     if ((this._fillGrid.gridType ?? 0) !== 0) return;
 
-    const parts = buildGraticuleGeometry(this._fillGrid.colors);
+    this._addPaintParts(buildGraticuleGeometry(this._fillGrid.colors));
+  }
+
+  /**
+   * 把涂色几何加进涂色层
+   * @param {Array<{positions:Float32Array, colors:Float32Array}>|null} parts
+   */
+  _addPaintParts(parts) {
     if (!parts) return;
 
     const paintR = PAINT_RADIUS_SCALE; // 略高于遮挡球，避免深度重叠闪烁
@@ -262,8 +341,25 @@ class PaintingPreview {
    * @returns {HTMLCanvasElement|null}
    */
   exportFlatMap(scale = 1) {
+    // 行星地基网格: 采过样就画涂色格，还没有就画网格本身（当描图参考）
+    if (this._gridKind === 'planet' && this._planetGrid) {
+      if (!this._foundation) return createPlanetGridFlatMap(this._planetGrid, scale);
+      const w = PLANET_FLAT_MAP_WIDTH * Math.max(1, Math.round(scale));
+      const h = w / 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.clearRect(0, 0, w, h);
+      drawPlanetPaintFlatMap(
+        ctx, this._planetGrid, this._foundation.palette, this._foundation.index, w, h,
+      );
+      return canvas;
+    }
+
     if (!this._fillGrid) return null;
-    if ((this._fillGrid.gridType ?? 0) !== 0) return null;
+    if (this._fillGrid.gridType !== 0) return null;
 
     const w = FLAT_MAP_BASE_WIDTH * Math.max(1, Math.round(scale));
     const h = w / 2;
@@ -278,10 +374,10 @@ class PaintingPreview {
     const colors = this._fillGrid.colors || [];
     const rowH = h / LAT_BAND_COUNT; // 整数
 
-    for (const band of buildGraticuleBands()) {
+    for (const band of BANDS) {
       const cellW = w / band.seg; // 整数
       // 北极为第 0 行
-      const y0 = (LAT_BAND_COUNT / 2 - 1 - band.latIdx) * rowH;
+      const y0 = (LAT_HALF - 1 - band.latIdx) * rowH;
       const y1 = y0 + rowH;
       for (let li = 0; li < band.seg; li += 1) {
         const c = colors[band.base + li];
@@ -309,6 +405,13 @@ class PaintingPreview {
    */
   drawFlatMapGrid(canvas, scale = 1) {
     if (!canvas) return 0;
+    // 行星地基网格: 还没采样时网格已经画在底图里了，采过样才叠一层网格线（跟着开关走）
+    if (this._gridKind === 'planet') {
+      canvas.width = 0;
+      canvas.height = 0;
+      if (!this._planetGrid || !this._foundation) return 0;
+      return drawPlanetGridFlatMap(canvas, this._planetGrid, scale);
+    }
     const w = FLAT_MAP_BASE_WIDTH * Math.max(1, Math.round(scale));
     const h = w / 2;
     canvas.width = w;
@@ -318,7 +421,7 @@ class PaintingPreview {
 
     ctx.clearRect(0, 0, w, h);
     const rowH = h / LAT_BAND_COUNT;
-    const bands = buildGraticuleBands();
+    const bands = BANDS;
 
     // 粗细两级（每 4 格一条粗线，与 3D 网格同源）: 粗、细各扫一遍，细线跳过粗线所在位置
     const drawPass = (major) => {
@@ -330,7 +433,7 @@ class PaintingPreview {
       // 经线: 每个带里每格的左边界
       for (const band of bands) {
         const cellW = w / band.seg;
-        const y0 = (LAT_BAND_COUNT / 2 - 1 - band.latIdx) * rowH;
+        const y0 = (LAT_HALF - 1 - band.latIdx) * rowH;
         for (let li = first; li < band.seg; li += step) ctx.fillRect(li * cellW, y0, 1, rowH);
       }
     };
@@ -383,6 +486,8 @@ class PaintingPreview {
       if (!this._needsRender) return;
       this._needsRender = false;
       this._controls.update();
+      // 缩放会改变相机距离，细网格的显示要跟着算
+      this._updateGridVisibility();
       this._renderer.render(this._scene, this._camera);
     };
     tick();

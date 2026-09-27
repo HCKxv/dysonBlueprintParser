@@ -1,24 +1,40 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaintingSection from './PaintingPanel/PaintingSection.vue'
 import PaintingInput from './PaintingPanel/PaintingInput.vue'
 import PaintingImage from './PaintingPanel/PaintingImage.vue'
+import PaintingMode from './PaintingPanel/PaintingMode.vue'
 import PaintingBase from './PaintingPanel/PaintingBase.vue'
 import PaintingPreview from './PaintingPanel/PaintingPreview.vue'
 import {
   painting,
+  PAINT_PARAM_KEYS,
   generatePainting,
   exportPaintingBlueprint,
   resetPaintParams,
   paintParamsDirty,
   paintStats,
+  foundationStats,
+  isFoundationMode,
 } from '../stores/painting'
 import { useToast } from '../composables/useToast'
-import { downloadTxt } from '../utils/download'
+import { saveAsText } from '../utils/download'
 import { handleBlueprintText } from '../stores/preview'
 import { setTool } from '../stores/tool'
 
 const toast = useToast()
+
+/** 当前生成模式是否已经有可导出的数据 */
+const canExport = computed(() => (
+  isFoundationMode.value ? !!foundationStats.value : !!paintStats.value
+))
+
+/** 导出提示: 地基模式说明铺了多少格地基（粘贴有科技上限） */
+const exportHint = computed(() => {
+  if (!isFoundationMode.value) return '导出类型为单层戴森壳，建议以最大半径粘贴'
+  const stats = foundationStats.value
+  return `使用时需勾选【粘贴地基调色盘设置】，如果地基过多，可以先铺满地基后再拍蓝图；`
+})
 
 /** 生成彩绘: 图片 → 涂色网格数据 */
 async function onGenerate() {
@@ -41,12 +57,18 @@ async function onCopyBlueprint() {
   }
 }
 
-/** 下载蓝图: 保存成 .txt 文件 */
+/** 下载蓝图: 弹「另存为」对话框选路径（没有那个 API 的浏览器退化成直接下载） */
 async function onDownloadBlueprint() {
   try {
     const text = await exportPaintingBlueprint()
-    downloadTxt(text, '戴森球彩绘蓝图')
-    toast.show('已下载蓝图')
+    const saved = await saveAsText(text, {
+      suggestedName: `${isFoundationMode.value ? '地基彩绘蓝图' : '戴森球彩绘蓝图'}.txt`,
+      startIn: 'downloads',
+      types: [{ description: '蓝图文件', accept: { 'text/plain': ['.txt'] } }],
+    })
+    if (saved.error) throw new Error(saved.error)
+    if (saved.canceled) return // 取消保存不算失败
+    toast.show(saved.handle ? `已保存到 ${saved.handle.name}` : '这个浏览器不能直接写文件，已改为下载')
   } catch (error) {
     toast.show(`下载失败：\n${(error as Error).message}`)
   }
@@ -64,6 +86,7 @@ async function onViewInPreview() {
 }
 
 // ── 图片 / 参数变化后自动重新生成（120ms 防抖） ──
+// 参数列表直接用 store 的 PAINT_PARAM_KEYS，新增参数不用回来补这一份
 let timer: ReturnType<typeof setTimeout> | undefined
 
 function scheduleGenerate() {
@@ -75,25 +98,9 @@ function scheduleGenerate() {
 watch(
   () => [
     painting.imageUrl,
+    painting.paintMode,
     painting.projMode,
-    painting.hemiLng,
-    painting.imgZoom,
-    painting.imgShiftX,
-    painting.imgShiftY,
-    painting.equatorLat,
-    painting.equatorRepeats,
-    painting.equatorCropV,
-    painting.equatorCropVPos,
-    painting.equatorCropH,
-    painting.equatorCropHPos,
-    painting.fillMode,
-    painting.fillColor,
-    painting.resample,
-    painting.maxColors,
-    painting.brightness,
-    painting.contrast,
-    painting.saturation,
-    painting.sharpness,
+    ...PAINT_PARAM_KEYS.map((k) => painting[k]),
   ] as const,
   scheduleGenerate,
 )
@@ -141,6 +148,10 @@ onBeforeUnmount(() => {
           <PaintingInput />
         </PaintingSection>
 
+        <PaintingSection title="模式选择">
+          <PaintingMode />
+        </PaintingSection>
+
         <PaintingSection title="参数设置">
           <template #extra>
             <button
@@ -153,35 +164,35 @@ onBeforeUnmount(() => {
           <PaintingImage />
         </PaintingSection>
 
-        <PaintingSection title="戴森壳">
+        <!-- 基底只对戴森球蓝图有意义；地基的行星网格之后放自己的设置区 -->
+        <PaintingSection v-if="!isFoundationMode" title="戴森壳">
           <PaintingBase />
         </PaintingSection>
 
-        <PaintingSection title="导出">
+        <PaintingSection :title="isFoundationMode ? '导出地基蓝图' : '导出戴森球蓝图'">
           <div class="paint-actions">
             <button
               class="btn btn-ghost"
               type="button"
-              :disabled="!paintStats"
+              :disabled="!canExport"
               @click="onCopyBlueprint"
             >复制蓝图</button>
             <button
               class="btn btn-ghost"
               type="button"
-              :disabled="!paintStats"
+              :disabled="!canExport"
               @click="onDownloadBlueprint"
-            >下载蓝图</button>
+            >保存蓝图</button>
             <button
+              v-if="!isFoundationMode"
               class="btn btn-ghost"
               type="button"
-              :disabled="!paintStats"
+              :disabled="!canExport"
               @click="onViewInPreview"
             >查看蓝图</button>
           </div>
 
-          <div class="paint-export-hint">
-            导出类型为单层戴森壳，建议以最大半径粘贴
-          </div>
+          <div class="paint-export-hint">{{ exportHint }}</div>
         </PaintingSection>
       </div>
 
@@ -212,7 +223,7 @@ onBeforeUnmount(() => {
             :class="{ active: painting.showFlatMap }"
             :aria-selected="painting.showFlatMap"
             @click="painting.showFlatMap = true"
-          >平面展开</button>
+          >{{ isFoundationMode ? '量化图' : '平面展开' }}</button>
         </div>
       </div>
       <PaintingPreview />

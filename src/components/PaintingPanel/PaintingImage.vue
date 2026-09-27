@@ -3,11 +3,21 @@ import { computed } from 'vue'
 import ParamSlider from './ParamSlider.vue'
 import {
   painting,
-  PROJ_MODES,
+  currentMode,
   MAX_COLORS_STOPS,
+  QUANTIZE_METHOD_OPTIONS,
   equatorMaxRepeats,
+  EQUATOR_LAT_STOPS,
+  EQUATOR_MAX_CROP,
+  EQUATOR_MAX_CROP_POS,
+  FOUNDATION_COLOR_COUNT,
+  TILE_LAT_ROWS,
+  planetGrid,
+  foundationResult,
+  isFoundationMode,
   type FillMode,
 } from '../../stores/painting'
+import { randomSeed } from '../../lib/painting/quantizeAlgorithms.js'
 
 // 底色来源
 const FILL_MODES: Array<{ value: FillMode; label: string; title?: string }> = [
@@ -18,15 +28,48 @@ const FILL_MODES: Array<{ value: FillMode; label: string; title?: string }> = [
   { value: 'custom', label: '自定义' },
 ]
 
-/** 图片调整只在半球投影下有效 */
-const isHemisphere = computed(() => painting.projMode === 'hemisphere')
+/** 图片缩放与移动只在半球投影下有效 */
+const isHemisphere = computed(() => currentMode.value.kind === 'hemisphere')
 
-/** 环绕赤道参数只在环绕赤道模式下有效 */
-const isEquator = computed(() => painting.projMode === 'equator')
+/** 环带参数在赤道带的两档下都有效（戴森球的「环绕赤道」/ 地基的「平铺」） */
+const isEquator = computed(() => currentMode.value.kind === 'equator')
 
-// ── 裁剪（只作用于环绕赤道）──
-/** 单轴裁剪量上限（%），与 projection.js 的限幅一致 */
-const CROP_MAX = 50
+// ── 裁剪（赤道带那档才有: 环绕赤道 / 平铺）──
+
+/** 纬度范围滑块 */
+const isTile = computed(() => painting.projMode === 'tile')
+
+const rowLat = planetGrid.rowLat // 一行 = 一格高（度，0.36）
+/** 地基的高度滑块: 界面按格，存的是角度 */
+const tileHeight = computed({
+  get: () => Math.round(painting.equatorLatFoundation / rowLat),
+  set: (v: number) => {
+    painting.equatorLatFoundation = Number((v * rowLat).toFixed(6))
+  },
+})
+
+/** 地基彩绘的调色盘 */
+const foundationPalette = computed(() => foundationResult.value?.palette ?? [])
+
+/** 调色盘色块的 CSS 颜色 */
+const rgbCss = (c: { r: number, g: number, b: number }) => `rgb(${c.r}, ${c.g}, ${c.b})`
+
+/** 当前量化算法（含是否需要随机种子） */
+const currentQuantizeMethod = computed(
+  () => QUANTIZE_METHOD_OPTIONS.find((m) => m.value === painting.quantizeMethod) ?? QUANTIZE_METHOD_OPTIONS[0],
+)
+
+/** 手输种子（非数字忽略；负数归 0） */
+function onSeedInput(e: Event) {
+  const raw = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(raw)) return
+  painting.quantizeSeed = Math.max(0, Math.trunc(raw))
+}
+
+/** 换一个随机种子 */
+function onRandomSeed() {
+  painting.quantizeSeed = randomSeed()
+}
 
 /** 缩放滑块用百分比，存的是倍率 */
 const zoomPercent = computed({
@@ -50,23 +93,9 @@ const shiftYPct = computed({
 
 <template>
   <div class="paint-projection">
-    <!-- ── 投影模式 ── -->
-    <div class="paint-params-block">
-      <div class="paint-params-head"><span>投影模式</span></div>
-      <div class="mode-grid">
-        <button
-          v-for="m in PROJ_MODES"
-          :key="m.value"
-          type="button"
-          class="mode-card"
-          :class="{ active: painting.projMode === m.value }"
-          @click="painting.projMode = m.value"
-        >
-          <span class="mode-icon" v-html="m.icon"></span>
-          <span class="mode-label">{{ m.label }}</span>
-          <span class="mode-desc">{{ m.desc }}</span>
-        </button>
-      </div>
+    <!-- ── 投影位置（地基模式没有这个选项: 行星网格位置固定，经度偏移固定 0）── -->
+    <div v-if="!isFoundationMode" class="paint-params-block">
+      <div class="paint-params-head"><span>投影位置</span></div>
 
       <ParamSlider
         v-model="painting.hemiLng"
@@ -87,50 +116,69 @@ const shiftYPct = computed({
         <template #label>缩放</template>
       </ParamSlider>
 
-      <ParamSlider v-model="shiftXPct" :min="-80" :max="80" :step="1">
+      <ParamSlider v-model="shiftXPct" :min="-SHIFT_LIMIT" :max="SHIFT_LIMIT" :step="1">
         <template #label>水平移动</template>
       </ParamSlider>
 
-      <ParamSlider v-model="shiftYPct" :min="-80" :max="80" :step="1">
+      <ParamSlider v-model="shiftYPct" :min="-SHIFT_LIMIT" :max="SHIFT_LIMIT" :step="1">
         <template #label>垂直移动</template>
       </ParamSlider>
     </div>
 
-    <!-- ── 环绕赤道 ── -->
+    <!-- ── 环绕赤道 / 平铺 ── -->
     <div v-if="isEquator" class="paint-params-block">
-      <div class="paint-params-head"><span>环带与裁剪</span></div>
+      <div class="paint-params-head"><span>{{ isTile ? '高度与裁剪' : '环带与裁剪' }}</span></div>
 
-      <ParamSlider v-model="painting.equatorLat" :min="30" :max="72" :step="1.5">
+      <!-- 平铺: 按格显示（40-180，步长 1 格，默认 80） -->
+      <ParamSlider
+        v-if="isTile"
+        v-model="tileHeight"
+        :min="TILE_LAT_ROWS.min"
+        :max="TILE_LAT_ROWS.max"
+        :step="TILE_LAT_ROWS.step"
+      >
+        <template #label>高度</template>
+      </ParamSlider>
+      <!-- 戴森球「环绕赤道」按度（30-72，默认 45） -->
+      <ParamSlider
+        v-else
+        v-model="painting.equatorLatSphere"
+        :min="EQUATOR_LAT_STOPS.min"
+        :max="EQUATOR_LAT_STOPS.max"
+        :step="EQUATOR_LAT_STOPS.step"
+      >
         <template #label>纬度范围</template>
       </ParamSlider>
 
-      <ParamSlider v-model="painting.equatorCropV" :min="0" :max="CROP_MAX" :step="1">
-        <template #label>垂直裁剪</template>
-      </ParamSlider>
-
-      <ParamSlider
-        v-model="painting.equatorCropVPos"
-        :min="-100"
-        :max="100"
-        :step="5"
-      >
-        <template #label>垂直裁剪位置</template>
-      </ParamSlider>
-
-      <ParamSlider v-model="painting.equatorCropH" :min="0" :max="CROP_MAX" :step="1">
+      <ParamSlider v-model="painting.equatorCropH" :min="0" :max="EQUATOR_MAX_CROP" :step="1">
         <template #label>水平裁剪</template>
       </ParamSlider>
 
       <ParamSlider
         v-model="painting.equatorCropHPos"
-        :min="-100"
-        :max="100"
+        :min="-EQUATOR_MAX_CROP_POS"
+        :max="EQUATOR_MAX_CROP_POS"
         :step="5"
       >
         <template #label>水平裁剪位置</template>
       </ParamSlider>
 
+      <ParamSlider v-model="painting.equatorCropV" :min="0" :max="EQUATOR_MAX_CROP" :step="1">
+        <template #label>垂直裁剪</template>
+      </ParamSlider>
+
       <ParamSlider
+        v-model="painting.equatorCropVPos"
+        :min="-EQUATOR_MAX_CROP_POS"
+        :max="EQUATOR_MAX_CROP_POS"
+        :step="5"
+      >
+        <template #label>垂直裁剪位置</template>
+      </ParamSlider>
+
+      <!-- 地基模式下这一档叫「平铺」: 按原比例铺一份，不重复 -->
+      <ParamSlider
+        v-if="!isFoundationMode"
         v-model="painting.equatorRepeats"
         :min="1"
         :max="equatorMaxRepeats"
@@ -173,11 +221,56 @@ const shiftYPct = computed({
         </select>
       </div>
 
-      <ParamSlider v-model="painting.maxColors" :stops="MAX_COLORS_STOPS" unit="色">
+      <ParamSlider v-if="!isFoundationMode" v-model="painting.maxColors" :stops="MAX_COLORS_STOPS" unit="色">
         <template #label>颜色数量</template>
       </ParamSlider>
 
-      <div class="paint-param">
+      <!-- 量化算法（中位切分 / 均值聚类）: 只有地基可选，戴森球固定中位切分 -->
+      <div v-if="isFoundationMode" class="paint-param">
+        <div class="paint-param-label">量化算法</div>
+        <select class="speed-select paint-select" v-model="painting.quantizeMethod">
+          <option v-for="m in QUANTIZE_METHOD_OPTIONS" :key="m.value" :value="m.value">
+            {{ m.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- 随机种子: 紧跟量化算法（只有均值聚类用得上）—— 同一个种子给出同一份调色板 -->
+      <div v-if="isFoundationMode && currentQuantizeMethod.needsSeed" class="paint-param">
+        <div class="paint-param-label">随机种子</div>
+        <div class="btn-group paint-seed-row">
+          <input
+            class="input-dark paint-num"
+            type="number"
+            min="0"
+            step="1"
+            :value="painting.quantizeSeed"
+            @change="onSeedInput"
+          />
+          <button class="btn-sm btn-ghost" type="button" @click="onRandomSeed">随机</button>
+        </div>
+      </div>
+
+      <!-- 地基: 颜色数量固定 16 色（每格 5 位色号），直接把调色盘摆出来 -->
+      <div v-if="isFoundationMode" class="paint-param">
+        <div class="paint-param-head">
+          <span class="paint-param-label">调色盘</span>
+          <span class="paint-param-value mono">{{ foundationPalette.length }} 色</span>
+        </div>
+        <div v-if="foundationPalette.length" class="paint-palette">
+          <span
+            v-for="(c, i) in foundationPalette"
+            :key="i"
+            class="paint-swatch"
+            :style="{ background: rgbCss(c) }"
+            :title="`自定义色 ${FOUNDATION_COLOR_COUNT + i} · rgb(${c.r}, ${c.g}, ${c.b})`"
+          ></span>
+        </div>
+        <div v-else class="paint-palette-empty">生成彩绘后显示</div>
+      </div>
+
+      <!-- 地基模式没有「图外填充」: 图外就是「不铺地基」，不开放填色 -->
+      <div v-if="!isFoundationMode" class="paint-param">
         <div class="paint-param-label">图外填充</div>
         <div class="btn-group paint-preset-row">
           <template v-for="m in FILL_MODES" :key="m.value">

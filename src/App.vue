@@ -9,13 +9,19 @@ import AppToast from './components/AppToast.vue'
 import CopyShellModal from './components/BlueprintPanel/CopyShellModal.vue'
 import { store, parseBlueprint } from './stores/preview'
 import { activeTool, setTool } from './stores/tool'
-import { loadBlueprintFromUrl } from './utils/urlLoader'
+import { clearTxtParamFromUrl, loadBlueprintFromUrl } from './utils/urlLoader'
 import { useToast } from './composables/useToast'
+import { enableUrlLoad, showFooter } from './config/app'
 
 const toast = useToast()
 
 /** URL 参数加载（?txt=...） */
 function loadUrlBlueprint() {
+  // 关闭时也要清掉 ?txt=，否则参数会留在地址栏
+  if (!enableUrlLoad) {
+    clearTxtParamFromUrl()
+    return
+  }
   loadBlueprintFromUrl({
     onLoadStart: () => toast.show('正在加载蓝图'),
     onLoaded: (text) => {
@@ -63,7 +69,7 @@ onBeforeUnmount(() => {
     <FactoryParse v-else />
   </div>
 
-  <FooterBar />
+  <FooterBar v-if="showFooter" />
   <CopyShellModal />
   <AppToast />
 </template>

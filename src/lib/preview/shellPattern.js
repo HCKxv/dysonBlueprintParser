@@ -37,8 +37,8 @@ const BRIGHT_PAINT_GAIN = 1.2;
 const INNER_FADE_START = 0.03;   // ≈33px 一格开始回升
 const INNER_FADE_END = 0.16;     // ≈6px 一格时已完成回升
 // 图案/细网收拢
-const FALLOFF_START = 0.11;      // ≈9px 一格图案开始收拢
-const FALLOFF_END = 0.65;        // ≈1.5px 一格完全收拢
+const FALLOFF_START = 0.15;      // ≈9px 一格图案开始收拢
+const FALLOFF_END = 0.85;        // ≈1.5px 一格完全收拢
 const FALLOFF_INNER_DIM = 0.98;  // 完全降级时底色 = 本色的 98%
 
 const dummyBlack = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);

@@ -5,7 +5,7 @@ import {
   _sphericalArcPoints, _gridArcPoints,
 } from './geometry.js';
 import { computeShellCellBuckets } from './shellCellsCompute.js';
-import { buildPaintingGeometry } from './paintingGrid.js';
+import { buildPaintingGeometry } from '../grid/paintingGrid.js';
 
 // 框架杆件尺寸（蓝图单位）: 切向宽度 / 径向厚度
 const FRAME_BAR_WIDTH = 30;

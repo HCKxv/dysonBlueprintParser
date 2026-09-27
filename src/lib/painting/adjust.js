@@ -1,21 +1,19 @@
-/**
- * adjust.js — 画面调整: 亮度 / 对比度 / 饱和度 / 锐度
- */
+/** adjust.js — 画面调整: 亮度 / 对比度 / 饱和度 / 锐度 */
 
 /** 锐度 100% 时的反锐化强度 */
 const SHARPEN_STRENGTH = 1.5;
 
 /** 参数 → 倍率（缺省 / 非法值按 0 算 = 原样） */
 function factors(o) {
-  const pct = (v, dflt) => {
+  const pct = (v) => {
     const n = Number(v);
-    return Number.isFinite(n) ? n : dflt;
+    return Number.isFinite(n) ? n : 0;
   };
   return {
-    brightness: 1 + pct(o?.brightness, 0) / 100,
-    contrast: 1 + pct(o?.contrast, 0) / 100,
-    saturation: 1 + pct(o?.saturation, 0) / 100,
-    sharpness: Math.max(0, pct(o?.sharpness, 0)) / 100,
+    brightness: 1 + pct(o?.brightness) / 100,
+    contrast: 1 + pct(o?.contrast) / 100,
+    saturation: 1 + pct(o?.saturation) / 100,
+    sharpness: Math.max(0, pct(o?.sharpness)) / 100,
   };
 }
 
