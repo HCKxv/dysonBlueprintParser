@@ -70,11 +70,9 @@ interface ThumbSlot {
   slot: IconSlot
   /** 图标 id（0 = 空位） */
   itemId: number
-  /** 显示名（图标缺失时兜底用，也是 img 的 alt） */
+  /** 显示名（只用于 img 的 alt） */
   name: string
-  /** 图标缺失时显示的短名 */
-  short: string
-  /** 图标 URL（空 = 没有图标，退化成短名或 ＋） */
+  /** 图标 URL（空 = 没有图标，退化成 #id 或 ＋） */
   icon: string
 }
 
@@ -126,8 +124,6 @@ const slots = computed<(ThumbSlot | null)[]>(() => iconLayoutSlots(props.layout)
     slot,
     itemId,
     name,
-    // 格子里就两个字（图标缺失时的兜底显示）
-    short: [...name].slice(0, 2).join(''),
     icon: itemId ? itemIconUrl(itemId) : '',
   }
 }))
@@ -153,7 +149,7 @@ const slots = computed<(ThumbSlot | null)[]>(() => iconLayoutSlots(props.layout)
             :src="cell.icon"
             :alt="cell.name"
           />
-          <span v-else-if="cell.itemId" class="factory-thumb-fallback">{{ cell.short }}</span>
+          <span v-else-if="cell.itemId" class="factory-thumb-fallback">{{ `#${cell.itemId}` }}</span>
           <span v-else class="factory-thumb-plus">＋</span>
         </button>
       </template>

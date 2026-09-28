@@ -1,6 +1,7 @@
 // 请勿手改
 // 键 = 蓝图介绍/属性里的富文本标记，值 = [图标 id, 名字]
 const ICON_TAGS: Record<string, [number, string]> = {
+  'hyltj': [1211, '黑雾引力透镜'],
   'bait': [6006, '宇宙矩阵'],
   'bdtcl': [41311, '半导体材料'],
   'bhsgr': [41141, '波函数干扰'],
