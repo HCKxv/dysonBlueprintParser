@@ -1,7 +1,8 @@
-import { computed, markRaw, reactive } from 'vue'
+import { computed, markRaw, reactive, watch } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/factory/factoryParser.js'
 import { stringifyBlueprint } from '../lib/blueprint/factory/factoryEncoder.js'
 import { itemName } from '../lib/blueprint/factory/factoryItems.js'
+import type { FactoryPreview } from '../lib/factory/FactoryPreview.js'
 import { saveAsText } from '../utils/download'
 
 /** 工厂预览工具的状态 */
@@ -57,9 +58,40 @@ export const factory = reactive({
   blueprint: null as FactoryBlueprint | null,
   /** 头部: 用于显示和编辑 */
   header: reactive(emptyHeader()),
+  /** 预览里选中的建筑编号（building.index），没选中 = null */
+  selectedIndex: null as number | null,
   /** 当前蓝图对应的原文件句柄（File System Access API） */
   fileHandle: null as FileSystemFileHandle | null,
+  /** 原始蓝图字符串 */
+  raw: '',
+  /** 主体改过没有 */
+  modified: false,
+  /** 3D 预览实例 */
+  preview: null as FactoryPreview | null,
 })
+
+/** 挂上 / 摘掉预览实例 */
+export function attachPreview(instance: FactoryPreview | null) {
+  // markRaw: three 的渲染器 / 场景是深层对象，别让 reactive 去代理它们
+  factory.preview = instance ? markRaw(instance) : null
+  if (!factory.preview) factory.selectedIndex = null   // 场景没了，选中也就不存在了
+  factory.preview?.setSelectionListener((index) => { factory.selectedIndex = index })
+  factory.preview?.setBlueprint(factory.blueprint);
+}
+
+// 选中编号同步给场景
+watch(() => factory.selectedIndex, (index) => {
+  factory.preview?.selectBuilding(index)
+})
+
+/**
+ * 换一份蓝图 → 让预览重摆（「蓝图 → 场景」只有这一个出口）
+ * @param resetView 视角要不要归位
+ */
+function applyBlueprint(blueprint: FactoryBlueprint | null, resetView: boolean = true) {
+  factory.blueprint = blueprint
+  factory.preview?.setBlueprint(blueprint, resetView)
+}
 
 /** 空白蓝图头部 */
 function emptyHeader(): FactoryHeader {
@@ -102,17 +134,24 @@ function copyHeader(head: any): FactoryHeader {
   }
 }
 
-/** 换一份蓝图: 解析结果整份拷成蓝图对象，头部再单独拷一份给界面 */
-function setBlueprint(parsed: Record<string, any> | null) {
+/**
+ * 换一份蓝图
+ * @param parsed parseBlueprintString 的结果；null = 关闭蓝图
+ * @param raw 原始蓝图字符串
+ */
+function setBlueprint(parsed: Record<string, any> | null, raw = '') {
+  factory.selectedIndex = null     // 编号是蓝图内部的序号，换蓝图重新开始
+  factory.raw = parsed ? raw : ''
+  factory.modified = false
   if (!parsed) {
-    factory.blueprint = null
+    applyBlueprint(null)
     Object.assign(factory.header, emptyHeader())
     return
   }
 
-  factory.blueprint = markRaw(structuredClone(parsed) as FactoryBlueprint)
+  applyBlueprint(markRaw(structuredClone(parsed) as FactoryBlueprint))
   // 用于界面显示与编辑
-  Object.assign(factory.header, copyHeader(factory.blueprint.header))
+  Object.assign(factory.header, copyHeader(factory.blueprint!.header))
 }
 
 /** 按建筑 id 聚合出设施清单 */
@@ -173,6 +212,18 @@ export const foundationDecal = computed(() => foundationTotal.value - foundation
 /** 有地基才显示这一块 */
 export const hasFoundation = computed(() => foundationTotal.value > 0)
 
+/**
+ * 当前选中的建筑:编号对不上蓝图里的建筑就当没选中
+ */
+export const selectedBuilding = computed(() => {
+  const buildings = factory.blueprint?.buildings
+  const index = factory.selectedIndex
+  if (!Array.isArray(buildings) || index === null) return null
+  // 序号就是下标: 取回来核一下序号，对不上（越界也是 undefined）当没选中
+  const building = buildings[index]
+  return building && Number(building.index) === index ? building : null
+})
+
 // ─────────────────────────────────────────────────────────────
 // 各项上限
 // ─────────────────────────────────────────────────────────────
@@ -198,8 +249,9 @@ export const LIMITS = {
   propertyValue: 60,
 } as const
 
-/** 是否被改过: 界面那份头部与蓝图里那份（导入时 / 上次保存后的样子）整份比，两边字段顺序一致，直接序列化 */
-export const metaDirty = computed(() => {
+/** 有没有未保存的改动 */
+export const hasChanges = computed(() => {
+  if (factory.modified) return true
   const saved = factory.blueprint?.header
   return !!saved && JSON.stringify(factory.header) !== JSON.stringify(saved)
 })
@@ -234,7 +286,7 @@ export async function loadBlueprintText(
   factory.parsing = true
   try {
     const parsed = await parseBlueprintString(value)
-    setBlueprint(parsed)
+    setBlueprint(parsed, value)
     setFileHandle(handle)
     return { ok: true, message: handle ? `已打开蓝图：${handle.name}` : '已打开导入的蓝图' }
   } catch (error) {
@@ -264,6 +316,150 @@ export function closeBlueprint() {
   factory.parsing = false
   setFileHandle(null)
   setBlueprint(null)
+}
+
+// ─────────────────────────────────────────────────────────────
+// 编辑建筑 / 还原
+// ─────────────────────────────────────────────────────────────
+
+/** 能改的建筑字段 */
+export interface BuildingChanges {
+  /** 建筑 id */
+  itemId?: number
+  /** 模型序号 */
+  modelIndex?: number
+  /** 配方 id） */
+  recipeId?: number
+  /** 筛选物品 id */
+  filterId?: number
+  /** 建筑参数 */
+  parameters?: Record<string, any>
+  /** 建筑备注 */
+  content?: string | null
+}
+
+/** 连在一起的研究站（连同它自己） */
+export function linkedLabBuildings(index: number): any[] {
+  const buildings = factory.blueprint?.buildings
+  if (!Array.isArray(buildings)) return []
+
+  const isLab = (id: unknown) => Number(id) === 2901 || Number(id) === 2902
+  /** 序号就是下标，取回来核一下序号，对不上（越界也是 undefined）当没这栋 */
+  const at = (target: unknown) => {
+    const building = buildings[Number(target)]
+    return building && Number(building.index) === Number(target) ? building : null
+  }
+
+  const start = at(index)
+  if (!start || !isLab(start.itemId)) return []
+
+  // 谁连到我（前驱）: 扫一遍建筑，把指向研究站的连接反过来记
+  const previous = new Map<number, number[]>()
+  for (const b of buildings) {
+    const from = Number(b?.index)
+    if (!Number.isInteger(from)) continue
+    for (const target of [Number(b?.outputObjIdx), Number(b?.inputObjIdx)]) {
+      const to = at(target)
+      if (!to || !isLab(to.itemId)) continue
+      const list = previous.get(target)
+      if (list) list.push(from)
+      else previous.set(target, [from])
+    }
+  }
+
+  const group = [start]
+  const seen = new Set([index])
+  for (let i = 0; i < group.length; i += 1) {
+    const b = group[i]
+    const self = Number(b.index)
+    const neighbours = [
+      Number(b.outputObjIdx), Number(b.inputObjIdx),   // 我连出去的
+      ...(previous.get(self) ?? []),                   // 连到我的
+    ]
+    for (const next of neighbours) {
+      const other = at(next)
+      if (!other || seen.has(next) || !isLab(other.itemId)) continue
+      seen.add(next)
+      group.push(other)
+    }
+  }
+  return group
+}
+
+/**
+ * 改一栋建筑
+ * @returns 找到了并改上了 true；蓝图没打开 / 编号对不上 / 过滤后没字段 false
+ */
+export function editBuilding(index: number, changes: BuildingChanges): boolean {
+  const blueprint = factory.blueprint
+  const buildings = blueprint?.buildings
+  if (!blueprint || !Array.isArray(buildings) || !changes) return false
+
+  // 序号就是下标，对不上（坏数据）直接退出，不至于改到别人的落点上。
+  const building = buildings[index]
+  if (!building || Number(building.index) !== index) return false
+
+  // 空字段（null / undefined）= 这项不改
+  const edits: Record<string, any> = {}
+  for (const key in changes) {
+    if (changes[key] != null) edits[key] = changes[key]
+  }
+  if (Object.keys(edits).length === 0) return false
+
+  buildings[index] = { ...building, ...edits }
+
+  const selected = factory.selectedIndex
+  applyBlueprint(markRaw({ ...blueprint, buildings }), false)
+  if (selected !== null) {
+    // 重新选中建筑
+    factory.selectedIndex = selected
+    factory.preview?.selectBuilding(selected)
+  }
+  factory.modified = true
+  return true
+}
+
+/**
+ * 改「一整栋研究站」: 连同蓝图里与它相连的那些一起改
+ */
+export function editLabGroup(index: number, changes: BuildingChanges): boolean {
+  const group = linkedLabBuildings(index)
+  // 不是研究站（或没连别的）就当普通单栋改
+  if (group.length <= 1) return editBuilding(index, changes)
+
+  const before = group.map((b) => ({ index: Number(b.index), snapshot: { ...b } }))
+  const done: number[] = []
+  for (const b of group) {
+    if (editBuilding(Number(b.index), changes)) done.push(Number(b.index))
+  }
+  if (done.length === group.length) return true
+
+  // 有没改上的: 把改过的还原，不留半改状态
+  for (const { index: i, snapshot } of before) {
+    if (done.includes(i)) editBuilding(i, snapshot)
+  }
+  return false
+}
+
+/**
+ * 还原修改
+ * @returns ok=false 时 message 说明原因
+ */
+export async function revertBlueprint(): Promise<{ ok: boolean, message: string }> {
+  const raw = factory.raw
+  if (!hasBlueprint.value) return { ok: false, message: '当前没有已打开的蓝图' }
+  if (!raw) return { ok: false, message: '没有可还原的原始蓝图' }
+
+  factory.parsing = true
+  try {
+    const parsed = await parseBlueprintString(raw)
+    setBlueprint(parsed, raw)
+    return { ok: true, message: '已还原到上次打开 / 保存的样子' }
+  } catch (error) {
+    return { ok: false, message: `无法还原：${(error as Error).message}` }
+  } finally {
+    factory.parsing = false
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -313,15 +509,18 @@ export async function saveBlueprintFile(): Promise<{ ok: boolean, message: strin
   if (saved.error) return { ok: false, message: `保存失败：${saved.error}` }
   if (saved.canceled) return { ok: true, message: '' } // 取消保存不算失败
 
-  markSaved(saved.handle)
+  markSaved(saved.handle, text)
   return saved.handle
     ? { ok: true, message: `已保存到 ${saved.handle.name}` }
     : { ok: true, message: '这个浏览器不能直接写文件，已改为下载' }
 }
 
-/** 保存成功后把刚写出去的内容当成新基准（头部取界面那份），「已修改」跟着清掉 */
-function markSaved(handle: FileSystemFileHandle | null) {
+/** 保存成功后把刚写出去的内容当成新基准，「已修改」跟着清掉 */
+function markSaved(handle: FileSystemFileHandle | null, text: string) {
   const blueprint = factory.blueprint
-  if (blueprint) factory.blueprint = markRaw({ ...blueprint, header: copyHeader(factory.header) })
+  // 只换了头部，建筑没动 → 不归位视角
+  if (blueprint) applyBlueprint(markRaw({ ...blueprint, header: copyHeader(factory.header) }), false)
+  factory.raw = text
+  factory.modified = false
   setFileHandle(handle)
 }

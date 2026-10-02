@@ -12,7 +12,8 @@ import {
   LIMITS,
 } from '../../stores/factory'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
-import type { IconRef } from '../../lib/markup/iconCatalog'
+import type { IconRef } from '../../lib/markup/itemIcons'
+import { ICON_CATEGORIES } from '../../lib/markup/iconCatalog'
 import { useToast } from '../../composables/useToast'
 import decalIcon from '../../assets/icons/reform/decal.png'
 import undecalIcon from '../../assets/icons/reform/undecal.png'
@@ -29,6 +30,8 @@ const picker = reactive({
   editor: null as RichTextApi | null,
   current: 0,
   anchor: null as HTMLElement | null,
+  /** 默认分类名 */
+  defaultCategory: '物品',
 })
 
 /** 这次打开图标位期间有没有选过图标（没选就关 = 清除这一位，见 closePicker） */
@@ -66,13 +69,14 @@ function openTextPicker(api: RichTextApi) {
 
 /** 选中一个图标: 给缩略图槽位就写进那一位，给字段就往光标处插 */
 function onPickIcon(icon: IconRef) {
+  const markup = icon.markup ?? ''
   if (picker.slot >= 0) {
     // 缩略图槽位只认 id（id 0 = 清空这一位）
     slotPicked = true
     factory.header.icons[picker.slot] = icon.id
-  } else if (picker.editor && icon.markup) {
+  } else if (picker.editor && markup) {
     // 到字数上限时插入会被吞掉，给个提示（不然点了图标毫无反应）
-    if (!picker.editor.insertText(icon.markup)) toast.show('这个字段已经到字数上限了')
+    if (!picker.editor.insertText(markup)) toast.show('这个字段已经到字数上限了')
   }
   // 关不关由选择器决定（钉住时可以连着插）；这里只把选中结果交出去
 }
@@ -92,7 +96,7 @@ const facList = computed(() => facilities.value.map((item) => ({
   icon: itemIconUrl(item.itemId),
 })))
 
-/** 「带装饰地基 / 无装饰地基」两个图标（decal/undecal，由提取脚本导出） */
+/** 「带装饰地基 / 无装饰地基」两个图标 */
 const reformIcons = {
   decal: decalIcon,
   undecal: undecalIcon,
@@ -283,6 +287,8 @@ const reformIcons = {
 
   <IconPickerModal
     :open="picker.open"
+    :categories="ICON_CATEGORIES"
+    :default-category="picker.defaultCategory"
     :current="picker.current"
     :show-pin="picker.slot < 0"
     :anchor="picker.anchor"

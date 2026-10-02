@@ -1,4 +1,5 @@
 import { blueprintTypeName, getBodyTypeId, orbitParamsToQuaternion } from './sphereUtils.js';
+import { cloneData, toPlainCopy } from '../clonePlain.js';
 
 // 将无序节点对编码为字符串 key，用于集合查找
 function edgeKey(a, b) {
@@ -31,37 +32,6 @@ function buildCloud(radius, orbitParams) {
   }
 
   return { visibility, orbits, colors: [] };
-}
-
-// 递归拷贝成纯对象 / 纯数组
-// 蓝图数据可能来自 Vue 响应式代理（reactive）：对象展开（{ ...node }）只剥掉最外层代理，
-// 嵌套对象（coordinate / color）读出来仍是代理，写回数据后 structuredClone 就会失败
-function toPlainCopy(value) {
-  if (Array.isArray(value)) {
-    const out = new Array(value.length);
-    for (let i = 0; i < value.length; i += 1) {
-      out[i] = toPlainCopy(value[i]);
-    }
-    return out;
-  }
-  if (value && typeof value === 'object') {
-    const out = {};
-    for (const key of Object.keys(value)) {
-      out[key] = toPlainCopy(value[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
-// 深拷贝蓝图数据：优先用原生 structuredClone，
-// 数据里混入响应式代理等不可克隆对象时退回纯数据递归拷贝
-function cloneData(value) {
-  try {
-    return structuredClone(value);
-  } catch {
-    return toPlainCopy(value);
-  }
 }
 
 // 清理框架中引用已删除节点的项，以及壳面中边不在框架中的项

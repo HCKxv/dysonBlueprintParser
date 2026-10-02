@@ -1,17 +1,5 @@
 import { isBelt, isInserter, isAssembler, isLab, isTurret } from './factoryItems.js';
 
-// ─────────────────────────────────────────────────────────────
-// 参数值的显示名称
-// ─────────────────────────────────────────────────────────────
-// 传送带插槽接入方向
-const SLOT_DIR_NAMES = { 0: '未接入', 1: '输出', 2: '输入' };
-// 物流供需配置
-const LOGISTIC_ROLE_NAMES = { 0: '仓储', 1: '供应', 2: '需求' };
-// 物品上限锁定
-const LOCK_AMOUNT_NAMES = { 0: '不锁定', 1: '锁定满仓', 2: '锁定半仓' };
-// 储物仓类型
-const STORAGE_TYPE_NAMES = { 0: '不过滤', 9: '存在过滤器' };
-
 /**
  * 建筑参数编解码器
  *
@@ -276,10 +264,11 @@ function stationCodec(storageNum, slotsNum) {
     })),
     // 主参数（偏移 320）
     workEnergyPerTick: fun(320, workEnergyPerTickEncode, workEnergyPerTickDecode),
+    // 运输机最远路程: 游戏存的是「夹角 α 的余弦」
     tripRangeOfDrones: fun(
       321,
-      (v) => Math.round(Math.sin((90 - v) * Math.PI / 180) * 100000000),
-      (v) => 90 - Math.round(Math.asin(v / 100000000) * 180 / Math.PI),
+      (v) => Math.round(Math.cos((Number(v) || 0) * Math.PI / 180) * 100000000),
+      (v) => Math.round(Math.acos(Math.min(1, Math.max(-1, v / 100000000))) * 180 / Math.PI),
     ), // 运输机最远路程（度）-> 20-180
     tripRangeOfShips: fun(322, (v) => v * 24000, (v) => v / 24000), // 运输船最远路程
     includeOrbitCollector: bool(323), // 是否去轨道采集器取货
@@ -442,8 +431,4 @@ export {
   getParamCodec,
   int32ArrayToBase64,
   base64ToInt32Array,
-  SLOT_DIR_NAMES,
-  LOGISTIC_ROLE_NAMES,
-  LOCK_AMOUNT_NAMES,
-  STORAGE_TYPE_NAMES,
 };

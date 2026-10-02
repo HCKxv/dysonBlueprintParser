@@ -9,6 +9,7 @@
  *   - 细线 = 每一格的边界（0.36°）
  *   - 粗线 = 每 5 格 / 每 5 行（1.8°）—— 1.8° 正好是游戏里的一个「网格单位」，
  *     也就是纬度档的跨度，赤道一圈 200 条，看起来就是一张规整的经纬网
+ *   - 赤道线 = 纬度 0° 的那条纬线（本来只是粗线之一），单独成档 —— 三档是子集关系，叠起来更亮
  * 细线太密（默认视角下每格只有 1-2 像素），只在凑近看时才显示，阈值见 PLANET_FINE_GRID_MAX_DISTANCE。
  *
  * 平面展开图沿用戴森球那张的约定: 列 = 格序号（经度 0° 在左右两边、180° 在正中），
@@ -25,11 +26,8 @@ const MAJOR_STEP = 5;
 /** 平面展开图基准宽度: 赤道行 1000 格 → 2 像素 / 格，500 行 → 2 像素 / 行 */
 export const PLANET_FLAT_MAP_WIDTH = 2000;
 
-/**
- * 显示细网格的最大相机距离（球半径为 1）:
- * 0.36° 的格子在这个距离上大约 3 像素宽，再远就挤成一片糊，不如不画
- */
-export const PLANET_FINE_GRID_MAX_DISTANCE = 2.2;
+/** 显示细网格的最大相机距离 */
+export const PLANET_FINE_GRID_MAX_DISTANCE = 3.0;
 
 /**
  * 这一行的**下边界**离赤道有几行: 北半球 0、1、2…，南半球 -1、-2…
@@ -66,8 +64,9 @@ const GRID_LINE_LON_STEP = 2;
  * （戴森球经纬线网格同样做了这层细分）。
  *
  * @param {object} grid createPlanetGrid() 的返回值
- * @returns {{positions:Float32Array, lineIndices:Uint32Array, lineIndicesMajor:Uint32Array}}
- *   positions 单位球面顶点，lineIndices 全部格子边界，lineIndicesMajor 粗线（前者的子集）
+ * @returns {{positions:Float32Array, lineIndices:Uint32Array, lineIndicesMajor:Uint32Array,
+ *   lineIndicesEquator:Uint32Array}}
+ *   positions 单位球面顶点，lineIndices 全部格子边界，lineIndicesMajor 粗线、lineIndicesEquator 赤道线（子集）
  */
 export function buildPlanetGridLines(grid) {
   const rows = grid.rows;
@@ -79,6 +78,7 @@ export function buildPlanetGridLines(grid) {
   const positions = new Float32Array(vertexTotal * 3);
   const lineIndices = [];
   const lineIndicesMajor = [];
+  const lineIndicesEquator = [];
   let v = 0;
 
   for (let r = 0; r < rows.length; r += 1) {
@@ -120,16 +120,21 @@ export function buildPlanetGridLines(grid) {
 
     // 纬线: 这一行的下边界（极点那圈退化成一个点），整条边界一起粗或一起细
     if (Math.abs(row.latLo) < 90) {
-      const major = boundaryRowOf(row) % MAJOR_STEP === 0;
+      const boundaryRow = boundaryRowOf(row);
+      const major = boundaryRow % MAJOR_STEP === 0;
+      const equator = boundaryRow === 0;         // 赤道只有北半球第 0 行的下边界那一条
       for (let a = bottom; a < bottom + rowLen - 1; a += 1) {
         lineIndices.push(a, a + 1);
         if (major) lineIndicesMajor.push(a, a + 1);
+        if (equator) lineIndicesEquator.push(a, a + 1);
       }
     }
 
     // 经线: 每个格边界一条（取该格的第一个细分点），每 5 格一条粗线
     // （格号 = 边界离本初子午线几格，东西两半圈对称）
-    for (let i = 0; i <= cells; i += 1) {
+    // 只画到 cells - 1: 第 cells 条边界是 +180°，与 i = 0 的 -180° 是同一条经线，
+    // 画两遍会叠成一条比别的更亮（看着更粗）的线
+    for (let i = 0; i < cells; i += 1) {
       const a = bottom + i * nLon;
       const b = top + i * nLon;
       lineIndices.push(a, b);
@@ -141,6 +146,7 @@ export function buildPlanetGridLines(grid) {
     positions,
     lineIndices: Uint32Array.from(lineIndices),
     lineIndicesMajor: Uint32Array.from(lineIndicesMajor),
+    lineIndicesEquator: Uint32Array.from(lineIndicesEquator),
   };
 }
 

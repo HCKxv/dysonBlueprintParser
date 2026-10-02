@@ -5,6 +5,7 @@ dist-ssr/
 node_modules/
 *.local
 .npm-cache/
+.pnpm-store/
 dev-dist/
 
 logs/

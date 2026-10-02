@@ -1,26 +1,31 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ICON_CATEGORIES, filterIcons } from '../../lib/markup/iconCatalog'
-import type { IconEntry, IconRef } from '../../lib/markup/iconCatalog'
+import type { IconCategories, IconRef } from '../../lib/markup/itemIcons'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
 
 /**
- * 图标选择器: 贴在触发它的输入框（或缩略图图标位）旁边
+ * 图标选择浮层: 只负责「列出当前分类的图标、交出一个选中项」
  *
- * 只管"列出图标、交出一个选中项"：算不算清除、要不要继续插，都是调用方的事。
+ * 列出哪些分类、每类里有哪些图标、选完怎么用，都是调用方的事；
  */
 const props = defineProps<{
   open: boolean
-  /** 当前这一位上的图标 id（0 = 空） */
-  current: number
-  /** 是否显示「固定」（缩略图图标位用不上：那里一直是选完就关） */
+  /** 分类名 → 图标 */
+  categories: IconCategories
+  /** 默认分类名；没给（或给的名字不在 categories 里）就用第一个分类 */
+  defaultCategory?: string
+  /** 当前这一位上的图标 id（0 = 空），用来高亮 */
+  current?: number
+  /** 标题 */
+  title?: string
+  /** 是否显示「固定」 */
   showPin?: boolean
-  /** 贴着哪个元素显示（输入框 / 缩略图图标位） */
+  /** 贴着哪个元素显示（输入框 / 缩略图图标位 / 按钮） */
   anchor?: HTMLElement | null
 }>()
 
 const emit = defineEmits<{
-  /** 选中一个图标: 交出去的是 `{ id, name, markup }`，markup 没有标记时是空串 */
+  /** 选中一个图标 */
   (e: 'select', icon: IconRef): void
   (e: 'close'): void
 }>()
@@ -28,16 +33,23 @@ const box = ref<HTMLElement | null>(null)
 /** 浮层位置（fixed 定位，视口坐标）与宽度（按可用空间收窄） */
 const pos = ref<Record<string, string>>({ left: '0px', top: '0px', width: '520px', visibility: 'hidden' })
 
-/** 只列真实分类（库里 ICON_CATEGORIES 那个「全部」选择器上用不到） */
-const categories = ICON_CATEGORIES.filter((cat) => cat.id !== 'all')
-/** 首次打开默认选中的分类 */
-const DEFAULT_CATEGORY = 'item'
-/** 当前分类: 和「固定」一样带记忆，下次打开还是上次那个 */
-const category = ref(DEFAULT_CATEGORY)
-/** 固定住: 选完不关，可以连着插好几个；默认就钉住 */
+/** 分类名清单 */
+const categoryNames = computed(() => Object.keys(props.categories))
+/** 当前分类 */
+const category = ref(props.defaultCategory ?? '')
+/** 真正生效的分类 */
+const activeCategory = computed(() =>
+  categoryNames.value.includes(category.value) ? category.value : (categoryNames.value[0] ?? ''))
+/** 当前分类的图标 */
+const items = computed(() => props.categories[activeCategory.value] ?? [])
+
+// 分类换了就退回默认分类；
+watch(() => props.categories, () => { category.value = props.defaultCategory ?? '' })
+
+/** 钉住 = 选完不关 */
 const pinned = ref(true)
 /** 选完是否留着不关 */
-const keepOpen = computed(() => props.showPin !== false && pinned.value)
+const keepOpen = computed(() => props.showPin === true && pinned.value)
 
 /** 贴着锚点摆位置: 水平优先弹在面板外侧，两边都塞不下就按可用空间收窄；竖直跟着字段走，底边放不下就上移 */
 async function place() {
@@ -111,7 +123,7 @@ function bind(open: boolean) {
   }
 }
 
-// 每次打开量一次真实尺寸再定位（「固定」和「分类」都不重置: 一个刻意留着开关状态，一个带记忆）
+// 每次打开量一次真实尺寸再定位（「固定」留着开关状态，不重置）
 watch(() => props.open, async (open) => {
   bind(open)
   if (!open) return
@@ -122,11 +134,9 @@ watch(() => props.open, async (open) => {
 
 onBeforeUnmount(() => bind(false))
 
-const list = computed(() => filterIcons(category.value))
-
-function pick(entry: IconEntry) {
-  // 三样身份一起交出去: id 给缩略图槽位，markup 给富文本字段直接插
-  emit('select', { id: entry.id, name: entry.name, markup: entry.markup })
+function pick(item: IconRef) {
+  // 返回选择的项
+  emit('select', item)
   // 默认选一个就关；钉住时留着继续插
   if (!keepOpen.value) emit('close')
 }
@@ -139,10 +149,10 @@ function pick(entry: IconEntry) {
       <div ref="box" class="icon-popover" :style="pos" @mousedown.prevent.stop>
         <div class="icon-popover-head">
           <div class="icon-popover-head-left">
-            <span>选择图标</span>
+            <span>{{ title || '选择图标' }}</span>
             <!-- 高亮 = 钉住 -->
             <button
-              v-if="showPin !== false"
+              v-if="showPin === true"
               class="icon-pin"
               :class="{ active: pinned }"
               type="button"
@@ -163,31 +173,32 @@ function pick(entry: IconEntry) {
         </div>
 
         <div class="icon-picker">
-          <div class="icon-picker-cats">
+          <!-- 只有一个分类不显示分类按钮 -->
+          <div v-if="categoryNames.length > 1" class="icon-picker-cats">
             <button
-              v-for="cat in categories"
-              :key="cat.id"
+              v-for="name in categoryNames"
+              :key="name"
               type="button"
               class="btn-sm icon-picker-cat"
-              :class="{ active: category === cat.id }"
-              @click="category = cat.id"
-            >{{ cat.label }}</button>
+              :class="{ active: activeCategory === name }"
+              @click="category = name"
+            >{{ name }}</button>
           </div>
 
-          <div v-if="list.length" class="icon-picker-grid">
+          <div v-if="items.length" class="icon-picker-grid">
             <button
-              v-for="entry in list"
-              :key="entry.id"
+              v-for="item in items"
+              :key="item.id"
               type="button"
               class="icon-picker-item"
-              :class="{ active: entry.id === current }"
-              :title="entry.markup ? `${entry.name}（${entry.markup}）` : entry.name"
-              @click="pick(entry)"
+              :class="{ active: current !== undefined && item.id === current }"
+              :title="item.markup ? `${item.name}（${item.markup}）` : item.name"
+              @click="pick(item)"
             >
-              <img class="factory-icon" :src="itemIconUrl(entry.id)" :alt="entry.name" />
+              <img class="factory-icon" :src="itemIconUrl(item.id)" :alt="item.name" />
             </button>
           </div>
-          <div v-else class="icon-picker-empty">这个分类下没有图标</div>
+          <div v-else class="icon-picker-empty">这里没有可选的图标</div>
         </div>
       </div>
     </div>

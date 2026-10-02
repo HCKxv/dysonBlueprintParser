@@ -29,10 +29,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,svg,json}'],
+        globPatterns: ['**/*.{js,css,html,ico,svg,json,png}'],
       },
       // 开发服务器不启用 PWA
-      // 需要单独调试 dev 下的 SW 时，把 enabled 临时改回 true
       devOptions: {
         enabled: false,
       },

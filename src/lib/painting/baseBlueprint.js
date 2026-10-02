@@ -1,6 +1,7 @@
 import base60 from './base60.json' with { type: 'json' }
 import base92 from './base92.json' with { type: 'json' }
 import { stringifyBlueprint } from '../blueprint/sphere/sphereEncoder.js'
+import { cloneData } from '../blueprint/clonePlain.js'
 
 /** 单个基底的结构统计 */
 function infoOf(blueprint) {
@@ -51,7 +52,8 @@ export function makeBaseFromBlueprint(bp) {
 export async function buildPaintedBlueprint(fillGrid, base = base60) {
   if (!fillGrid || !Array.isArray(fillGrid.colors)) throw new Error('没有可导出的彩绘数据')
   if (!base?.singleShell) throw new Error('基底蓝图无效')
-  const bp = structuredClone(base)
+  // 基底可能来自界面（响应式代理），普通 structuredClone 会抛 DataCloneError
+  const bp = cloneData(base)
   bp.singleShell.fillGrid = { gridType: 0, colors: fillGrid.colors }
   return stringifyBlueprint(bp)
 }

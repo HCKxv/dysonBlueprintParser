@@ -1756,6 +1756,692 @@ textarea::-webkit-scrollbar-thumb:hover,
   flex-shrink: 0;
 }
 
+/* 还原修改 */
+.factory-revert {
+  margin-right: auto;
+}
+
+/* 信息 / 详情 切换滑块: 沿用顶栏那一套 .tool-slider，只改成本栏自己的位置与尺寸 */
+.factory-view-switch {
+  /* 两列等宽，50% 宽的滑块才正好对上第二格 */
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  margin-left: auto; /* 靠工具栏右侧 */
+}
+
+.factory-view-switch .tool-slider-btn {
+  justify-content: center;
+  padding: 3px 12px;
+  font-size: 12px;
+  gap: 0;
+}
+
+/* 详情: 选中的那栋建筑 */
+.factory-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 0;
+}
+
+/* 一行: 第一行是建筑本身 */
+.factory-selection-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.factory-selection-index {
+  font-size: 14px;
+  font-weight: bold;
+  color: #6ea8ff;
+}
+
+/* 图标 + 名字 */
+.factory-selection-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.factory-selection-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.factory-selection-name {
+  font-size: 18px;
+  color: #e7ebff;
+}
+
+/* 蓝图坐标（建筑相对参考点）: 贴行尾；数字等宽，换建筑时不左右抖 */
+.factory-selection-coord {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #8fa3c8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 研究站: 相连栋数「×N」；坐标靠右，它排在坐标左边 */
+.factory-selection-group {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #6f8ec0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 研究站的模式下拉（研究站那行；与 .factory-selection-value 同一副配色） */
+.factory-selection-select {
+  min-width: 0;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #cfe0ff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.factory-selection-select:hover {
+  border-color: #4364eb;
+}
+
+/* 配方 / 模式 / 增产模式这几行（外层 .factory-selection 已经纵向排列，这里只是分组） */
+.factory-selection-params {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* 配方 / 模式 / 增产模式: 标签定宽，几行的值左对齐成一列 */
+.factory-selection-param {
+  gap: 8px;
+  font-size: 14px;
+}
+
+.factory-selection-label {
+  /* 最长的标签是「增产模式」= 4 个字 × 14px，别再被字体度量顶到换行 */
+  min-width: 56px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: #8fa3c8;
+}
+
+.factory-selection-value {
+  min-width: 0;
+  color: #cfe0ff;
+  word-break: break-all;
+}
+
+/* 分拣器的筛选物品: 点图标选（跟运输站物品栏那个大图标同一副长相，只是小一号） */
+.factory-inserter-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-inserter-filter:hover {
+  border-color: #4364eb;
+}
+
+.factory-inserter-filter .factory-icon {
+  width: 80%;
+  height: 80%;
+}
+
+.factory-inserter-empty {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 传送带的图标标签: 图标格 + 右边的数字（同一个图标格的长相） */
+.factory-belt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-belt-icon:hover {
+  border-color: #4364eb;
+}
+
+.factory-belt-icon .factory-icon {
+  width: 80%;
+  height: 80%;
+}
+
+.factory-belt-empty {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 标签数字 */
+.factory-belt-count {
+  width: 92px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #cfe0ff;
+  font-family: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.factory-belt-count:focus {
+  outline: none;
+  border-color: #4364eb;
+}
+
+/* 配方那行的值: 图标 + 配方名 */
+.factory-selection-recipe {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* 改配方按钮: 跟在值后面，不贴行尾 */
+.factory-selection-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #9fb0d0;
+  cursor: pointer;
+}
+
+.factory-selection-btn:hover {
+  border-color: #4364eb;
+  color: #eef2ff;
+}
+
+.factory-selection-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 增产模式那行: 标签 + 挡位名 + 开关；开关尺寸从这两个数推（钮 = 高 − 2×内边距） */
+.factory-selection-accel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --accel-h: 15px;
+  --accel-pad: 2px;
+}
+
+/* 开关: 胶囊 + 圆钮（钮在左 = 0 额外产出，在右 = 1 生产加速）。
+   两挡颜色只在 --accel-color 上声明一次，轨道与挡位名都用它，所以文字与开关必然同色 */
+.factory-selection-switch {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.factory-selection-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: var(--accel-h);
+  border-radius: calc(var(--accel-h) / 2);
+  background: var(--accel-color, #5fd3f2);
+  transition: background 0.15s ease;
+}
+
+/* 挡位名: 与轨道同色 */
+.factory-selection-slider-name {
+  min-width: 0;
+  color: var(--accel-color, #5fd3f2);
+  white-space: nowrap;
+}
+
+/* ── 物流运输站面板（FactoryStation / FactorySelect） ── */
+/* 整块面板: 物品栏 → 自动补充 → 参数区，三段竖排 */
+.factory-station {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 滑块（参数区与物品栏共用轨道的画法）: 已填充部分用蓝色，--factory-range-fill 由组件按比例给出 */
+.factory-station-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 40px;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #4364eb 0%,
+    #4364eb var(--factory-range-fill, 0%),
+    #22304a var(--factory-range-fill, 0%),
+    #22304a 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.factory-station-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #e7ebff;
+  border: 2px solid #4364eb;
+}
+
+.factory-station-range::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e7ebff;
+  border: 2px solid #4364eb;
+}
+
+/* 「使用科技上限」勾上时: 滑块停在上限位置并置灰 */
+.factory-station-range:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* 参数区: 四列 —— 标签 | 滑块 | 数值 | 勾选。标签与数值定宽、勾选按内容，
+   只有滑块那列弹性（想要 124、下限 100），所以每行滑块一样长、数值右边缘也齐平 */
+.factory-station-params {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #22304a;   /* 与上面「物品栏 + 自动补充」那一段的分隔线 */
+}
+
+.factory-station-row {
+  display: grid;
+  grid-template-columns: 104px minmax(100px, 124px) 62px 96px;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* 标签: 104px 刚好放得下最长的「输出货物集装数量」 */
+.factory-station-label {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #bcc8e0;
+  white-space: nowrap;
+}
+
+/* 数值: 第 3 列定宽（「10000 ly」也放得下），右对齐 */
+.factory-station-value {
+  grid-column: 3;
+  justify-self: end;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #cfe0ff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 行内勾选（轨道采集器 / 翘曲器必备 / 使用科技上限） */
+.factory-station-check {
+  grid-column: 4;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #bcc8e0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 开关行用原生 checkbox（与预览面板的「显示网格线」一致），整行给个手型 */
+.factory-station-row:has(input[type='checkbox']) {
+  cursor: pointer;
+}
+
+/* 自动补充: 物品栏自己的两个开关，并排一行（算在分隔线之上那一段） */
+.factory-station-autofill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+/* ── 物品栏（storage）: 一栏三格 —— 图标 | 上限盒 | 供需盒 ── */
+.factory-station-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* --storage-line-h 是「一行控件的高度」，上限盒与供需盒里的控件都取它，保证等高 */
+.factory-storage-row {
+  --storage-line-h: 22px;
+  display: grid;
+  grid-template-columns: 47px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #141d2e;
+}
+
+/* 大图标: 47×47 正方形，点开物品选择器 */
+.factory-storage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  justify-self: start;
+  width: 47px;
+  height: 47px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-storage-icon:hover {
+  border-color: #4364eb;
+}
+
+.factory-storage-icon .factory-icon {
+  width: 80%;
+  height: 80%;
+}
+
+.factory-storage-empty {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* 上限盒: 内部两行 —— 上面 [输入框 + 锁定] 左右对齐，下面滑块占满盒宽 */
+.factory-storage-value-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.factory-storage-value-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  height: var(--storage-line-h);
+}
+
+/* 上限输入框: 吸附到 100 的倍数，范围随站型（行星内 10000 / 星际 20000） */
+.factory-storage-value {
+  width: 76px;
+  height: var(--storage-line-h, 22px);
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #cfe0ff;
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.factory-storage-value:focus {
+  outline: none;
+  border-color: #4364eb;
+}
+
+/* 锁定: 点一下换下一种（不锁定 → 满仓 → 半仓 → 空仓） */
+.factory-storage-lock {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid #2d4a6e;
+  background: #1a2438;
+  color: #9fb0d0;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.factory-storage-lock:hover {
+  border-color: #4364eb;
+  color: #eef2ff;
+}
+
+/* 上限滑块: 高度与输入框一样，细轨画在中间（多出来的高度只是可点区域） */
+.factory-storage-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  height: var(--storage-line-h, 22px);
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.factory-storage-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #4364eb 0%,
+    #4364eb var(--factory-range-fill, 0%),
+    #22304a var(--factory-range-fill, 0%),
+    #22304a 100%
+  );
+}
+
+.factory-storage-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #22304a;
+}
+
+.factory-storage-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: #4364eb;
+}
+
+/* 圆钮竖直居中: 轨 4px、钮 11px → 上移 (11 − 4) / 2 */
+.factory-storage-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: #e7ebff;
+  border: 2px solid #4364eb;
+}
+
+.factory-storage-range::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e7ebff;
+  border: 2px solid #4364eb;
+}
+
+/* 供需盒: 内部竖排、竖直居中（行星内站只有「本地」，于是落在这一栏正中） */
+.factory-storage-roles {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* 两个下拉的落位: 本地在上、星际在下（组件 class 落到 FactorySelect 的根 span 上） */
+.factory-storage-role-local {
+  grid-row: 1;
+}
+
+.factory-storage-role-remote {
+  grid-row: 2;
+}
+
+/* 自绘下拉（原生 select 的选项不能自由上色） */
+.factory-select {
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* 触发器: 高度跟输入框一样，框线与文字都用当前角色的颜色（--role-color 由组件内联给出） */
+.factory-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--storage-line-h, 22px);
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--role-color, #2d4a6e);
+  background-color: #1a2438;
+  color: var(--role-color, #9fb0d0);
+  font-family: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.factory-select-trigger:hover {
+  border-color: #4364eb;
+}
+
+/* 展开的列表: fixed 定位贴在触发器旁边，不会被面板裁掉 */
+.factory-select-pop {
+  position: fixed;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid #2d4a6e;
+  background: #141d2e;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.factory-select-option {
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--role-color, #9fb0d0);
+  font-family: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+}
+
+.factory-select-option:hover {
+  background: #1f2b42;
+}
+
+/* 当前选中项: 底色铺成角色色，文字压深（底色与文字色分开管，否则字会被自己的底色盖掉） */
+.factory-select-option.active {
+  background: var(--role-color, #9fb0d0);
+  color: #101827;
+}
+
+/* ── 物流运输站面板 结束 ── */
+
+/* 生产加速那挡: 换一个变量，轨道与文字一起换色 */
+.factory-selection-accel[data-mode='1'] {
+  --accel-color: #ef9a5a;
+}
+
+.factory-selection-switch-knob {
+  position: absolute;
+  top: var(--accel-pad);
+  left: var(--accel-pad);
+  width: calc(var(--accel-h) - var(--accel-pad) * 2);
+  height: calc(var(--accel-h) - var(--accel-pad) * 2);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+/* 钮在左内边；右挡时滑到右内边（30 − 钮 11 − 两侧内边距 4 = 15） */
+.factory-selection-accel[data-mode='1'] .factory-selection-switch-knob {
+  transform: translateX(15px);
+}
+
+/* 编辑区: 保存按钮 */
+.factory-selection-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.factory-selection-save {
+  background: #4364eb;
+  border: 1px solid #4364eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+.factory-selection-save:disabled {
+  background: #1a2438;
+  border-color: #2d4a6e;
+  color: #6b7a95;
+  cursor: default;
+}
+
+.factory-selection-empty {
+  padding: 8px 2px;
+  font-size: 14px;
+  color: #8fa3c4;
+}
+
 .factory-scroll {
   display: flex;
   flex-direction: column;
@@ -2060,11 +2746,11 @@ textarea::-webkit-scrollbar-thumb:hover,
 }
 
 /* 缩略图: 游戏里的蓝图坐标纸 + 按 EIconLayout 摆的图标
-   保持底图比例（198×218），上下自动边距 → 多余空间平分到上下、垂直居中 */
+   保持底图比例（10:11），上下自动边距 → 多余空间平分到上下、垂直居中 */
 .factory-thumb {
   position: relative;
-  /* 底图是游戏贴图（198×218） */
-  aspect-ratio: 198 / 218;
+  /* 底图比例 */
+  aspect-ratio: 10 / 11;
   margin-block: auto;
   /* 文字按缩略图宽度缩放（见下面 cqw） */
   container-type: inline-size;
@@ -2074,7 +2760,7 @@ textarea::-webkit-scrollbar-thumb:hover,
   background-size: 100% 100%;
 }
 
-/* 图标区: 底图顶部那块 198×198 正方形 */
+/* 图标区: 底图顶部那块正方形（卡片 800×880 → 正方形就是 800×800，占卡片高的 10/11） */
 .factory-thumb-area {
   position: absolute;
   left: 0;
@@ -2444,29 +3130,153 @@ textarea::-webkit-scrollbar-thumb:hover,
   margin-left: auto;
 }
 
-/* ── 预览栏（3D 预览暂缓，先放占位） ── */
+/* ── 预览栏 ── */
+.factory-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 3D 舞台: 画布铺满，尺寸由 CSS 定，渲染器跟着它走（ResizeObserver） */
 .factory-preview-stage {
+  position: relative;
   flex: 1;
   min-height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border-radius: 16px;
-  border: 1px dashed #243556;
+  overflow: hidden;
+  border: 1px solid #1b2740;
   background: #05080e;
 }
 
-.factory-preview-empty {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  text-align: center;
+.factory-preview-stage canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* 压掉左键拖动时的文本选择 / 原生拖拽 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.factory-preview-empty-title {
-  font-size: 15px;
-  font-weight: bold;
-  color: #e7ebff;
+/* 操作提示: 画布左下角。
+   pointer-events: none 让它彻底透传，左键拖动不会点在提示上；单行超出即省略 */
+.factory-preview-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  padding: 2px 0;
+  color: #bcc8e0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 复位视角: 舞台右下角 */
+.factory-preview-tools {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+/* 显示层开关（建筑 / 传送带 / 分拣器）: 状态行里的一排，靠右 */
+.factory-preview-layers {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;   /* 推到状态行最右，与「目标纬度」同一行 */
+}
+
+/* 三个按钮等宽（文字都居中，不写死宽度） */
+.factory-layer-btn {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 亮着 = 该层显示（与状态栏的勾选框语义一致）: 关掉时退回 btn-ghost 的暗底色 */
+.factory-layer-btn.active,
+.factory-layer-btn.active:hover {
+  background: #24405f;
+  border-color: #3d6f9e;
+  color: #eef2ff;
+}
+
+/* 状态行: 状态标签 + 网格线开关 + 目标纬度 + 显示层开关（末尾那个靠右） */
+.factory-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.factory-preview-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid #22304a;
+  font-size: 12px;
+  color: #bcc8e0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 目标纬度下拉: 跟状态栏同一套深色描边 */
+.factory-preview-select {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #111926;
+  border: 1px solid #1e3657;
+  color: #bcc8e0;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.factory-preview-select:focus {
+  outline: none;
+  border-color: #2f6bb5;
+}
+
+/* 目标纬度的数字输入框 */
+.factory-preview-lat {
+  width: 44px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #111926;
+  border: 1px solid #1e3657;
+  color: #bcc8e0;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: right;
+}
+
+.factory-preview-lat:focus {
+  outline: none;
+  border-color: #2f6bb5;
+}
+
+/* 数字输入框的上下箭头在这么窄的框里太挤，去掉 */
+.factory-preview-lat::-webkit-outer-spin-button,
+.factory-preview-lat::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.factory-preview-unit {
+  margin-left: -2px;
+  color: #8a97ae;
 }
 
 /* ── 打开蓝图弹窗 ── */
