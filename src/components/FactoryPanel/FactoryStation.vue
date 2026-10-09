@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
- * 物流运输站的参数编辑（行星内 2103 / 星际 2104）
+ * 物流运输站 / 大型采矿机的参数编辑（行星内 2103 / 星际 2104 / 大型采矿机 2316）
  *
  * 行星内只有运输机那几项，星际多出运输船最远路程 / 起送量、轨道采集器、曲速启用路程、翘曲器必备。
+ * 大型采矿机只有开采速度与输出货物集装数量。
  * 滑杆上的值一律是「界面单位」，写回参数时由 codec 换算成原始 int32。
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
 import type { IconCategories, IconRef } from '../../lib/markup/itemIcons'
-import { LOGISTIC_ROLE_NAMES, LOCK_AMOUNT_NAMES, itemName } from '../../lib/blueprint/factory/factoryItems.js'
+import {
+  LOGISTIC_ROLE_COLORS as ROLE_COLORS, LOGISTIC_ROLE_NAMES, LOCK_AMOUNT_NAMES, itemName,
+} from '../../lib/blueprint/factory/factoryItems.js'
 import IconPickerModal from './IconPickerModal.vue'
 import FactorySelect from './FactorySelect.vue'
 
@@ -39,15 +42,19 @@ const SHIP_LY_MAX = 60
 const SHIP_LY_SLIDER_MAX = SHIP_LY_MAX + 1
 const NO_LIMIT_LY = 10000
 
+/** 开采速度: 界面单位是百分比（100%~300%），参数里存百分比 ×100（默认 10000 = 100%），滑杆 10% 一档 */
+const MINING_SPEED_MIN = 100
+const MINING_SPEED_MAX = 300
+const MINING_SPEED_STEP = 10
+
 /** 锁定循环: 不锁定 → 满仓 → 半仓 → 空仓 → 回到不锁定 */
 const LOCK_CYCLE = [0, 1, 2, 3]
 const nextLock = (lock: number) => LOCK_CYCLE[(LOCK_CYCLE.indexOf(Number(lock)) + 1) % LOCK_CYCLE.length]
 
-/** 供需三档的配色（仓储灰 / 供应青 / 需求橙） */
-const ROLE_COLORS: Record<number, string> = { 0: '#9fb0d0', 1: '#5fd3f2', 2: '#ef9a5a' }
-
 /** 这栋是哪一种（星际站才有星际供需，上限也更大） */
 const isStellar = computed(() => Number(props.itemId) === 2104)
+/** 大型采矿机: 物品栏按本地塔显示，参数只剩开采速度与集装数量 */
+const isMiner = computed(() => Number(props.itemId) === 2316)
 /** 每栏上限的最大值 */
 const itemMax = computed(() => (isStellar.value ? MAX_ITEM_AMOUNT : PLANET_ITEM_MAX))
 /** 集装数量勾了「使用科技上限」（参数里 pilerCount = 0）*/
@@ -79,6 +86,13 @@ const SCALES: Record<string, { toUi: Scale, toRaw: Scale, unit: string, noLimit?
   },
   warpAu: { toUi: (au) => au, toRaw: (ui) => ui, unit: 'AU' },
   percent: { toUi: (p) => p, toRaw: (ui) => ui, unit: '%' },
+  // 大型采矿机开采速度: 参数里存百分比 ×100（10000 = 100%），界面显示百分比；
+  // 参数里没写（0）时游戏按默认 100% 处理，这里也显示 100%
+  miningSpeed: {
+    toUi: (raw) => (raw > 0 ? raw / 100 : MINING_SPEED_MIN),
+    toRaw: (ui) => Math.round(ui * 100),
+    unit: '%',
+  },
 }
 
 /** 行内勾选: 写回自己的字段（source 用于「使用科技上限」这种跟着滑块走的） */
@@ -107,9 +121,15 @@ type Field = {
   check?: RowCheck
 }
 
-// 行序: 充能功率 → 运输机路程 → 运输船路程(+轨道采集器) → 曲速启用路程(+翘曲器必备)
+/** 输出货物集装数量: 1~4 是指定数量；「使用科技上限」（参数里存 0）由那个勾选管。 */
+const PILER_FIELD: Field = {
+  key: 'pilerCount', label: '输出货物集装数量', min: 1, max: 4, step: 1,
+  check: { key: 'pilerCount', label: '使用科技上限', on: 0, off: 4, source: 'pilerCount' },
+}
+
+// 运输站行序: 充能功率 → 运输机路程 → 运输船路程(+轨道采集器) → 曲速启用路程(+翘曲器必备)
 // → 两种起送量 → 集装数量(+使用科技上限)
-const FIELDS: Field[] = [
+const STATION_FIELDS: Field[] = [
   {
     // 行星内 12 MW 的原型 → 6~60；星际 60 MW 的原型 → 30~300
     key: 'workEnergyPerTick', label: '最大充能功率',
@@ -127,21 +147,30 @@ const FIELDS: Field[] = [
   },
   { key: 'deliveryAmountOfDrones', label: '运输机起送量', min: 1, max: 100, step: 1, scale: 'percent' },
   { key: 'deliveryAmountOfShips', label: '运输船起送量', min: 1, max: 100, step: 1, scale: 'percent', stellar: true },
-  {
-    // 1~4 是指定数量；「使用科技上限」（参数里存 0）由那个勾选管
-    key: 'pilerCount', label: '输出货物集装数量', min: 1, max: 4, step: 1,
-    check: { key: 'pilerCount', label: '使用科技上限', on: 0, off: 4, source: 'pilerCount' },
-  },
+  PILER_FIELD,
 ]
 
-/** 物品栏自己的两个开关（自动补充），排在物品栏下面一行 */
+// 大型采矿机行序: 开采速度 → 集装数量(+使用科技上限)
+const MINER_FIELDS: Field[] = [
+  {
+    key: 'miningSpeed', label: '开采速度',
+    min: MINING_SPEED_MIN, max: MINING_SPEED_MAX, step: MINING_SPEED_STEP, scale: 'miningSpeed',
+  },
+  PILER_FIELD,
+]
+
+/** 物品栏自己的两个开关（自动补充），排在物品栏下面一行；大型采矿机没有（游戏里那两个开关不显示） */
 const SWITCHES: Field[] = [
   { key: 'droneAutoReplenish', label: '自动补充运输机' },
   { key: 'shipAutoReplenish', label: '自动补充运输船', stellar: true },
 ]
 
-const fields = computed(() => FIELDS.filter((f) => !f.stellar || isStellar.value))
-const switches = computed(() => SWITCHES.filter((f) => !f.stellar || isStellar.value))
+const fields = computed(() => (isMiner.value
+  ? MINER_FIELDS
+  : STATION_FIELDS.filter((f) => !f.stellar || isStellar.value)))
+const switches = computed(() => (isMiner.value
+  ? []
+  : SWITCHES.filter((f) => !f.stellar || isStellar.value)))
 
 /** 这一行的下限 / 上限（星际站取 stellarMin / stellarMax） */
 const fieldMin = (field: Field) => (isStellar.value ? (field.stellarMin ?? field.min ?? 0) : (field.min ?? 0))
@@ -345,7 +374,7 @@ watch(pilerTech, () => {
     </div>
 
     <!-- 自动补充 -->
-    <div class="factory-station-autofill">
+    <div v-if="switches.length" class="factory-station-autofill">
       <label v-for="field in switches" :key="field.key" class="factory-station-check">
         <input
           type="checkbox"

@@ -2,7 +2,7 @@
 /** 详情: 预览里点中的那栋建筑 */
 import { computed, reactive, watch } from 'vue'
 import { editBuilding, editLabGroup, linkedLabBuildings, selectedBuilding } from '../../stores/factory'
-import { isAssembler, isBelt, isInserter, isLab, itemName } from '../../lib/blueprint/factory/factoryItems.js'
+import { isAssembler, isBelt, isInserter, isLab, isStation, itemName } from '../../lib/blueprint/factory/factoryItems.js'
 import { cloneData } from '../../lib/blueprint/clonePlain.js'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
 import type { IconCategories } from '../../lib/markup/itemIcons'
@@ -142,9 +142,9 @@ watch(selectedBuilding, resetStaged)
       @update:filter-id="(v) => (staged.filterId = v)"
     />
 
-    <!-- 物流运输站（2103 行星内 / 2104 星际） -->
+    <!-- 物流运输站类（2103 行星内 / 2104 星际 / 2316 大型采矿机） -->
     <FactoryStation
-      v-if="[2103, 2104].includes(Number(selectedBuilding.itemId))"
+      v-if="isStation(selectedBuilding.itemId)"
       :key="selectedBuilding.index"
       :item-id="Number(selectedBuilding.itemId)"
       :parameters="parameters"

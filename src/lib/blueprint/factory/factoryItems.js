@@ -66,6 +66,8 @@ function itemName(itemId) {
 const SLOT_DIR_NAMES = { 0: '未接入', 1: '输出', 2: '输入' };
 // 物流供需配置
 const LOGISTIC_ROLE_NAMES = { 0: '仓储', 1: '供应', 2: '需求' };
+// 供需三档的配色（仓储灰 / 供应青 / 需求橙）
+const LOGISTIC_ROLE_COLORS = { 0: '#9fb0d0', 1: '#5fd3f2', 2: '#ef9a5a' };
 // 物品上限锁定
 const LOCK_AMOUNT_NAMES = { 0: '不锁定', 1: '锁定满仓', 2: '锁定半仓', 3: '锁定空仓' };
 // 储物仓类型
@@ -103,6 +105,7 @@ export {
   itemName,
   SLOT_DIR_NAMES,
   LOGISTIC_ROLE_NAMES,
+  LOGISTIC_ROLE_COLORS,
   LOCK_AMOUNT_NAMES,
   STORAGE_TYPE_NAMES,
   RESEARCH_MODE_NAMES,

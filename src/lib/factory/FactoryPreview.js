@@ -31,7 +31,7 @@ import {
   surfaceDirection,
 } from './planetFrames.js';
 import { CameraRig, CAMERA_FOV_DEG } from './cameraRig.js';
-import { isAssembler, isBelt, isInserter, isLab } from '../blueprint/factory/factoryItems.js';
+import { isAssembler, isBelt, isInserter, isLab, LOGISTIC_ROLE_COLORS } from '../blueprint/factory/factoryItems.js';
 import { layoutBlueprint } from './blueprintLayout.js';
 import { createStarfield, disposeStarfield, STARFIELD_BG_COLOR } from '../preview/starfield.js';
 import {
@@ -312,18 +312,11 @@ function iconCountTexture(image, count) {
 }
 
 /**
- * 配方图标右下角的**建筑角标**: 大小 = 图标的 ICON_BADGE_SCALE，贴在图标右下角内侧。
- */
-const ICON_BADGE_SCALE = 1 / 2;
-
-/**
- * 图标 + 右下角建筑角标合成一张纹理（角标贴右下角，不出界）。
- *
- * @param {CanvasImageSource} iconImage 已加载好的图标图片（80×80）
- * @param {CanvasImageSource} badgeImage 建筑图标图片（同样尺寸）
+ * 图标 + 右下角建筑角标合成一张纹理（角标 = 图标的一半大，贴右下角内侧）
  */
 function iconBadgeTexture(iconImage, badgeImage) {
-  const badge = ICON_TEXTURE_SIZE * ICON_BADGE_SCALE;
+  const BADGE_SCALE = 1 / 2;
+  const badge = ICON_TEXTURE_SIZE * BADGE_SCALE;
   const canvas = document.createElement('canvas');
   canvas.width = ICON_TEXTURE_SIZE;
   canvas.height = ICON_TEXTURE_SIZE;
@@ -338,10 +331,154 @@ function iconBadgeTexture(iconImage, badgeImage) {
   return texture;
 }
 
-/** 角标的键（图标变体键的一半，见 _addIcons）: '' = 没角标 / `count:N` 数字 / `icon:ID` 图标 —— 类型不同不能混（数字 3 ≠ 图标 3） */
-function badgeKey(badge) {
-  if (!badge) return '';
-  return badge.type === 'count' ? `count:${badge.count}` : `icon:${badge.id}`;
+// ─── 物流塔的「塔内」卡片（物品栏） ──────────────────────────────
+/**
+ * 物品栏 → 卡片行（一个栏位一行）: 星际站本地在上、星际在下，行星内站只有本地，空栏位两个都是 null。
+ * 只画 2103 / 2104。
+ *
+ * @returns {Array<{itemId: number, max: number, local: number|null, remote: number|null}>|null} 供需档 0 仓储 / 1 供应 / 2 需求
+ */
+function stationPanelSlots(building) {
+  const STATION_PANEL_IDS = new Set([2103, 2104]);
+  if (!STATION_PANEL_IDS.has(building?.itemId)) return null;
+  const storage = building.parameters?.storage;
+  if (!Array.isArray(storage) || !storage.length) return null;
+  const stellar = Number(building.itemId) === 2104;
+  return storage.map((row) => {
+    const itemId = Number(row?.itemId ?? 0);
+    if (!(itemId > 0)) return { itemId: 0, max: 0, local: null, remote: null };
+    return {
+      itemId,
+      max: Number(row?.max ?? 0),
+      local: Number(row?.localRole ?? 0),
+      remote: stellar ? Number(row?.remoteRole ?? 0) : null,
+    };
+  });
+}
+
+/** 一支水平箭头: 箭尖在 headX、箭尾在 tailX */
+function arrowPath(ctx, headX, tailX, midY, headLength, headHeight, shaftHeight) {
+  const dir = headX <= tailX ? 1 : -1;
+  ctx.beginPath();
+  ctx.moveTo(headX, midY);
+  ctx.lineTo(headX + dir * headLength, midY - headHeight / 2);
+  ctx.lineTo(headX + dir * headLength, midY - shaftHeight / 2);
+  ctx.lineTo(tailX, midY - shaftHeight / 2);
+  ctx.lineTo(tailX, midY + shaftHeight / 2);
+  ctx.lineTo(headX + dir * headLength, midY + shaftHeight / 2);
+  ctx.lineTo(headX + dir * headLength, midY + headHeight / 2);
+  ctx.closePath();
+}
+
+/**
+ * 画一格的供需图标（x = 左边界、midY = 中线、size = 图标框边长）: 行星内站一个（居中），
+ * 星际站本地小一档在上、星际在下，两个左对齐、整组居中（remoteRole = null = 行星内站）。
+ */
+function drawRoleGlyph(ctx, x, midY, size, localRole, remoteRole) {
+  const LOCAL_SCALE = 0.7;        // 「本地」那个小一档
+  const STACK_GAP = 4;            // 两个图标之间的缝
+  const SLOT = 0.72;              // 每个图标的占位高
+  const SPAN_TO = 0.8;           // 图形右缘（仓储长方形右边 / 箭头尖）距本格左缘的距离，按图标框边长算
+  const BOX_HEIGHT = 0.68;        // 仓储长方形的高
+  const BOX_STROKE = 0.07;        // 长方形描边宽
+  const WALL_WIDTH = 0.14;        // 塔壁那条竖条的宽
+  const WALL_GAP = 0.08;          // 塔壁与箭头之间的缝
+
+  /** 画一个（左边界 left、中线 y） */
+  const glyph = (left, y, s, role) => {
+    const color = LOGISTIC_ROLE_COLORS[role] ?? LOGISTIC_ROLE_COLORS[0];
+    const to = left + s * SPAN_TO;
+    if (role === 0) {
+      // 仓储: 长方形 + 一横（描边画在框内）
+      const boxHeight = s * BOX_HEIGHT;
+      const top = y - boxHeight / 2;
+      const stroke = Math.max(2, s * BOX_STROKE);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+      ctx.fillRect(left, top, to - left, boxHeight);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = stroke;
+      ctx.strokeRect(left + stroke / 2, top + stroke / 2, to - left - stroke, boxHeight - stroke);
+      ctx.fillStyle = color;
+      const barWidth = (to - left) * 0.56;
+      const barHeight = Math.max(4, boxHeight * 0.22);
+      ctx.fillRect(left + (to - left - barWidth) / 2, y - barHeight / 2, barWidth, barHeight);
+      return;
+    }
+    // 塔壁（左边的竖条）+ 箭头
+    ctx.fillStyle = color;
+    ctx.fillRect(left, y - s * 0.36, s * WALL_WIDTH, s * 0.72);
+    const nearX = left + s * (WALL_WIDTH + WALL_GAP);   // 靠塔壁那一头
+    if (role === 1) arrowPath(ctx, to, nearX, y, s * 0.24, s * 0.46, s * 0.16);
+    else arrowPath(ctx, nearX, to, y, s * 0.24, s * 0.46, s * 0.16);
+    ctx.fill();
+  };
+
+  if (remoteRole === null) {
+    glyph(x, midY, size, localRole);
+    return;
+  }
+  // 整组在格里居中；两个左对齐
+  const localSize = Math.round(size * LOCAL_SCALE);
+  const localSlot = localSize * SLOT;
+  const remoteSlot = size * SLOT;
+  const top = midY - (localSlot + STACK_GAP + remoteSlot) / 2;
+  glyph(x, top + localSlot / 2, localSize, localRole);
+  glyph(x, top + localSlot + STACK_GAP + remoteSlot / 2, size, remoteRole);
+}
+
+/** 画一张「塔内」卡片: 半透明底 + 左边物品图标 + 每行「上限 + 一格供需」 */
+function stationPanelTexture(slots, images) {
+  const ROW_HEIGHT = 96;          // 一行 = 一个栏位
+  const PAD = 14;
+  const ICON_SIZE = 80;
+  const ICON_GAP = 12;
+  const NUMBER_WIDTH = 176;
+  const NUMBER_FONT = 52;
+  const GLYPH_GAP = 28;
+  const GLYPH_SIZE = 44;          // 供需图标框边长（= 这一列宽）
+
+  const width = PAD * 2 + ICON_SIZE + ICON_GAP + NUMBER_WIDTH + GLYPH_GAP + GLYPH_SIZE;
+  const height = PAD * 2 + slots.length * ROW_HEIGHT;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = 'rgba(38, 42, 50, 0.7)';
+  ctx.fillRect(0, 0, width, height);
+
+  const iconX = PAD;
+  const numberRight = iconX + ICON_SIZE + ICON_GAP + NUMBER_WIDTH;   // 数字右对齐
+  const glyphX = numberRight + GLYPH_GAP;
+  ctx.font = `bold ${NUMBER_FONT}px sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+
+  let top = PAD;
+  for (const slot of slots) {
+    const midY = top + ROW_HEIGHT / 2;
+    const image = images.get(slot.itemId);
+    if (image) {
+      ctx.drawImage(image, iconX, midY - ICON_SIZE / 2, ICON_SIZE, ICON_SIZE);
+    }
+    if (slot.local === null && slot.remote === null) {
+      // 空栏位: 数字那一列一条横杠
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(numberRight - NUMBER_WIDTH * 0.4, midY - 3, NUMBER_WIDTH * 0.4, 6);
+      top += ROW_HEIGHT;
+      continue;
+    }
+    // 上限，颜色按星际那一档（行星内站按本地）
+    ctx.fillStyle = LOGISTIC_ROLE_COLORS[slot.remote ?? slot.local] ?? LOGISTIC_ROLE_COLORS[0];
+    ctx.fillText(String(slot.max), numberRight, midY);
+    drawRoleGlyph(ctx, glyphX, midY, GLYPH_SIZE, slot.local, slot.remote);
+    top += ROW_HEIGHT;
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;   // 同图标: 不声明会被当成线性数据、颜色发灰
+  texture.anisotropy = 4;
+  return texture;
 }
 
 /**
@@ -389,13 +526,15 @@ function iconSpriteMaterial(map, nearPlane) {
  */
 const ICON_RENDER_ORDER = HIGHLIGHT.renderOrder + 10;
 
-/** 往图标层摆一个图标（清单条目见 _addIcons）: 位置 / 边长直接取自清单，材质由调用方按角标选好 */
+/** 往图标层摆一个 sprite（清单条目见 _addIcons / _addStationPanels）: 位置与尺寸直接取自清单，材质由调用方选好 */
 function addIconSprite(group, item, material) {
   const sprite = new THREE.Sprite(material);
-  sprite.name = 'factory-icon';
+  sprite.name = item.name ?? 'factory-icon';
   sprite.renderOrder = ICON_RENDER_ORDER;
   sprite.position.copy(item.position);
-  sprite.scale.set(item.scale, item.scale, 1);
+  // 方形图标给边长（scale）、物流塔卡片给宽高（size，按贴图比例）
+  if (item.size) sprite.scale.set(item.size[0], item.size[1], 1);
+  else sprite.scale.set(item.scale, item.scale, 1);
   group.add(sprite);
 }
 
@@ -438,7 +577,7 @@ function unknownCubeGeometry() {
 
 /**
  * 可独立开关的显示层（预览下方状态行里的一排按钮）
- *   建筑 / 传送带（本体 + 连接板条、箭头）/ 分拣器 = 按建筑归属，互不重叠；图标 = 独立一层
+ *   建筑 / 传送带 / 分拣器按建筑归属；图标 = 建筑头顶的图标（物流塔是它的「塔内」物品栏卡片）
  */
 const LAYERS = ['buildings', 'belts', 'inserters', 'icons'];
 
@@ -1088,10 +1227,9 @@ class FactoryPreview {
    * 制造类 → 配方图标（id = 20000 + recipeId，自带 / 主产物图标见 markup/recipeIconProducts.ts）→ 504（无配方）；
    * 研究站 researchMode 2 → 704；传送带取 parameters.iconId；
    * 分拣器取 filterId；射线接收站按模式；物流配送器 / 四向分流器用本体图标 + filterId 角标；其余用自身 itemId。
-   * 图标不是建筑自己的那几类再补一个右下角角标。
+   * 物流塔（见 stationPanelSlots）摆「塔内」卡片，替掉建筑自己的图标。
    *
-   * 先一次遍历收集绘制清单，
-   * 再按「主图标 + 角标」分组异步合成贴图摆 sprite。
+   * 先一次遍历收集绘制清单（一栋一条，type 区分画法），再按画法 + 用到的图标分组异步合成贴图。
    */
   _addIcons() {
     const buildings = this._allBuildings;            // 下标 = 建筑序号
@@ -1122,62 +1260,69 @@ class FactoryPreview {
       return (top * GAME_UNIT_SCENE) / CELL_SCENE;
     };
 
-    /** 绘制清单: 一栋一条 —— position 世界坐标、scale 图标边长（场景单位）、iconId 主图标 id、badge 角标 */
+    /** 一般建筑头顶图标的高度（场景单位）: 取「一半高」与「离顶 3 格」里更高的那个 */
+    const liftOf = (b) => {
+      const top = topCells(b);
+      return Math.max(top * LIFT_FRACTION, top - TOP_GAP_CELLS, 0) * CELL_SCENE;
+    };
+
+    /**
+     * 绘制清单: 一栋一条 —— type 分四种（'card' 塔内卡片 / 'icon' / 'badgeIcon' / 'badgeCount'），
+     * icons = [主图标 id, 角标]（icons[1] 是图标 id 还是数字由 type 定），另有 position / scale / slots / size。
+     */
     const items = [];
     for (const b of buildings) {
       if (!b) continue;
-      let id = 0;
-      /** 角标: null = 没角标；{ type: 'count', count } 数字；{ type: 'icon', id } 图标 */
-      let badge = null;
+      const lift = isBelt(b.itemId) ? beltLift(b) : (isInserter(b.itemId) ? LIFT_FLAT : liftOf(b));
+      const position = this._posOf(b).addScaledVector(surfaceDirection(b.latDeg, b.lngDeg), lift);
+
+      const slots = stationPanelSlots(b);
+      if (slots) {
+        items.push({ type: 'card', slots, position, name: 'factory-station-panel' });
+        continue;
+      }
+
       if (isBelt(b.itemId)) {
         // 图标标签槽 + 右下角数字（count = 0 只显示图标）
-        id = b.parameters?.iconId ?? 0;
+        const iconId = Number(b.parameters?.iconId ?? 0);
         const count = Number(b.parameters?.count ?? 0);
-        if (count > 0) badge = { type: 'count', count };
+        if (!iconId) continue;
+        items.push({
+          type: count > 0 ? 'badgeCount' : 'icon',
+          icons: count > 0 ? [iconId, count] : [iconId],
+          position,
+          scale: SIZE * 0.8,       // 传送带的图标比一格小一点
+        });
       } else if (isInserter(b.itemId)) {
-        // 分拣器物品筛选
-        id = (b.filterId ?? 0) > 0 ? b.filterId : 0;
+        // 分拣器的物品筛选；没筛选就没有图标
+        const filterId = Number(b.filterId ?? 0);
+        if (!filterId) continue;
+        items.push({ type: 'icon', icons: [filterId], position, scale: SIZE * 0.5 });   // 分拣器的再小一档
       } else if (isAssembler(b.itemId) || isLab(b.itemId)) {
         const recipe = b.recipeId ?? 0;
         // 研究站额外看 researchMode 未选择 / 1 矩阵合成 / 2 科研模式
         const researchMode = b.parameters?.researchMode ?? 0;
-        if (isLab(b.itemId) && researchMode === 2) {
-          id = 704;                                   // 科研模式
-        } else if(isLab(b.itemId) && researchMode === 0){
-          id = 504
-        } else {
-          id = recipe > 0 ? 20000 + recipe : 504;     // 配方图标 id（无配方 → 504）
-        }
-        badge = { type: 'icon', id: b.itemId };       // 图标是配方 / 科研 / 无配方 —— 建筑本身得自己标出来
+        let id = recipe > 0 ? 20000 + recipe : 504;     // 配方图标 id（无配方 → 504）
+        if (isLab(b.itemId) && researchMode === 2) id = 704;        // 科研模式
+        else if (isLab(b.itemId) && researchMode === 0) id = 504;   // 未选择
+        // 图标是配方 / 科研 / 无配方 —— 建筑本身得自己标出来
+        items.push({ type: 'badgeIcon', icons: [id, b.itemId], position, scale: SIZE });
       } else if (b.itemId === 2208) {
         // 射线接收站: 右下角按模式压角标（发电 503 / 光子 1208）。productId: 0 直接发电、1208 光子生成
-        id = b.itemId;
-        badge = { type: 'icon', id: b.parameters?.productId === 1208 ? 1208 : 503 };
+        items.push({
+          type: 'badgeIcon',
+          icons: [b.itemId, b.parameters?.productId === 1208 ? 1208 : 503],
+          position,
+          scale: SIZE,
+        });
       } else if (b.itemId === 2107 || b.itemId === 2020) {
         // 物流配送器 / 四向分流器: 右下角压显示筛选的物品（filterId）
-        id = b.itemId;
-        badge = { type: 'icon', id: b.filterId ?? 0 };
+        items.push({ type: 'badgeIcon', icons: [b.itemId, b.filterId ?? 0], position, scale: SIZE });
       } else {
-        id = b.itemId;
+        items.push({ type: 'icon', icons: [b.itemId], position, scale: SIZE });
       }
-      // 图标高度: 传送带按两端连的是谁（见 beltLift）、分拣器抬 0.5 格，
-      // 其余取「一半高」与「离顶 3 格」里更高的那个
-      let lift = LIFT_FLAT;
-      if (isBelt(b.itemId)) {
-        lift = beltLift(b);
-      } else if (!isInserter(b.itemId)) {
-        const top = topCells(b);
-        lift = Math.max(top * LIFT_FRACTION, top - TOP_GAP_CELLS, 0) * CELL_SCENE;
-      }
-      items.push({
-        position: this._posOf(b).addScaledVector(surfaceDirection(b.latDeg, b.lngDeg), lift),
-        // 图标比一格小一点: 传送带 0.8 格、分拣器 0.5 格
-        scale: isBelt(b.itemId) ? SIZE * 0.8 : (isInserter(b.itemId) ? SIZE * 0.5 : SIZE),
-        iconId: id,
-        badge,
-      });
     }
-    if (!items.length) return;
+    if (!items.length) return;                     // 贴图都是异步来的，一个都没有就不建层
 
     const group = this._layerGroup('icons');       // 图标是独立一层（见 LAYERS）
     group.userData.buildings = items.length;
@@ -1195,21 +1340,27 @@ class FactoryPreview {
       return iconTextures.get(id);
     };
 
-    /** 图标变体（主图标 + 角标）→ 用它那些条目: 一张合成图只做一次、共用一个材质 */
+    /** 画法 + 图标 → 用它那些条目: 一张合成图只做一次、共用一个材质（type 分清 icons[1] 是图标还是数字） */
     const variants = new Map();
+    /** 物流塔的「塔内」卡片: 顺手从同一份清单里挑出来 */
+    const cards = [];
     for (const item of items) {
-      const key = `${item.iconId}|${badgeKey(item.badge)}`;
-      if (!variants.has(key)) variants.set(key, { iconId: item.iconId, badge: item.badge, list: [] });
+      if (item.type === 'card') {
+        cards.push(item);
+        continue;
+      }
+      const key = `${item.type}|${item.icons.join('|')}`;
+      if (!variants.has(key)) variants.set(key, { type: item.type, icons: item.icons, list: [] });
       variants.get(key).list.push(item);
     }
     group.userData.iconCount = variants.size;
 
-    for (const { iconId, badge, list } of variants.values()) {
+    for (const { type, icons, list } of variants.values()) {
       // 每个变体一个任务: 主图与角标图同时发请求（贴图是共享的，不在这里 dispose）
       (async () => {
         const [texture, badgeTexture] = await Promise.all([
-          iconTexture(iconId),
-          badge?.type === 'icon' ? iconTexture(badge.id) : null,
+          iconTexture(icons[0]),
+          type === 'badgeIcon' ? iconTexture(icons[1]) : null,
         ]);
         if (!texture || this._icons !== group) return;   // 索引里没有这张图 / 期间换了蓝图
         // 图标是 UI 素材，必须声明成 sRGB: 渲染器输出是 sRGB（见 init），不声明就会被当成线性数据、
@@ -1219,7 +1370,7 @@ class FactoryPreview {
 
         // 角标合成到主图上；角标图没拿到就退回主图标材质
         let map = null;
-        if (badge?.type === 'count') map = iconCountTexture(texture.image, badge.count);
+        if (type === 'badgeCount') map = iconCountTexture(texture.image, icons[1]);
         else if (badgeTexture) map = iconBadgeTexture(texture.image, badgeTexture.image);
         const material = map ? iconSpriteMaterial(map, nearPlane) : iconSpriteMaterial(texture, nearPlane);
         for (const item of list) addIconSprite(group, item, material);
@@ -1228,6 +1379,30 @@ class FactoryPreview {
         this._needsRender = true;
       })();
     }
+
+    // 塔内卡片: 物品图标与上面的图标共用一份缓存
+    for (const panel of cards) this._addStationPanel(group, panel, iconTexture, nearPlane);
+  }
+
+  /** 摆一张「塔内」卡片: 物品图标到齐后整张合成（见 stationPanelTexture），当一个 sprite 摆上去 */
+  _addStationPanel(group, panel, iconTexture, nearPlane) {
+    const ids = new Set();
+    for (const slot of panel.slots) {
+      if (slot.itemId > 0) ids.add(slot.itemId);
+    }
+    Promise.all([...ids].map(async (id) => [id, (await iconTexture(id))?.image ?? null]))
+      .then((loaded) => {
+        if (this._icons !== group) return;   // 期间换了蓝图 / 清了层
+        const images = new Map(loaded.filter(([, image]) => !!image));
+        const map = stationPanelTexture(panel.slots, images);
+        // 尺寸按贴图现算: 一格 = 72 px（一行 96 px ≈ 1.33 格）
+        const px = CELL_SCENE / 72;
+        panel.size = [map.image.width * px, map.image.height * px];
+        addIconSprite(group, panel, iconSpriteMaterial(map, nearPlane));
+
+        this._applyLayers();         // 卡片是异步来的: 加载期间若关了图标层，回来时要立刻藏好
+        this._needsRender = true;
+      });
   }
 
   /** 清掉图标层 */
