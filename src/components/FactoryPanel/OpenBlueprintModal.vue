@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import BaseModal from '../BaseModal.vue'
 import {
-  factory,
+  showOpenModal,
   closeBlueprintModal,
   loadBlueprintFile,
   loadBlueprintText,
@@ -18,7 +18,7 @@ const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 watch(
-  () => factory.showOpenModal,
+  showOpenModal,
   (open) => {
     if (!open) return
     text.value = ''
@@ -121,7 +121,7 @@ function onClose() {
 </script>
 
 <template>
-  <BaseModal :open="factory.showOpenModal" title="打开蓝图" @close="onClose">
+  <BaseModal :open="showOpenModal" title="打开蓝图" @close="onClose">
     <div class="factory-import">
       <input
         ref="fileInput"

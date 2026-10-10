@@ -1,6 +1,6 @@
 import type { IconCategories, IconRef } from './itemIcons.ts'
 import { recipeIdsOfType, recipeTypeOfBuilding } from '../blueprint/factory/factoryRecipes.js'
-import { recipeName, recipePage } from '../blueprint/factory/factoryRecipes.js'
+import { RECIPE_DATA, recipeName, recipePage } from '../blueprint/factory/factoryRecipes.js'
 
 /**
  * 配方库: 把配方按游戏配方选择窗的两个分类（物品 / 建筑）分组，供配方选择器显示
@@ -50,6 +50,11 @@ function groupByPage(recipeIds: number[]): IconCategories {
 export function recipeCategoriesOfType(typeId: number): IconCategories {
   const ids = recipeIdsOfType(typeId)
   return ids.length ? groupByPage(ids) : {}
+}
+
+/** 全量配方 */
+export function recipeCategoriesAll(): IconCategories {
+  return groupByPage(Object.keys(RECIPE_DATA).map(Number))
 }
 
 /**

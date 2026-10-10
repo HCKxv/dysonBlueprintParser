@@ -1,7 +1,8 @@
-import { computed, markRaw, reactive, watch } from 'vue'
+import { computed, markRaw, reactive, ref, watch } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/factory/factoryParser.js'
 import { stringifyBlueprint } from '../lib/blueprint/factory/factoryEncoder.js'
 import { itemName } from '../lib/blueprint/factory/factoryItems.js'
+import { applyBatchRules } from '../lib/factory/batch.js'
 import type { FactoryPreview } from '../lib/factory/FactoryPreview.js'
 import { saveAsText } from '../utils/download'
 
@@ -49,11 +50,15 @@ export interface FactoryHeader {
 /** 一份工厂蓝图对象 */
 export type FactoryBlueprint = { header: FactoryHeader } & Record<string, any>
 
+/** 一条批量编辑规则 */
+export interface BatchRule {
+  type: string
+  options: Record<string, any>
+}
+
 export const factory = reactive({
   /** 正在解析 */
   parsing: false,
-  /** 「打开蓝图」弹窗 */
-  showOpenModal: false,
   /** 完整蓝图数据 */
   blueprint: null as FactoryBlueprint | null,
   /** 头部: 用于显示和编辑 */
@@ -66,22 +71,53 @@ export const factory = reactive({
   raw: '',
   /** 主体改过没有 */
   modified: false,
-  /** 3D 预览实例 */
-  preview: null as FactoryPreview | null,
 })
+
+/** 「打开蓝图」弹窗 */
+export const showOpenModal = ref(false)
+
+/** 批量编辑，见 lib/factory/batch.js 的规则类型表 */
+export const batchRules = ref<BatchRule[]>([])
+
+/** 左侧输入栏的三档: 信息 / 详情 / 批量编辑 */
+export const FACTORY_VIEWS = ['info', 'detail', 'batch'] as const
+
+export type FactoryViewId = (typeof FACTORY_VIEWS)[number]
+
+/** 当前显示的档位 */
+export const factoryView = ref<FactoryViewId>('info')
+
+/** 切档位 */
+export function setFactoryView(id: FactoryViewId) {
+  factoryView.value = id
+}
+
+// 选中 / 取消选中时自动切
+watch(() => factory.selectedIndex, (index) => {
+  if (index !== null) {
+    factoryView.value = 'detail'
+    return
+  }
+  if (factoryView.value === 'detail') factoryView.value = 'info'
+})
+
+/** 3D 预览实例 */
+let preview: FactoryPreview | null = null
 
 /** 挂上 / 摘掉预览实例 */
 export function attachPreview(instance: FactoryPreview | null) {
-  // markRaw: three 的渲染器 / 场景是深层对象，别让 reactive 去代理它们
-  factory.preview = instance ? markRaw(instance) : null
-  if (!factory.preview) factory.selectedIndex = null   // 场景没了，选中也就不存在了
-  factory.preview?.setSelectionListener((index) => { factory.selectedIndex = index })
-  factory.preview?.setBlueprint(factory.blueprint);
+  preview = instance
+  if (!preview) {
+    factory.selectedIndex = null   // 场景没了，选中也就不存在了
+    return
+  }
+  preview.setSelectionListener((index) => { factory.selectedIndex = index })
+  preview.setBlueprint(factory.blueprint);
 }
 
 // 选中编号同步给场景
 watch(() => factory.selectedIndex, (index) => {
-  factory.preview?.selectBuilding(index)
+  preview?.selectBuilding(index)
 })
 
 /**
@@ -90,7 +126,7 @@ watch(() => factory.selectedIndex, (index) => {
  */
 function applyBlueprint(blueprint: FactoryBlueprint | null, resetView: boolean = true) {
   factory.blueprint = blueprint
-  factory.preview?.setBlueprint(blueprint, resetView)
+  preview?.setBlueprint(blueprint, resetView)
 }
 
 /** 空白蓝图头部 */
@@ -143,6 +179,7 @@ function setBlueprint(parsed: Record<string, any> | null, raw = '') {
   factory.selectedIndex = null     // 编号是蓝图内部的序号，换蓝图重新开始
   factory.raw = parsed ? raw : ''
   factory.modified = false
+  factoryView.value = 'info'
   if (!parsed) {
     applyBlueprint(null)
     Object.assign(factory.header, emptyHeader())
@@ -262,12 +299,12 @@ export const hasChanges = computed(() => {
 
 /** 打开「打开蓝图」弹窗 */
 export function openBlueprintModal() {
-  factory.showOpenModal = true
+  showOpenModal.value = true
 }
 
 /** 关闭「打开蓝图」弹窗 */
 export function closeBlueprintModal() {
-  factory.showOpenModal = false
+  showOpenModal.value = false
 }
 
 /** 记录原文件句柄；markRaw: 代理后调它的方法（createWritable…）会报 Illegal invocation */
@@ -413,7 +450,7 @@ export function editBuilding(index: number, changes: BuildingChanges): boolean {
   if (selected !== null) {
     // 重新选中建筑
     factory.selectedIndex = selected
-    factory.preview?.selectBuilding(selected)
+    preview?.selectBuilding(selected)
   }
   factory.modified = true
   return true
@@ -439,6 +476,35 @@ export function editLabGroup(index: number, changes: BuildingChanges): boolean {
     if (done.includes(i)) editBuilding(i, snapshot)
   }
   return false
+}
+
+/**
+ * 批量编辑: 把规则数组（batchRules）作用到当前蓝图上
+ *
+ * @returns ok=false 时 message 说明原因，规则数组保持原样
+ */
+export function applyBatchEdit(): {
+  ok: boolean
+  message: string
+} {
+  const blueprint = factory.blueprint
+  if (!blueprint || !Array.isArray(blueprint.buildings)) {
+    return { ok: false, message: '当前没有已打开的蓝图' }
+  }
+
+  applyBatchRules(blueprint, batchRules.value)
+
+  const selected = factory.selectedIndex
+  // 预览按新数据重摆（视角不归位）
+  applyBlueprint(markRaw({ ...blueprint }), false)
+  if (selected !== null) {
+    // 重新选中建筑
+    factory.selectedIndex = selected
+    preview?.selectBuilding(selected)
+  }
+  factory.modified = true
+  batchRules.value = []                       // 提交完就清空规则数组
+  return { ok: true, message: '' }
 }
 
 /**

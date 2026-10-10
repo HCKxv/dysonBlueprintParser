@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed } from 'vue'
 import FactoryInfo from './FactoryInfo.vue'
 import FactorySelection from './FactorySelection.vue'
+import FactoryBatchEdit from './FactoryBatchEdit.vue'
 import {
   factory,
+  FACTORY_VIEWS,
+  factoryView,
+  setFactoryView,
   hasBlueprint,
   hasChanges,
   openBlueprintModal,
@@ -16,13 +20,8 @@ import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 
-/** 信息 / 详情: 工具栏右边那个滑块切换 */
-const view = ref<'info' | 'detail'>('info')
-
-// 选中 / 取消选中时自动切
-watch(() => factory.selectedIndex, (index) => {
-  view.value = index === null ? 'info' : 'detail'
-})
+/** 指示块按档位序号平移 */
+const sliderIndex = computed(() => FACTORY_VIEWS.indexOf(factoryView.value))
 
 function onClose() {
   if (!hasBlueprint.value) return
@@ -63,33 +62,58 @@ async function onSave() {
       @click="onClose"
     >关闭蓝图</button>
 
-    <!-- 信息 / 详情 切换滑块 -->
-    <div class="tool-slider factory-view-switch" role="tablist" aria-label="信息 / 详情">
+    <!-- 三档滑块: 信息 / 详情 / 批量编辑 -->
+    <div class="tool-slider factory-view-switch">
       <span
         class="tool-slider-thumb"
-        :style="{ transform: `translateX(${view === 'detail' ? 100 : 0}%)` }"
+        :style="{ transform: `translateX(${sliderIndex * 100}%)` }"
       ></span>
+      <!-- 信息 -->
       <button
         type="button"
-        role="tab"
         class="tool-slider-btn"
-        :class="{ active: view === 'info' }"
-        :aria-selected="view === 'info'"
-        @click="view = 'info'"
-      >信息</button>
+        :class="{ active: factoryView === 'info' }"
+        @click="setFactoryView('info')"
+      >
+        <svg viewBox="0 0 16 16">
+          <rect x="3" y="2.2" width="10" height="11.6" rx="1.6" />
+          <path d="M5.6 5.4h4.8" />
+          <path d="M5.6 8h4.8" />
+          <path d="M5.6 10.6h3.1" />
+        </svg>
+      </button>
+      <!-- 详情 -->
       <button
         type="button"
-        role="tab"
         class="tool-slider-btn"
-        :class="{ active: view === 'detail' }"
-        :aria-selected="view === 'detail'"
-        @click="view = 'detail'"
-      >详情</button>
+        :class="{ active: factoryView === 'detail' }"
+        @click="setFactoryView('detail')"
+      >
+        <svg viewBox="0 0 16 16">
+          <circle cx="6.9" cy="6.9" r="4.35" />
+          <path d="M10.1 10.1 13.45 13.45" />
+        </svg>
+      </button>
+      <!-- 批量编辑 -->
+      <button
+        type="button"
+        class="tool-slider-btn"
+        :class="{ active: factoryView === 'batch' }"
+        @click="setFactoryView('batch')"
+      >
+        <svg viewBox="0 0 16 16">
+          <path d="M10.16 3.94A4.6 4.6 0 0 1 9.94 12.17" />
+          <path d="M5.84 12.06A4.6 4.6 0 0 1 6.06 3.83" />
+          <polygon points="10.79 10.9 8.72 12.54 11.19 13.47" />
+          <polygon points="5.21 5.1 7.28 3.46 4.81 2.53" />
+        </svg>
+      </button>
     </div>
   </div>
 
   <div class="scroll-y factory-scroll">
-    <FactoryInfo v-if="view === 'info'" />
+    <FactoryBatchEdit v-if="factoryView === 'batch'" />
+    <FactoryInfo v-else-if="factoryView === 'info'" />
     <FactorySelection v-else />
   </div>
 

@@ -1,23 +1,17 @@
 /**
  * FactoryPreview — 工厂蓝图 3D 预览
  *
- * 场景约定与其它预览层一致: 行星半径 = 1、球心在原点，游戏局部坐标 z 取反（纬度 0°、经度 0°
- * 在 +Z 一侧）。网格模型见 lib/grid/planetGrid.js，建筑落点见 lib/factory/blueprintLayout.js。
+ * 场景约定与其它预览层一致: 行星半径 = 1、球心在原点，游戏局部坐标 z 取反（纬度 0°、经度 0° 在 +Z 一侧）。
+ * 建筑落点见 lib/factory/blueprintLayout.js。**相机与操作不在这个文件里** —— 机位数学在
+ * lib/factory/cameraRig.js，坐标与单位换算在 lib/factory/planetFrames.js；
+ * 本文件只管场景与蓝图、事件分发、拾取与图层开关。
  *
- * **相机与操作不在这个文件里** —— 那套「观察点在球面上走」的机位数学在 lib/factory/cameraRig.js，
- * 坐标与单位换算在 lib/factory/planetFrames.js。这里只管场景与蓝图:
- * 指针 / 键盘事件的分发挂在这里，转发给 rig；拾取与图层开关都留在这一侧。
- *
- * 操作: 左键拖动 / **W/A/S/D** 让观察点在球面上走、左键**点**建筑选中并高亮
- *       （再点同一栋 / 点空处取消，见 _clickSelect）、中键拖动转视角、滚轮缩放；右键不接管。
+ * 操作: 左键拖动 / **W/A/S/D** 让观察点在球面上走、左键**点**建筑选中并高亮（再点同一栋或点空处取消）、
+ *       中键拖动转视角、滚轮缩放；右键不接管。
  *
  * 用法: init(canvas) / setBlueprint(data, resetView)（null = 清空）/ setGridVisible(visible) /
- *       setLayerVisible('buildings'|'belts'|'inserters'|'icons', visible) /
- *       setTargetLatitude(lat, north) / setSelectionListener(fn) /
- *       resetView() / resize() / dispose()
- *
- * 选中: 点击建筑选中并高亮、再点同一栋或点空处取消；状态只有编号，变了通过 setSelectionListener 推出去，
- *       程序化选中调 selectBuilding(index)。
+ *       setLayerVisible('buildings'|'belts'|'inserters'|'icons', visible) / setTargetLatitude(lat, north) /
+ *       setSelectionListener(fn) / selectBuilding(index) / resetView() / resize() / dispose()
  */
 
 import * as THREE from 'three';
@@ -809,14 +803,14 @@ class FactoryPreview {
   }
 
   /**
-   * 一个碰撞箱在场景里的位姿（位置 + 朝向）: 箱体中心相对建筑原点的偏移跟着建筑朝向转，
-   * 再贴到球面上（含离地高度）。建筑层的长方体与传送带的八棱柱都按它摆。
+   * 一个碰撞箱在场景里的位姿（位置 + 朝向）: 箱体中心相对建筑原点的偏移跟着建筑朝向转，再贴到球面
+   * （含离地高度）。建筑层的长方体与传送带的八棱柱都按它摆。
    *
    * 箱体中心 x 取负: 本预览的局部 +X 指向经度减小，游戏 LookRotation 的 +X 指向经度增大（叉乘手性不同），
-   * 四元数表示不了反射，只能摆放时取负；用游戏「蓝图内建筑不重叠」约束验证过: 取正会重叠、取负不会。
+   * 四元数表示不了反射，只能摆放时取负 —— 用「蓝图内建筑不重叠」约束实测过（取正会重叠、取负不会）。
    *
    * @param {object} building layoutBlueprint 出的建筑记录
-   * @param {{center: number[], ext: number[]}} box 该建筑的碰撞箱（单位: 游戏世界单位）
+   * @param {{center: number[], ext: number[]}} box 碰撞箱（游戏世界单位）
    * @param {{position: THREE.Vector3, quaternion: THREE.Quaternion}} out 复用的结果对象
    */
   _boxPose(building, box, out) {
@@ -1969,16 +1963,16 @@ class FactoryPreview {
   }
 
   /**
-   * 传送带连接表: 每条边带一个 `merge` 标记 —— 标记为 true 的只用来画，不顺着往前串（见 _beltNetwork）。
+   * 传送带连接表: 每条边带 `merge` 标记 —— true 的只用来画，不顺着往前串（见 _beltNetwork）。
    *
-   * 蓝图只写输出端（A.outputObjIdx = B，B 的 inputObjIdx 是空的），带子之间的上游关系得自建反向索引
-   * （incoming）；带子之间**不看蓝图的 outputToSlot** —— 那只是存档那一刻的连接，游戏粘贴时按几何重算，
-   * 所以主输入也按几何算: 只有一条喂它 → 就是它；多条 → 取与「前方」夹角最大且 ≥ BELT_MAIN_INPUT_MIN_ANGLE
-   * 的那条（正后方 180°）；都在侧面 / 前面，或两条都在后方且互相夹角也 ≥ 门槛 → 没有主输入。
+   * 蓝图只写输出端（A.outputObjIdx = B，B 的 inputObjIdx 为空），带子间的上游关系靠自建反向索引 incoming。
+   * 带子之间**不看蓝图的 outputToSlot**（那只是存档那一刻的连接，游戏粘贴时按几何重算），主输入也按几何算:
+   * 只有一条喂它 → 就是它；多条 → 取与「前方」夹角最大且 ≥ BELT_MAIN_INPUT_MIN_ANGLE 的那条（正后方 180°）；
+   * 都在侧面 / 前面，或两条都在后方且互相夹角也 ≥ 门槛 → 没有主输入。
    * **merge = 该边不是目标的主输入**；目标是机器时照收（产线末端插进机器的接口），分拣器不连线。
+   *
    * @param {Array<object|null>} all 建筑全表（下标 = 建筑序号）
-   * @returns {{outgoing: Map<number, Array<{target: object, merge: boolean}>>,
-   *            incoming: Map<number, Array<{source: object, merge: boolean}>>}}
+   * @returns {{outgoing: Map, incoming: Map}} 值形如 `{target|source, merge}`
    */
   _beltLinks(all) {
     const outgoing = new Map();

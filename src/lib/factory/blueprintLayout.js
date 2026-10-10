@@ -1,16 +1,14 @@
 /**
- * blueprintLayout.js — 把工厂蓝图摊到行星网格上
+ * blueprintLayout.js — 把工厂蓝图摊到行星网格上（复刻 BuildTool_BlueprintPaste + BlueprintUtils）
  *
- * 复刻游戏 BuildTool_BlueprintPaste + BlueprintUtils 的粘贴落点算法，约束:
- *   - 纬度每 5 行一档，档之间格数变化；区域不跨档（跨档选区会被拆成多个区域），
- *     格宽一律取本区域起始纬度那一档
- *   - 多区域用 parentIndex 串成链（主区域 = −1）: 子起点 = 父起点 + tropicAnchor × 父格宽
- *     − anchorLocalOffsetX × 本格宽，行偏移取 anchorLocalOffsetY
- *   - 落点由光标决定；预览里没有光标，于是单区域竖直居中放赤道，多区域找各区域 areaSegments
- *     都对得上的位置（尽量靠赤道），主区域水平居中到 0° 经线
+ *   - 纬度每 5 行一档，档之间格数变化；区域不跨档，格宽一律取本区域起始纬度那一档
+ *   - 多区域用 parentIndex 串成链: 子起点 = 父起点 + tropicAnchor × 父格宽 − anchorLocalOffsetX × 本格宽，
+ *     行偏移取 anchorLocalOffsetY
+ *   - 落点由光标决定；预览没有光标 → 单区域竖直居中放赤道，多区域找各区域 areaSegments 对得上的位置
+ *     （尽量靠赤道），主区域水平居中到 0° 经线
  *
- * 口径: 格宽用蓝图那套（边界行号 → 档 = (|idx|−1)/5），与地基网格的行口径（档 = floor(行号/5)）
- * 在回归线上差一行 —— 游戏自身的差异，这里跟着蓝图走。
+ * 口径: 格宽用蓝图那套（档 = (|idx|−1)/5），与地基网格的行口径（档 = floor(行号/5)）在回归线上差一行
+ * —— 游戏自身的差异，这里跟着蓝图走。
  */
 
 import {
@@ -86,10 +84,7 @@ function resolveRowOffsets(areas, primaryAreaIdx) {
   return offsets.map((value) => value ?? 0);
 }
 
-/**
- * 网格的合法行号范围（行号 = 纬度边界索引）: 底行最低 −latHalf（=−90°）、顶行最高 +latHalf（极点）。
- * 单区域夹取用这个范围；多区域的 tropic 搜索仍按 90/latPerGrid 自己算行上限。
- */
+/** 网格的合法行号范围（行号 = 纬度边界索引）: 底行最低 −latHalf（=−90°）、顶行最高 +latHalf（极点） */
 function gridRowRange(segment) {
   const latitudeCount = Math.trunc((determineLongitudeSegmentCount(0, segment) * 5) / 2);
   const latHalf = Math.trunc(latitudeCount / 2);
@@ -110,7 +105,10 @@ function fitsTropicExact(areas, rowOffsets, heights, startRow, segment) {
   return true;
 }
 
-/** 放宽一档: 只要求相邻区域分段数的比值与蓝图记录一致（蓝图来自别的半径的行星、精确值对不上时兜底） */
+/**
+ * 放宽一档: 只比相邻区域分段数的**比值**（容差 1e-4）。游戏只在双区域且第二区域 areaSegments > 4
+ * 时这样比，其余要精确相等（见 fitsTropicExact）；预览一律放宽，靠 preferLayout 把精确解排前面。
+ */
 function fitsTropicRatio(areas, rowOffsets, heights, startRow, segment) {
   const latPerGrid = latitudeRadPerGrid(segment);
   const range = gridRowRange(segment);
@@ -133,13 +131,11 @@ function fitsTropicRatio(areas, rowOffsets, heights, startRow, segment) {
 }
 
 /**
- * 多区域蓝图: 找一个「合适的位置」
- *
- * 合法性判据与游戏一致: 各区域不跨回归线，且相邻区域分段数之比等于记录之比（粘贴到别的纬度时
- * 整块蓝图跟着缩放，允许）。位置好坏按优先级排（前一条相同才看后一条）:
+ * 多区域蓝图: 找一个合适的位置。合法性 = 各区域不跨回归线 + 相邻区域分段数之比与记录一致
+ * （粘贴到别的纬度时整块蓝图跟着缩放，允许）。位置按优先级排，前一条相同才看后一条:
  *   给了目标: 1. 中心落在目标半球  2. 中心离目标最近  3. 分段数精确  4. 离赤道近
  *   自动:     1. 整块落在北半球    2. 中心在北半球    3. 离赤道近      4. 分段数精确
- * 「精确」只是同距离时的加分项，不是硬前置；换半球不能靠南北镜像，得走 yaw180 那一档。
+ * 「精确」只是同距离时的加分项；换半球不能靠南北镜像，得走 yaw180 那一档。
  *
  * @param {{row:number, north:boolean}|null} target 目标纬度（行 + 半球）
  * @returns {{startRow:number, exact:boolean}|null}
@@ -205,7 +201,7 @@ function commonGridStepDeg(segmentCounts) {
  * 各区域格宽不同，不对齐的话建筑按整数格铺开会整体偏半格。
  *
  * @param {number} stepRad 搜索步长（弧度）
- * @returns {number|null} 需要加的经度偏移；搜不到共同解返回 null（调用方退化为逐区域贴格线）
+ * @returns {number|null} 需要加的经度偏移；搜不到共同解返回 null（调用方就不吸附，与游戏一致）
  */
 function alignAreasToGrid(startLngs, areaLngPerGrid, stepRad) {
   if (!(stepRad > 0)) return null;
@@ -257,7 +253,7 @@ function preferLayout(candidate, current, target = null) {
  *
  * @param {object} blueprint factoryParser 的解析结果
  * @param {object} [options]
- * @param {number|null} [options.targetLatDeg] 目标纬度（度）: 优先吸附到离它最近的位置。
+ * @param {number|null} [options.targetLatDeg] 目标纬度（度）: 优先落在离它最近的位置。
  *   null / 不传 = 自动（北半球优先、其次低纬度）。
  * @param {boolean} [options.targetNorth] 目标半球（true = 北，false = 南），默认按 targetLatDeg 的正负。
  *   单独给是为了「北 0°」和「南 0°」能区分开 —— 纬度 0 时正负号表达不了半球。
@@ -279,6 +275,15 @@ export function layoutBlueprint(blueprint, options = {}) {
   // 两种朝向各解一次（找位置只依赖区域数据）；建筑只按赢的那个朝向生成一遍
   const areas = Array.isArray(blueprint?.areas) ? blueprint.areas : [];
   const original = solvePlacement(blueprint, { ...options, yaw180: false });
+  // 没有游戏允许的落点: 返回空布局（不报错，场景就是空的）
+  if (original === null) {
+    return {
+      areas: [],
+      buildings: [],
+      placement: null,
+      focus: computeFocus([], [], 0, latitudeRadPerGrid(segment) * RAD_TO_DEG),
+    };
+  }
   const rotated = areas.length < 2 ? null : solvePlacement(blueprint, { ...options, yaw180: true });
   const useRotated = rotated !== null && preferLayout(rotated, original, target);
   const chosen = useRotated ? rotated : original;
@@ -288,11 +293,10 @@ export function layoutBlueprint(blueprint, options = {}) {
 }
 
 /**
- * 找位置。返回 { placement, areas, ctx }（ctx 是 emitBuildings 生成建筑所需的量）。
+ * 找位置: 纯区域数据 → 一个游戏允许的落点；放不下返回 null。
  *
- * yaw180 = true: 蓝图数据已被 rotate180 转过，RefreshBuildPreview 的 num2/num3 同时取 −1。
- * 格宽口径: 父档格宽按父区域位移后的纬度算、子档按子区域位移前的纬度算，否则各区域相对经度差
- * 零点几格、整体对齐搜不到解。这不是镜像（手性保持），建筑在本区域盒内做点反射 x' = w−1−x, y' = h−1−y。
+ * yaw180: num2/num3 同时取 −1（偏移方向反向），**不做逐建筑反射**（TransitionWidthAndHeight
+ * 在 180° 下是恒等映射）。格宽取各自锚点纬度那一档 —— 取错会让各区域相对经度差零点几格。
  *
  * @param {object} blueprint factoryParser 的解析结果
  * @param {{radius?:number, targetLatDeg?:number|null, targetNorth?:boolean, yaw180?:boolean}} options
@@ -309,24 +313,9 @@ function solvePlacement(blueprint, options = {}) {
   const targetRow = target === null ? null : target.row;
 
   const areas = Array.isArray(blueprint?.areas) ? blueprint.areas : [];
-  const buildings = Array.isArray(blueprint?.buildings) ? blueprint.buildings : [];
-  // 没有区域: 返回空结果（ctx 必须有，emitBuildings 会解构它）
+  // 没有区域: 空结果（不是"放不下"，只是没内容）
   if (!areas.length) {
-    return {
-      placement: null,
-      areas: [],
-      ctx: {
-        buildings: [],
-        num2: 1,
-        num3: 1,
-        rotationStepDeg: 0,
-        latPerGridDeg,
-        anchorRows: [],
-        anchorCells: [],
-        anchorLngs: [],
-        primaryAreaIdx: 0,
-      },
-    };
+    return { placement: null, areas: [], anchorRows: [], anchorCells: [], anchorLngs: [], yaw180, latPerGridDeg };
   }
 
   const primaryAreaIdx = Math.min(Math.max(blueprint?.primaryAreaIdx ?? 0, 0), areas.length - 1);
@@ -342,56 +331,32 @@ function solvePlacement(blueprint, options = {}) {
 
   // ── 主区域锚点落在哪一行 ──
   const rowRange = gridRowRange(segment);
-  /** 把盒底行夹进网格范围（盒太高放不下时优先保住南边；只在箱体比整颗行星还高时才走到） */
-  const clampStartRow = (start, height) => Math.max(
-    Math.min(start, rowRange.max - height + 1),
-    rowRange.min,
-  );
   let startRow;
   let placement;
   if (areas.length === 1) {
-    // 单区域: 盒子竖直居中到目标纬线，但同样不能跨回归线（跨档后格宽不一致，游戏里这种粘贴非法）；
-    // 在网格范围内、整盒落在一档里的起点行中，挑离目标最近的一个。
+    // 只接受**游戏允许**的落点: 整盒落在一档内（不跨回归线）；找不到就返回 null，不做凑合落点。
     const halfRow = Math.floor(heights[0] / 2);
     const centerRow = targetRow === null ? 0 : Math.round(targetRow);
     const wanted = centerRow - halfRow;
     const latPerGridRad = latPerGridDeg * DEG;
-    const candidates = [];
+    const usable = [];
     for (let start = rowRange.min; start + heights[0] - 1 <= rowRange.max; start += 1) {
-      candidates.push({
-        start,
-        cross: areaCountOfLatRange(
-          start * latPerGridRad,
-          (start + heights[0] - 1) * latPerGridRad,
-          segment,
-        ),
-        distance: Math.abs(start - wanted),
-      });
+      if (areaCountOfLatRange(
+        start * latPerGridRad,
+        (start + heights[0] - 1) * latPerGridRad,
+        segment,
+      ) !== 1) continue;
+      usable.push({ start, distance: Math.abs(start - wanted) });
     }
-    // 先要不跨档的；区域比一档还高（只在极区可能出现）才退而求其次取跨越最少的
-    const usable = candidates.filter((c) => c.cross === 1);
-    const pool = usable.length ? usable : candidates;
-    pool.sort((a, b) => (a.cross - b.cross) || (a.distance - b.distance) || (a.start - b.start));
-    startRow = pool.length ? pool[0].start : clampStartRow(wanted, heights[0]);
-    placement = {
-      kind: targetRow === null ? 'equator' : 'target',
-      startRow,
-      exact: usable.length > 0,
-    };
+    if (!usable.length) return null;
+    usable.sort((a, b) => (a.distance - b.distance) || (a.start - b.start));
+    startRow = usable[0].start;
+    placement = { kind: targetRow === null ? 'equator' : 'target', startRow, exact: true };
   } else {
     const found = findTropicPlacement(areas, boxRowOffsets, heights, segment, target);
-    if (found) {
-      startRow = found.startRow;
-      placement = { kind: 'tropic', startRow, exact: found.exact };
-    } else {
-      // 记录的分段数在这颗行星上根本对不上: 整体居中到（目标纬度或赤道），至少能看
-      const stackLo = Math.min(...boxRowOffsets);
-      const stackHi = Math.max(...boxRowOffsets.map((offset, i) => offset + heights[i]));
-      // 兜底落点也要留在网格范围内: 先按整体居中算，再把最靠北的区域拉回来
-      const wanted = Math.round(targetRow ?? 0) - Math.round((stackLo + stackHi) / 2);
-      startRow = Math.max(wanted, rowRange.min - stackLo, rowRange.max + 1 - stackHi);
-      placement = { kind: 'fallback', startRow, exact: false };
-    }
+    if (!found) return null;
+    startRow = found.startRow;
+    placement = { kind: 'tropic', startRow, exact: found.exact };
   }
 
   // ── 各区域的锚点与盒起点（对齐游戏 RefreshBuildPreview） ──
@@ -430,13 +395,10 @@ function solvePlacement(blueprint, options = {}) {
   const alignStepRad = commonGridStepDeg(
     boxRows.map((row) => segmentCountAtBoundary(row, segment)),
   ) * DEG;
+  // 与游戏一致: 要么整体对齐、要么完全不动（游戏找不到共同偏移时 SnapLongitude 返回 false，
+  // 调用处不看返回值）。逐区域各移各的会改变区域之间的相对经度，不能做。
   const alignOffset = alignAreasToGrid(boxLngs, boxCells, alignStepRad);
-  if (alignOffset === null) {
-    // 数据本身对不齐（只会出现在兜底落点里）: 让每个区域各自贴到最近的格线上
-    for (let i = 0; i < anchorLngs.length; i += 1) {
-      anchorLngs[i] = Math.round(boxLngs[i] / boxCells[i]) * boxCells[i] + boxShiftLng[i];
-    }
-  } else if (alignOffset !== 0) {
+  if (alignOffset) {
     for (let i = 0; i < anchorLngs.length; i += 1) anchorLngs[i] += alignOffset;
   }
 
@@ -455,21 +417,21 @@ function solvePlacement(blueprint, options = {}) {
     rowHi: boxRows[i] + sizes[i].height - 1,
   }));
 
-  return {
-    placement,
-    areas: outAreas,
-    ctx: {
-      buildings, num2, num3, rotationStepDeg, latPerGridDeg, anchorRows, anchorCells, anchorLngs, primaryAreaIdx,
-    },
-  };
+  return { placement, areas: outAreas, anchorRows, anchorCells, anchorLngs, yaw180, latPerGridDeg };
 }
 
-/** 用解出来的落点生成每栋建筑的经纬度、朝向与参数 */
-function emitBuildings(blueprint, solved) {
-  const { areas, ctx } = solved;
-  const {
-    buildings, num2, num3, rotationStepDeg, latPerGridDeg, anchorRows, anchorCells, anchorLngs, primaryAreaIdx,
-  } = ctx;
+/** 用解出来的落点生成每栋建筑的经纬度、朝向与参数（所需的量全部由落点携带，这里不再计算） */
+function emitBuildings(blueprint, placement) {
+  // 档位必须取自**赢的那个候选**（chosen 可能是 180° 那一档），不能用调用方的 options
+  const { areas, anchorRows, anchorCells, anchorLngs, yaw180, latPerGridDeg } = placement;
+  const num2 = yaw180 ? -1 : 1;
+  const num3 = num2;
+  const rotationStepDeg = yaw180 ? 180 : 0;
+  const buildings = Array.isArray(blueprint?.buildings) ? blueprint.buildings : [];
+  const primaryAreaIdx = Math.min(
+    Math.max(blueprint?.primaryAreaIdx ?? 0, 0),
+    Math.max(0, areas.length - 1),
+  );
 
   /** 下标 = 建筑序号 */
   const outBuildings = new Array(buildings.length).fill(null);
@@ -479,8 +441,8 @@ function emitBuildings(blueprint, solved) {
     const offset = building?.localOffset?.[0];
     if (!offset) continue;
     const areaIndex = Math.min(Math.max(building?.areaIndex ?? 0, 0), areas.length - 1);
-    // 游戏 BuildTool_BlueprintPaste: 以区域锚点为参考、偏移乘 num2/num3、格宽取锚点纬度那一档。
-    // 这里不做任何吸附 —— 蓝图的坐标要原样还原。
+    // 游戏 BuildTool_BlueprintPaste: 以区域锚点为参考、偏移乘 num2/num3、格宽取锚点纬度那一档；
+    // 不做任何吸附，蓝图的坐标原样还原
     const latDeg = (anchorRows[areaIndex] + num3 * offset.y) * latPerGridDeg;
     /** 第二个端点（蓝图里第二个 localOffset）: 分拣器爪臂伸到的那一格，其余建筑与第一个端点相同 */
     const offset2 = building?.localOffset?.[1] ?? offset;
@@ -499,7 +461,7 @@ function emitBuildings(blueprint, solved) {
       modelIndex: building.modelIndex,
       /** 配方 id（制造类建筑用；图标解析要看它） */
       recipeId: building.recipeId ?? 0,
-      /** 过滤物品 id（分拣器的物品筛选；） */
+      /** 过滤物品 id（分拣器的物品筛选） */
       filterId: building.filterId ?? 0,
       /** 解码后的建筑参数（传送带的「图标标签槽」= parameters.iconId） */
       parameters: building.parameters ?? null,
