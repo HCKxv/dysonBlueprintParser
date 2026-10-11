@@ -512,10 +512,12 @@ export function createProjector(img, params) {
   // ── 逐点采样（半球 / 环绕赤道）: 每格按经纬范围取点，走 uvAt ──
   const AREA_DIV = 4;
   let accR = 0, accG = 0, accB = 0, accN = 0;
+  /** 本格是否整格都在图内（要求整格在图内，否则边缘会往外多出一圈格子） */
+  let allIn = true;
 
   function addSampleLatLng(lat, lng) {
     const uv = uvAt(lat, lng);
-    if (!uv) return; // 图外
+    if (!uv) { allIn = false; return; } // 图外 → 整格不涂
     const col = texelAt(uv[0], uv[1]);
     if (col[3] < PAINT_ALPHA_MIN) return; // 透明（a ≤ 85）没有自己的颜色，不算采样点
     const cr = col[0];
@@ -531,7 +533,7 @@ export function createProjector(img, params) {
 
   function sampleCellByPoints(band, li, step) {
     const lngLo = li * step;
-    accR = 0; accG = 0; accB = 0; accN = 0;
+    accR = 0; accG = 0; accB = 0; accN = 0; allIn = true;
     if (TARGET_SAMPLES > 1) {
       for (let a = 0; a <= AREA_DIV; a += 1) {
         const lat = band.latLo + (band.latHi - band.latLo) * (a / AREA_DIV);
@@ -542,7 +544,7 @@ export function createProjector(img, params) {
     } else {
       addSampleLatLng((band.latLo + band.latHi) / 2, lngLo + step / 2);
     }
-    if (accN > 0) {
+    if (accN > 0 && allIn) {
       return {
         r: Math.round(accR / accN),
         g: Math.round(accG / accN),
@@ -550,7 +552,7 @@ export function createProjector(img, params) {
         a: 255,
       };
     }
-    // 没有可用采样点 → 底色 / 不涂色
+    // 没有可用采样点 / 有采样点在图外 → 底色 / 不涂色
     return outCell;
   }
 
@@ -612,7 +614,7 @@ export function createProjector(img, params) {
    * @param {number} lngHi 经度右界（度）
    */
   function samplePlanetCell(latLo, latHi, lngLo, lngHi) {
-    accR = 0; accG = 0; accB = 0; accN = 0;
+    accR = 0; accG = 0; accB = 0; accN = 0; allIn = true;
     if (planetAreaDiv > 0) {
       for (let a = 0; a <= planetAreaDiv; a += 1) {
         const lat = latLo + (latHi - latLo) * (a / planetAreaDiv);
@@ -623,7 +625,8 @@ export function createProjector(img, params) {
     } else {
       addSampleLatLng((latLo + latHi) / 2, (lngLo + lngHi) / 2);
     }
-    if (accN <= 0) return planetFill; // 整格都在图外
+    // 整格在图外 / 有采样点在图外 → 不铺
+    if (accN <= 0 || !allIn) return planetFill;
     return packSample(Math.round(accR / accN), Math.round(accG / accN), Math.round(accB / accN));
   }
 

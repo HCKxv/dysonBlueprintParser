@@ -7,9 +7,9 @@
  *
  * 半径 200 时: 一行 = 纬度 0.36°，赤道行 1000 格，全行星 325600 格。
  *   - 细线 = 每一格的边界（0.36°）
- *   - 粗线 = 每 5 格 / 每 5 行（1.8°）—— 1.8° 正好是游戏里的一个「网格单位」，
- *     也就是纬度档的跨度，赤道一圈 200 条，看起来就是一张规整的经纬网
- *   - 赤道线 = 纬度 0° 的那条纬线（本来只是粗线之一），单独成档 —— 三档是子集关系，叠起来更亮
+ *   - 粗线 = 每 5 格 / 每 5 行（1.8°）
+ *   - 亮线 = 回归线与赤道，单独成档 —— 三档是子集关系
+ *     回归线 = 两侧经度分段数不同的纬线
  * 细线太密（默认视角下每格只有 1-2 像素），只在凑近看时才显示，阈值见 PLANET_FINE_GRID_MAX_DISTANCE。
  *
  * 平面展开图沿用戴森球那张的约定: 列 = 格序号（经度 0° 在左右两边、180° 在正中），
@@ -65,20 +65,23 @@ const GRID_LINE_LON_STEP = 2;
  *
  * @param {object} grid createPlanetGrid() 的返回值
  * @returns {{positions:Float32Array, lineIndices:Uint32Array, lineIndicesMajor:Uint32Array,
- *   lineIndicesEquator:Uint32Array}}
- *   positions 单位球面顶点，lineIndices 全部格子边界，lineIndicesMajor 粗线、lineIndicesEquator 赤道线（子集）
+ *   lineIndicesTropic:Uint32Array}}
+ *   positions 单位球面顶点，lineIndices 全部格子边界，lineIndicesMajor 粗线、lineIndicesTropic 回归线
  */
 export function buildPlanetGridLines(grid) {
   const rows = grid.rows;
   // 每行的每个格子沿经度细分几段（赤道一格 0.36° → 1 段；极圈一格 18° → 9 段）
   const subdivOf = rows.map((row) => Math.max(1, Math.ceil(360 / row.cells / GRID_LINE_LON_STEP)));
+  // 纬度档号 → 该档的经度分段数: 判回归线只需比两侧的档
+  const bandSegCount = [];
+  for (const row of rows) bandSegCount[row.latIdx] = row.segCount;
 
   let vertexTotal = 0;
   for (let r = 0; r < rows.length; r += 1) vertexTotal += 2 * (rows[r].cells * subdivOf[r] + 1);
   const positions = new Float32Array(vertexTotal * 3);
   const lineIndices = [];
   const lineIndicesMajor = [];
-  const lineIndicesEquator = [];
+  const lineIndicesTropic = [];
   let v = 0;
 
   for (let r = 0; r < rows.length; r += 1) {
@@ -122,11 +125,15 @@ export function buildPlanetGridLines(grid) {
     if (Math.abs(row.latLo) < 90) {
       const boundaryRow = boundaryRowOf(row);
       const major = boundaryRow % MAJOR_STEP === 0;
-      const equator = boundaryRow === 0;         // 赤道只有北半球第 0 行的下边界那一条
+      // 回归线 = 两侧经度分段数不同（赤道两侧一样，但分属两个半球，也算）
+      const latIdxAbove = row.latIdx;
+      const latIdxBelow = row.north ? latIdxAbove - 1 : latIdxAbove + 1;
+      const tropic = latIdxBelow < 0 || bandSegCount[latIdxAbove] !== bandSegCount[latIdxBelow];
       for (let a = bottom; a < bottom + rowLen - 1; a += 1) {
         lineIndices.push(a, a + 1);
-        if (major) lineIndicesMajor.push(a, a + 1);
-        if (equator) lineIndicesEquator.push(a, a + 1);
+        if (!major) continue;
+        lineIndicesMajor.push(a, a + 1);
+        if (tropic) lineIndicesTropic.push(a, a + 1);
       }
     }
 
@@ -146,7 +153,7 @@ export function buildPlanetGridLines(grid) {
     positions,
     lineIndices: Uint32Array.from(lineIndices),
     lineIndicesMajor: Uint32Array.from(lineIndicesMajor),
-    lineIndicesEquator: Uint32Array.from(lineIndicesEquator),
+    lineIndicesTropic: Uint32Array.from(lineIndicesTropic),
   };
 }
 

@@ -11,7 +11,7 @@
  *
  * 用法: init(canvas) / setBlueprint(data, resetView)（null = 清空）/ setGridVisible(visible) /
  *       setLayerVisible('buildings'|'belts'|'inserters'|'icons', visible) / setTargetLatitude(lat, north) /
- *       setSelectionListener(fn) / selectBuilding(index) / resetView() / resize() / dispose()
+ *       setSelectionListener(fn) / selectBuilding(index) / buildingCoord(index) / resetView() / resize() / dispose()
  */
 
 import * as THREE from 'three';
@@ -41,15 +41,15 @@ const PLANET_SPHERE_SEGMENTS = { width: 512, height: 256 };
 /** 网格线相对球面的抬高: 必须大于球面多边形的下陷（见上），否则面片会从线里穿出来 */
 const GRID_RADIUS_SCALE = 1.0001;
 
-/** 绘制顺序: 粗线在细线之后（交叉处由粗线压住），赤道线最后 */
+/** 绘制顺序: 粗线在细线之后（交叉处由粗线压住），回归线最后 */
 const GRID_LINE_RENDER_ORDER = 2;
 const GRID_LINE_MAJOR_RENDER_ORDER = 3;
-const GRID_LINE_EQUATOR_RENDER_ORDER = 4;
+const GRID_LINE_TROPIC_RENDER_ORDER = 4;
 
 const GRID_LINE_OPACITY = 0.18;
 const GRID_LINE_MAJOR_OPACITY = 0.3;
-/** 赤道线比粗线再亮一档 */
-const GRID_LINE_EQUATOR_OPACITY = 0.25;
+/** 回归线（与赤道）: 比粗线再亮一档 */
+const GRID_LINE_TROPIC_OPACITY = 0.25;
 
 const PLANET_COLOR = 0x39404b;
 
@@ -588,7 +588,7 @@ class FactoryPreview {
     this._starfield = null;
     this._gridLines = null;
     this._gridLinesMajor = null;
-    this._gridLinesEquator = null;
+    this._gridLinesTropic = null;
     this._markers = null;
     /** 视角「归位」的目标: 打开蓝图后是蓝图中心，没蓝图时是赤道（交给 rig，见 _applyHomeView） */
     this._homeView = { ...DEFAULT_HOME_VIEW };
@@ -622,7 +622,7 @@ class FactoryPreview {
     this._frameId = null;
     this._resizeObserver = null;
     /** 主光相对相机的偏移（相机空间: 偏右上一点，球面才有明暗过渡） */
-    this._lightOffset = new THREE.Vector3(0.4, 0.55, 0);
+    this._lightOffset = new THREE.Vector3(0.4, 0.55, 0.4);
   }
 
   // ─── 初始化 ─────────────────────────────────────────────────
@@ -695,7 +695,7 @@ class FactoryPreview {
   }
 
   // ─── 地基网格线 ─────────────────────────────────────────────
-  /** 建粗 / 细两级网格线（粗线是细线的子集，共用一份顶点），赤道线再单独一档 */
+  /** 建粗 / 细两级网格线（粗线是细线的子集，共用一份顶点），回归线再单独一档 */
   _addGridLines() {
     const lines = buildPlanetGridLines(PLANET_GRID);
     const vertices = new THREE.Float32BufferAttribute(flipZ(lines.positions), 3);
@@ -706,8 +706,8 @@ class FactoryPreview {
     this._gridLinesMajor = this._addLines(
       lines.lineIndicesMajor, vertices, GRID_LINE_MAJOR_OPACITY, GRID_LINE_MAJOR_RENDER_ORDER,
     );
-    this._gridLinesEquator = this._addLines(
-      lines.lineIndicesEquator, vertices, GRID_LINE_EQUATOR_OPACITY, GRID_LINE_EQUATOR_RENDER_ORDER,
+    this._gridLinesTropic = this._addLines(
+      lines.lineIndicesTropic, vertices, GRID_LINE_TROPIC_OPACITY, GRID_LINE_TROPIC_RENDER_ORDER,
     );
   }
 
@@ -1721,7 +1721,7 @@ class FactoryPreview {
     const close = this._camera.position.length() <= PLANET_FINE_GRID_MAX_DISTANCE;
     this._gridLines.visible = this._gridVisible && close;
     this._gridLinesMajor.visible = this._gridVisible;
-    this._gridLinesEquator.visible = this._gridVisible;
+    this._gridLinesTropic.visible = this._gridVisible;
   }
 
   // ─── 选中与拾取（点击建筑） ───────────────────────────────────
@@ -1731,6 +1731,17 @@ class FactoryPreview {
    */
   setSelectionListener(listener) {
     this._selectionListener = typeof listener === 'function' ? listener : null;
+  }
+
+  /**
+   * 建筑坐标（格）
+   * @param {number|null} index 建筑序号
+   * @returns {{x:number, y:number, z:number}|null}
+   */
+  buildingCoord(index) {
+    const i = Number.isInteger(index) ? Number(index) : null;
+    if (i === null ) return null;
+    return this._allBuildings[i]?.coord ?? null;
   }
 
   /**
@@ -2289,13 +2300,13 @@ class FactoryPreview {
     this._lastTickTime = 0;
     this._rig?.dispose();
     this._rig = null;
-    for (const lineSegments of [this._gridLines, this._gridLinesMajor, this._gridLinesEquator]) {
+    for (const lineSegments of [this._gridLines, this._gridLinesMajor, this._gridLinesTropic]) {
       lineSegments?.geometry.dispose();
       lineSegments?.material.dispose();
     }
     this._gridLines = null;
     this._gridLinesMajor = null;
-    this._gridLinesEquator = null;
+    this._gridLinesTropic = null;
     this._clearBlueprintObjects();
     this._planet?.geometry.dispose();
     this._planet?.material.dispose();

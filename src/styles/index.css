@@ -1,0 +1,7 @@
+/* 全局样式入口。分层: tokens(变量) / base(盒模型) / elements(原生标签) / shared(共用小件) / layout(骨架栅格)。
+   组件私有的样式一律写在组件的 <style scoped> 里。 */
+@import './tokens.css';
+@import './base.css';
+@import './elements.css';
+@import './shared.css';
+@import './layout.css';

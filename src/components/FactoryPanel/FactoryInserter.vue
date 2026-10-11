@@ -69,3 +69,37 @@ function onPick(icon: IconRef) {
     />
   </div>
 </template>
+
+<style scoped>
+/* .factory-selection-* 那套参数行是共用件（在 styles/shared.css 里）：
+   它们挂在父组件 FactorySelection 的模板结构下，写成本组件的 scoped 会失效 */
+
+/* 点图标选（跟运输站物品栏那个大图标同一副长相，小一号） */
+.factory-inserter-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-inserter-filter:hover {
+  border-color: var(--accent);
+}
+
+.factory-inserter-filter .factory-icon {
+  width: 80%;
+  height: 80%;
+}
+
+.factory-inserter-empty {
+  font-size: 16px;
+  line-height: 1;
+}
+</style>

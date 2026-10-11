@@ -38,9 +38,14 @@ function segmentCountAtBoundary(boundaryRow, segment) {
   return determineLongitudeSegmentCount(Math.trunc(idx / 5), segment);
 }
 
-/** 该边界处每格的经度弧度（游戏 GetLongitudeRadPerGrid）: π / (分段数 × 5) */
+/** 该边界行号处每格的经度弧度（游戏 GetLongitudeRadPerGrid）: π / (分段数 × 5) */
 function longitudeRadPerGrid(boundaryRow, segment) {
   return TWO_PI / (segmentCountAtBoundary(boundaryRow, segment) * 5);
+}
+
+/** 纬度（度）吸附到哪一行（游戏 GetSnappedLatitudeGridIdx）: 四舍五入到最近的格线 */
+function snappedRowOf(latDeg, segment) {
+  return roundAwayFromZero(latDeg / (latitudeRadPerGrid(segment) * RAD_TO_DEG));
 }
 
 /** 这段纬度跨了几档（游戏 GetAreaCount）: >1 就是非法跨越回归线 */
@@ -315,7 +320,7 @@ function solvePlacement(blueprint, options = {}) {
   const areas = Array.isArray(blueprint?.areas) ? blueprint.areas : [];
   // 没有区域: 空结果（不是"放不下"，只是没内容）
   if (!areas.length) {
-    return { placement: null, areas: [], anchorRows: [], anchorCells: [], anchorLngs: [], yaw180, latPerGridDeg };
+    return { placement: null, areas: [], anchorRows: [], anchorCells: [], anchorLngs: [], yaw180, latPerGridDeg, segment };
   }
 
   const primaryAreaIdx = Math.min(Math.max(blueprint?.primaryAreaIdx ?? 0, 0), areas.length - 1);
@@ -417,13 +422,13 @@ function solvePlacement(blueprint, options = {}) {
     rowHi: boxRows[i] + sizes[i].height - 1,
   }));
 
-  return { placement, areas: outAreas, anchorRows, anchorCells, anchorLngs, yaw180, latPerGridDeg };
+  return { placement, areas: outAreas, anchorRows, anchorCells, anchorLngs, yaw180, latPerGridDeg, segment };
 }
 
 /** 用解出来的落点生成每栋建筑的经纬度、朝向与参数（所需的量全部由落点携带，这里不再计算） */
 function emitBuildings(blueprint, placement) {
   // 档位必须取自**赢的那个候选**（chosen 可能是 180° 那一档），不能用调用方的 options
-  const { areas, anchorRows, anchorCells, anchorLngs, yaw180, latPerGridDeg } = placement;
+  const { areas, anchorRows, anchorCells, anchorLngs, yaw180, latPerGridDeg, segment } = placement;
   const num2 = yaw180 ? -1 : 1;
   const num3 = num2;
   const rotationStepDeg = yaw180 ? 180 : 0;
@@ -442,8 +447,9 @@ function emitBuildings(blueprint, placement) {
     if (!offset) continue;
     const areaIndex = Math.min(Math.max(building?.areaIndex ?? 0, 0), areas.length - 1);
     // 游戏 BuildTool_BlueprintPaste: 以区域锚点为参考、偏移乘 num2/num3、格宽取锚点纬度那一档；
-    // 不做任何吸附，蓝图的坐标原样还原
-    const latDeg = (anchorRows[areaIndex] + num3 * offset.y) * latPerGridDeg;
+    // 防御性夹取: 区域高度是四舍五入出来的，理论上 |纬度| 可能略大于 90
+    const latDeg = Math.min(90, Math.max(-90, (anchorRows[areaIndex] + num3 * offset.y) * latPerGridDeg));
+    const lngDeg = (anchorLngs[areaIndex] + num2 * offset.x * anchorCells[areaIndex]) * RAD_TO_DEG;
     /** 第二个端点（蓝图里第二个 localOffset）: 分拣器爪臂伸到的那一格，其余建筑与第一个端点相同 */
     const offset2 = building?.localOffset?.[1] ?? offset;
     const endLatDeg = Math.min(90, Math.max(-90, (anchorRows[areaIndex] + num3 * offset2.y) * latPerGridDeg));
@@ -465,9 +471,9 @@ function emitBuildings(blueprint, placement) {
       filterId: building.filterId ?? 0,
       /** 解码后的建筑参数（传送带的「图标标签槽」= parameters.iconId） */
       parameters: building.parameters ?? null,
-      // 防御性夹取: 区域高度是四舍五入出来的，理论上 |纬度| 可能略大于 90
-      latDeg: Math.min(90, Math.max(-90, latDeg)),
-      lngDeg: (anchorLngs[areaIndex] + num2 * offset.x * anchorCells[areaIndex]) * RAD_TO_DEG,
+      // 经纬度
+      latDeg,
+      lngDeg,
       /**
        * 朝向（度）= building.yaw − num × 90（游戏 Maths.SphericalRotation，未旋转粘贴时 num = 0）；
        * 模型 +Y = 法线、+Z = 正北切线，再绕局部 +Y 转这个角。
@@ -488,6 +494,13 @@ function emitBuildings(blueprint, placement) {
        * 游戏复制时编码成 (建筑到球心距离 − 行星真实半径 − 0.2) / 1.3333333，粘贴反过来。
        */
       altitudeSteps: Number.isFinite(offset.z) ? offset.z : 0,
+      /** 建筑的网格坐标（格） */
+      coord: {
+        x: (((lngDeg + 180) % 360 + 360) % 360 - 180)
+          / (longitudeRadPerGrid(snappedRowOf(latDeg, segment), segment) * RAD_TO_DEG),
+        y: latDeg / (latitudeRadPerGrid(segment) * RAD_TO_DEG),
+        z: offset.z,
+      },
     };
   }
 

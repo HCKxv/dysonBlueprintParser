@@ -11,3 +11,30 @@ const { message, visible, transitionEnabled } = useToast()
     :style="{ transition: transitionEnabled ? '' : 'none' }"
   >{{ message }}</div>
 </template>
+
+<style scoped>
+#toast {
+  position: fixed;
+  white-space: pre-line;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  top: 14px;
+  left: 50%;
+  transform: translate(-50%, -20px);
+  transition: transform 0.45s ease, opacity 0.45s ease;
+  background: rgba(30, 54, 87, 0.8);
+  border-left: 3px solid var(--warn);
+  border-radius: 5px;
+  padding: 8px 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  color: #ccc;
+  font-size: 15px;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+</style>

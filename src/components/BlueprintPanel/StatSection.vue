@@ -32,3 +32,45 @@ const collapsed = ref(true)
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 收起态只能写在 body 上 —— 标题栏也带 .collapsed（用来转箭头），
+   做成全局的 .collapsed{display:none} 会把标题栏一起藏掉 */
+.stat-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stat-section-header {
+  padding: 6px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-inset);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-section-header:hover {
+  background: #162032;
+}
+
+.stat-section-title {
+  min-width: 0;
+}
+
+.stat-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stat-section-body.collapsed {
+  display: none;
+}
+</style>

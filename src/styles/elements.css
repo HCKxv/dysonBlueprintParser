@@ -1,0 +1,72 @@
+/* 原生标签的默认长相，全局唯一一份 */
+
+/* 次要按钮用 .btn-ghost，尺寸用 .btn / .btn-sm（见 shared.css） */
+button {
+  width: fit-content;
+  border: none;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-hover);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+textarea {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-input);
+  color: var(--fg-strong);
+  font-size: 14px;
+  resize: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 细滚动条：再加别的滚动容器时，前缀选择器要一起补进这组 */
+textarea::-webkit-scrollbar,
+.col::-webkit-scrollbar,
+.scroll-y::-webkit-scrollbar,
+.icon-picker::-webkit-scrollbar,
+.icon-picker-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+textarea::-webkit-scrollbar-thumb,
+.col::-webkit-scrollbar-thumb,
+.scroll-y::-webkit-scrollbar-thumb,
+.icon-picker::-webkit-scrollbar-thumb,
+.icon-picker-grid::-webkit-scrollbar-thumb {
+  background: #334;
+  border-radius: 3px;
+}
+
+textarea::-webkit-scrollbar-thumb:hover,
+.col::-webkit-scrollbar-thumb:hover,
+.scroll-y::-webkit-scrollbar-thumb:hover,
+.icon-picker::-webkit-scrollbar-thumb:hover,
+.icon-picker-grid::-webkit-scrollbar-thumb:hover {
+  background: #456;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}

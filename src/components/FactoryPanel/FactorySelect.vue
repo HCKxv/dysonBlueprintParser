@@ -111,3 +111,69 @@ onBeforeUnmount(() => bind(false))
     </Teleport>
   </span>
 </template>
+
+<style scoped>
+/* 原生 select 的选项不能自由上色，所以自绘 */
+.factory-select {
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* 高度跟输入框一样；框线与文字取 --role-color（由组件内联给出） */
+.factory-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--storage-line-h, 22px);
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--role-color, #2d4a6e);
+  background-color: var(--bg-slot);
+  color: var(--role-color, #9fb0d0);
+  font-family: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.factory-select-trigger:hover {
+  border-color: var(--accent);
+}
+
+/* fixed 定位，不会被面板裁掉 */
+.factory-select-pop {
+  position: fixed;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: #141d2e;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.factory-select-option {
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--role-color, #9fb0d0);
+  font-family: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+}
+
+.factory-select-option:hover {
+  background: #1f2b42;
+}
+
+/* 底色与文字色要分开管，否则字会被自己的底色盖掉 */
+.factory-select-option.active {
+  background: var(--role-color, #9fb0d0);
+  color: #101827;
+}
+</style>

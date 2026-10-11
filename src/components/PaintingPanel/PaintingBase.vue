@@ -135,7 +135,6 @@ function onClearImport() {
               v-if="importError"
               class="base-import-error"
               :title="importError"
-              role="alert"
             >{{ importError }}</span>
           </div>
         </div>
@@ -143,3 +142,135 @@ function onClearImport() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.paint-base {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 全局 button 是 width: fit-content，这里要撑满 */
+.base-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.base-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--fg-secondary);
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.base-item:hover {
+  background: #16203a;
+  border-color: #34506f;
+}
+
+.base-item.active {
+  background: #16233c;
+  border-color: var(--accent);
+  color: var(--fg-strong);
+  box-shadow: inset 0 0 0 1px rgba(67, 100, 235, 0.35);
+}
+
+.base-name {
+  font-size: 12px;
+  font-weight: bold;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.base-meta {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+
+/* 导入入口不是可选项: 虚线边框、无选中态 */
+.base-import-toggle {
+  border-style: dashed;
+  background: transparent;
+}
+
+.base-import-toggle .base-arrow {
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 0.2s;
+}
+
+.base-import-toggle.open .base-arrow {
+  transform: rotate(90deg);
+}
+
+.base-import {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.base-import-hint {
+  min-width: 0;
+  padding: 2px 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 导入框: 比面板里的通用 textarea 矮一截，可以手动拉高 */
+.base-import-input {
+  width: 100%;
+  min-height: 64px;
+  max-height: 150px;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-input);
+  color: var(--fg-strong);
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.base-import-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.base-import-actions > button {
+  flex: 0 0 auto;   /* 长报错只让右侧文字换行 */
+}
+
+.base-import-error {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--danger);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>

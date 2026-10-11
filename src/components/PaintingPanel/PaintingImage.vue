@@ -306,3 +306,92 @@ const shiftYPct = computed({
     </div>
   </div>
 </template>
+
+<style scoped>
+.paint-select {
+  width: 100%;
+  padding: 3px 4px;
+}
+
+.paint-seed-row {
+  margin-left: 0;
+  gap: 4px;
+  align-items: center;
+}
+
+.paint-seed-row .paint-num {
+  width: 110px;
+}
+
+.paint-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.paint-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid #2d3c56;
+}
+
+.paint-palette-empty {
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-top: 2px;
+}
+
+/* 「自定义」按钮 + 取色器: 选中时用外框圈成同一个控件 */
+.paint-custom-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.paint-custom-group.boxed {
+  padding: 1px 3px 1px 1px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: #131c2d;
+  align-items: stretch;   /* 取色器拉伸到按钮高度 */
+}
+
+.paint-custom-group.boxed .btn-sm {
+  border-radius: 7px;
+}
+
+.paint-custom-group.boxed .paint-color {
+  width: 58px;
+  height: auto;
+  border-radius: 7px;
+}
+
+.paint-color {
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: var(--bg-input);
+  cursor: pointer;
+}
+
+/* 色块填满取色器（Chrome 默认在 swatch 外留内边距） */
+.paint-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.paint-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+/* 图外填充那一排: 按钮换行排列 */
+.paint-preset-row {
+  margin-left: 0;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+</style>

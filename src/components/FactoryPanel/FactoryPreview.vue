@@ -136,7 +136,6 @@ function onResetView() {
           class="btn-sm btn-ghost factory-layer-btn"
           :class="{ active: layerOn(key) }"
           type="button"
-          :aria-pressed="layerOn(key)"
           @click="toggleLayer(key)"
         >
           {{ LAYER_LABELS[key].text }}
@@ -145,3 +144,150 @@ function onResetView() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.factory-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 尺寸由 CSS 定，渲染器跟着它走（ResizeObserver） */
+.factory-preview-stage {
+  position: relative;
+  flex: 1;
+  min-height: 240px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #1b2740;
+  background: var(--bg-stage);
+}
+
+.factory-preview-stage canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* 压掉左键拖动时的文本选择 / 原生拖拽 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 画布左下角。pointer-events: none 让左键拖动不会点在提示上 */
+.factory-preview-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  padding: 2px 0;
+  color: var(--fg-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 复位视角: 舞台右下角 */
+.factory-preview-tools {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+/* 状态行: 状态标签 + 网格线开关 + 目标纬度 + 显示层开关 */
+.factory-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.factory-preview-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-faint);
+  font-size: 12px;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 目标纬度下拉: 跟状态栏同一套深色描边 */
+.factory-preview-select {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-inset);
+  color: var(--fg-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.factory-preview-select:focus {
+  outline: none;
+  border-color: #2f6bb5;
+}
+
+.factory-preview-lat {
+  width: 44px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-inset);
+  color: var(--fg-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: right;
+}
+
+.factory-preview-lat:focus {
+  outline: none;
+  border-color: #2f6bb5;
+}
+
+/* 这么窄的框里放不下上下箭头 */
+.factory-preview-lat::-webkit-outer-spin-button,
+.factory-preview-lat::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.factory-preview-unit {
+  margin-left: -2px;
+  color: #8a97ae;
+}
+
+/* 显示层开关: 推到状态行最右，与「目标纬度」同一行 */
+.factory-preview-layers {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;   /* 推到状态行最右，与「目标纬度」同一行 */
+}
+
+.factory-layer-btn {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 亮着 = 该层显示；关掉时退回 btn-ghost 的暗底色 */
+.factory-layer-btn.active,
+.factory-layer-btn.active:hover {
+  background: #24405f;
+  border-color: #3d6f9e;
+  color: var(--fg-strong);
+}
+</style>

@@ -427,3 +427,300 @@ watch(pilerTech, () => {
     />
   </div>
 </template>
+
+<style scoped>
+/* 三段竖排: 物品栏 → 自动补充 → 参数区 */
+.factory-station {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 滑块（参数区与物品栏共用轨道的画法）──
+   --factory-range-fill 由组件按比例给出 */
+.factory-station-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 40px;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #4364eb 0%,
+    #4364eb var(--factory-range-fill, 0%),
+    #22304a var(--factory-range-fill, 0%),
+    #22304a 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.factory-station-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 2px solid var(--accent);
+}
+
+.factory-station-range::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 2px solid var(--accent);
+}
+
+/* 「使用科技上限」勾上时停在上限位置并置灰 */
+.factory-station-range:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* ── 参数区: 四列 —— 标签 | 滑块 | 数值 | 勾选。标签与数值定宽、勾选按内容，
+   只有滑块那列弹性，所以每行滑块一样长、数值右边缘也齐平 ── */
+.factory-station-params {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-faint);   /* 与上面那一段的分隔线 */
+}
+
+.factory-station-row {
+  display: grid;
+  grid-template-columns: 104px minmax(100px, 124px) 62px 96px;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* 104px 刚好放得下最长的「输出货物集装数量」 */
+.factory-station-label {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+/* 第 3 列定宽（「10000 ly」也放得下），右对齐 */
+.factory-station-value {
+  grid-column: 3;
+  justify-self: end;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-value);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.factory-station-check {
+  grid-column: 4;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 用原生 checkbox，整行给个手型 */
+.factory-station-row:has(input[type='checkbox']) {
+  cursor: pointer;
+}
+
+.factory-station-autofill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+/* ── 物品栏: 一栏三格 —— 图标 | 上限盒 | 供需盒 ── */
+.factory-station-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 上限盒与供需盒里的控件都取 --storage-line-h，保证等高 */
+.factory-storage-row {
+  --storage-line-h: 22px;
+  display: grid;
+  grid-template-columns: 47px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #141d2e;
+}
+
+.factory-storage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  justify-self: start;
+  width: 47px;
+  height: 47px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-storage-icon:hover {
+  border-color: var(--accent);
+}
+
+.factory-storage-icon .factory-icon {
+  width: 80%;
+  height: 80%;
+}
+
+.factory-storage-empty {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* 两行: 上面 [输入框 + 锁定] 左右对齐，下面滑块占满盒宽 */
+.factory-storage-value-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.factory-storage-value-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  height: var(--storage-line-h);
+}
+
+.factory-storage-value {
+  width: 76px;
+  height: var(--storage-line-h, 22px);
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: var(--fg-value);
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.factory-storage-value:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 点一下换下一种，循环: 不锁定 → 满仓 → 半仓 → 空仓 */
+.factory-storage-lock {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: var(--fg-icon);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.factory-storage-lock:hover {
+  border-color: var(--accent);
+  color: var(--fg-strong);
+}
+
+/* 高度与输入框一样，细轨画在中间（多出来的高度只是可点区域） */
+.factory-storage-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  height: var(--storage-line-h, 22px);
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.factory-storage-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #4364eb 0%,
+    #4364eb var(--factory-range-fill, 0%),
+    #22304a var(--factory-range-fill, 0%),
+    #22304a 100%
+  );
+}
+
+.factory-storage-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-faint);
+}
+
+.factory-storage-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* 轨 4px、钮 11px → 上移 (11 − 4) / 2 */
+.factory-storage-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 2px solid var(--accent);
+}
+
+.factory-storage-range::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 2px solid var(--accent);
+}
+
+/* 竖直居中（行星内站只有「本地」，于是落在这一栏正中） */
+.factory-storage-roles {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* 本地在上、星际在下（class 落在 FactorySelect 的根 span 上，所以要用 :deep 穿进去） */
+.factory-storage-roles :deep(.factory-storage-role-local) {
+  grid-row: 1;
+}
+
+.factory-storage-roles :deep(.factory-storage-role-remote) {
+  grid-row: 2;
+}
+</style>

@@ -51,3 +51,23 @@ defineExpose({ open: openModal })
     <div v-if="failed" class="changelog-entry">更新日志加载失败</div>
   </BaseModal>
 </template>
+
+<style scoped>
+.changelog-entry {
+  margin-bottom: 14px;
+}
+
+.changelog-entry h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--warn);
+}
+
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--fg-secondary);
+}
+</style>

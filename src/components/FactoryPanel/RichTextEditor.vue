@@ -460,8 +460,6 @@ onBeforeUpdate(() => adoptExternal(props.modelValue))
       contenteditable="true"
       spellcheck="false"
       dir="ltr"
-      role="textbox"
-      :aria-multiline="variant === 'area'"
       :data-placeholder="placeholder"
       @mousedown="onMouseDown"
       @beforeinput="onBeforeInput"
@@ -481,11 +479,10 @@ onBeforeUpdate(() => adoptExternal(props.modelValue))
       v-if="iconButton"
       class="factory-icon-btn"
       type="button"
-      aria-label="插入图标"
       @mousedown.prevent
       @click="onIconButtonClick"
     >
-      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="12" height="12">
         <rect x="1.5" y="1.5" width="5" height="5" rx="1" />
         <rect x="9.5" y="1.5" width="5" height="5" rx="1" />
         <rect x="1.5" y="9.5" width="5" height="5" rx="1" />
@@ -494,3 +491,102 @@ onBeforeUpdate(() => adoptExternal(props.modelValue))
     </button>
   </div>
 </template>
+
+<style scoped>
+.factory-rich-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 编辑区撑满剩余宽度 */
+.factory-rich-field .factory-rich-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 多行字段的按钮抬到框外右上角；定位包含块是外面的 .factory-field */
+.factory-rich-field.btn-outside .factory-icon-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.factory-rich-edit {
+  display: block;
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 17px;
+  outline: none;
+  cursor: text;
+  caret-color: var(--fg-strong);
+}
+
+/* 单行字段: 不换行、超出裁掉。用 pre 而非 nowrap —— nowrap 会吃掉行尾空格、
+   把连续空格并成一个，而字段存的是原文 */
+.factory-rich-edit.is-input,
+.factory-rich-edit.is-label {
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* 占位文字。:empty 只在字段里一个节点都没有时成立（重画后会留一个 <br> 给光标），
+   所以还要认编辑器标出来的 .is-blank */
+.factory-rich-edit:empty::before,
+.factory-rich-edit.is-blank::before {
+  content: attr(data-placeholder);
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+.factory-rich-edit :deep(.rich-icon) {
+  cursor: default;
+}
+
+.factory-rich-edit.is-area {
+  min-height: 76px;
+  line-height: 20px;
+}
+
+.factory-rich-edit.is-label {
+  color: var(--fg-secondary);
+  min-height: 15px;
+}
+
+/* 平时不显示也不占位（未聚焦时输入框用满整行），光标进到字段才出现。
+   15×15: 高度不能超过文字行，否则一出现就把这一行撑高 */
+.factory-icon-btn {
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: var(--fg-icon);
+  cursor: pointer;
+}
+
+.factory-rich-field:focus-within .factory-icon-btn {
+  display: inline-flex;
+}
+
+.factory-icon-btn:hover {
+  border-color: var(--accent);
+  color: var(--fg-strong);
+}
+
+.factory-icon-btn svg rect,
+.factory-icon-btn svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+</style>

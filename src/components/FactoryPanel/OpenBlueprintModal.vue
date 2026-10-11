@@ -134,7 +134,6 @@ function onClose() {
       <div
         class="factory-import-drop"
         :class="{ 'drag-over': dragging }"
-        role="button"
         tabindex="0"
         @click="pickFile"
         @keydown.enter.prevent="pickFile"
@@ -172,3 +171,110 @@ function onClose() {
     </div>
   </BaseModal>
 </template>
+
+<style scoped>
+.factory-import {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.factory-import-drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 32px 12px;
+  border-radius: 10px;
+  border: 1px dashed #34506f;
+  background: var(--bg-input);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.factory-import-drop:hover {
+  border-color: var(--accent);
+}
+
+.factory-import-drop.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-ring);
+}
+
+.factory-import-drop-title {
+  font-size: 13px;
+  color: var(--fg-strong);
+}
+
+.factory-import-drop-sub {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.factory-import-drop .drop-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--fg-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+  text-align: center;
+  background: rgba(16, 22, 36, 0.9);
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 2px dashed var(--accent);
+  white-space: nowrap;
+}
+
+.factory-import-drop .drop-hint.show {
+  opacity: 1;
+}
+
+/* 「或」分隔线 */
+.factory-import-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.factory-import-or::before,
+.factory-import-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.factory-import-text {
+  width: 100%;
+  min-height: 90px;
+  max-height: 180px;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-input);
+  color: var(--fg-strong);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.factory-import-error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger);
+  word-break: break-all;
+}
+</style>

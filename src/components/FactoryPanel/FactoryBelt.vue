@@ -84,3 +84,53 @@ function onCount(e: Event) {
     />
   </div>
 </template>
+
+<style scoped>
+/* .factory-selection-* 那套参数行是共用件（在 styles/shared.css 里）：
+   它们挂在父组件 FactorySelection 的模板结构下，写成本组件的 scoped 会失效 */
+
+.factory-belt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-belt-icon:hover {
+  border-color: var(--accent);
+}
+
+.factory-belt-icon .factory-icon {
+  width: 80%;
+  height: 80%;
+}
+
+.factory-belt-empty {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.factory-belt-count {
+  width: 92px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-slot);
+  color: var(--fg-value);
+  font-family: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.factory-belt-count:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+</style>

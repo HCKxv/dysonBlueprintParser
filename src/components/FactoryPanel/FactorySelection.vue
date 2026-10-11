@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 详情: 预览里点中的那栋建筑 */
 import { computed, reactive, watch } from 'vue'
-import { editBuilding, editLabGroup, linkedLabBuildings, selectedBuilding } from '../../stores/factory'
+import { editBuilding, editLabGroup, linkedLabBuildings, selectedBuilding, selectedBuildingCoord } from '../../stores/factory'
 import { isAssembler, isBelt, isInserter, isLab, isStation, itemName } from '../../lib/blueprint/factory/factoryItems.js'
 import { cloneData } from '../../lib/blueprint/clonePlain.js'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
@@ -19,14 +19,16 @@ const toast = useToast()
 const icon = computed(() => (selectedBuilding.value ? itemIconUrl(selectedBuilding.value.itemId) : ''))
 const name = computed(() => (selectedBuilding.value ? itemName(selectedBuilding.value.itemId) : ''))
 
-/**
- * 蓝图坐标: localOffset[0]，建筑相对参考点的 x = 经度方向格、y = 纬度方向行、z = 高度格。
- */
-const coord = computed(() => selectedBuilding.value?.localOffset?.[0] ?? null)
+/** 网格坐标（格） */
+const coord = computed(() => selectedBuildingCoord.value)
+/** 原始坐标 */
+const BPcoord = computed(() => selectedBuilding.value?.localOffset?.[0] ?? null)
 
-/** 坐标数值: 解析时已收敛到 4 位小数，这里只把 -0 收成 0 */
+/** 坐标数值 */
 function num(value: number) {
-  return String(Number(value) === 0 ? 0 : value)
+  const ticks = Math.round(Math.abs(value) * 10000) // 先回到 4 位小数的整数刻度
+  const rounded = Math.sign(value) * Math.round(ticks / 100) / 100
+  return String(rounded === 0 ? 0 : rounded) // -0 收成 0
 }
 
 /** 暂存的改动 */
@@ -106,9 +108,19 @@ watch(selectedBuilding, resetStaged)
       </div>
       <span v-if="labCount > 1" class="factory-selection-group">×{{ labCount }}</span>
       <span v-if="coord" class="factory-selection-coord">
-        <span>x {{ num(coord.x) }}</span>
-        <span>y {{ num(coord.y) }}</span>
-        <span>z {{ num(coord.z) }}</span>
+        <span>位置 ({{ num(coord.x) }}, {{ num(coord.y) }})</span>
+        <span>高 {{ num(coord.z) }}</span>
+        <span class="factory-selection-coord-hint"
+          :title= "`原始坐标：x=${BPcoord.x}, y=${BPcoord.y}, z=${BPcoord.z}`">
+          <svg viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="6.8" />
+            <path
+              class="factory-selection-coord-hint-mark"
+              d="M6.1 6A2 2 0 0 1 9.99 6.67c0 1.33-2 2-2 2"
+            />
+            <circle class="factory-selection-coord-hint-dot" cx="8" cy="11.4" r="0.88" />
+          </svg>
+        </span>
       </span>
     </div>
 
@@ -164,3 +176,105 @@ watch(selectedBuilding, resetStaged)
   </div>
   <div v-else class="factory-selection-empty">未选择建筑</div>
 </template>
+
+<style scoped>
+.factory-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 0;
+}
+
+.factory-selection-index {
+  font-size: 14px;
+  font-weight: bold;
+  color: #6ea8ff;
+}
+
+.factory-selection-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 图标与参数字行的样式都是两处以上在用，见 styles/shared.css */
+
+.factory-selection-name {
+  font-size: 18px;
+  color: var(--fg);
+}
+
+/* 贴行尾；等宽数字，换建筑时不左右抖 */
+.factory-selection-coord {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #8fa3c8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 问号提示 */
+.factory-selection-coord-hint {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+/* 线性圆圈 + 问号，颜色从坐标行继承 */
+.factory-selection-coord-hint svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.factory-selection-coord-hint-mark {
+  stroke-width: 1.4;
+}
+
+/* 问号下面那一点是实心圆，不跟着走描边 */
+.factory-selection-coord-hint-dot {
+  fill: currentColor;
+  stroke: none;
+}
+
+.factory-selection-group {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #6f8ec0;
+  font-variant-numeric: tabular-nums;
+}
+
+.factory-selection-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.factory-selection-save {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.factory-selection-save:disabled {
+  background: var(--bg-slot);
+  border-color: var(--line-strong);
+  color: #6b7a95;
+  cursor: default;
+}
+
+.factory-selection-empty {
+  padding: 8px 2px;
+  font-size: 14px;
+  color: #8fa3c4;
+}
+</style>

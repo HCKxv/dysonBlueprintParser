@@ -85,9 +85,10 @@ export const PAINT_MODES: PaintModeOption[] = [
   { value: 'foundation', icon: targetFoundationIcon, label: '地基蓝图', desc: '生成自定义地基涂色' },
 ]
 
-/** 投影模式（地基那两档）: 半球用不上；「平铺」是按原比例只铺一份的独立一档（kind = equator） */
+/** 投影模式（地基那三档）: 与戴森球那组一一对应，只是赤道带只铺一份、叫「平铺」 */
 const FOUNDATION_PROJ_MODES: ProjModeOption[] = [
-  { value: 'tile', kind: 'equator', icon: tileIcon, label: '平铺', desc: '将图片平铺到地基网格上' },
+  { value: 'hemisphere', kind: 'hemisphere', icon: hemisphereIcon, label: '半球投影', desc: '正交映射到半球面' },
+  { value: 'tile', kind: 'equator', icon: tileIcon, label: '平铺', desc: '将图片铺到地基网格上' },
   { value: 'equirect', kind: 'equirect', icon: equirectIcon, label: '球面全景投影', desc: '逆等距圆柱投影到球面上' },
 ]
 
@@ -171,7 +172,7 @@ const painting = reactive({
   /** 两个生成模式各自的投影模式 */
   projModeByPaintMode: {
     sphere: 'hemisphere',
-    foundation: 'tile',
+    foundation: 'hemisphere',
   } as Record<PaintMode, ProjMode>,
   /** 当前生效的投影模式（访问器挂在下面，实际存在 projModeByPaintMode 里） */
   projMode: 'hemisphere' as ProjMode,
@@ -295,7 +296,7 @@ export const currentMode = computed(
  * 界面据此隐藏戴森壳基底、把颜色数量锁成 16 色、显示地基调色盘
  */
 export const isFoundationMode = computed(() => painting.paintMode === 'foundation')
-/** 当前生成模式可用的投影模式（地基模式下少一个半球投影，赤道带那档叫「平铺」） */
+/** 当前生成模式可用的投影模式（地基那组里赤道带叫「平铺」） */
 export const availableProjModes = computed(
   () => (isFoundationMode.value ? FOUNDATION_PROJ_MODES : PROJ_MODES),
 )
@@ -314,9 +315,7 @@ export { FOUNDATION_COLOR_COUNT }
 /** 行星地基网格（游戏里行星半径恒为 200；半径做成参数的话再改成 computed） */
 export const planetGrid = createPlanetGrid(DEFAULT_PLANET_RADIUS)
 
-/**
- * 预览默认视角正视的经线 = 经度偏移 + 180（三种投影模式一致）；地基没有经度偏移，固定 0
- */
+/** 预览默认视角正视的经线 = 经度偏移 + 180（三种投影模式一致）；地基位置固定、没有经度偏移 */
 export const defaultViewLng = computed(
   () => (isFoundationMode.value ? 180 : painting.hemiLng + 180),
 )

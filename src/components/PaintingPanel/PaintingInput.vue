@@ -77,7 +77,6 @@ function onClear() {
     <div
       class="image-drop"
       :class="{ 'drag-over': dragging, 'has-image': !!painting.imageUrl }"
-      role="button"
       tabindex="0"
       @click="openPicker"
       @keydown.enter.prevent="openPicker"
@@ -115,3 +114,143 @@ function onClear() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.paint-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.image-drop {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  border: 1px dashed #34506f;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.image-drop:hover {
+  border-color: var(--accent);
+}
+
+.image-drop.has-image {
+  border-style: solid;
+  border-color: var(--line);
+}
+
+.image-drop.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-ring);
+}
+
+.image-drop-hint {
+  font-size: 12px;
+  color: var(--fg-secondary);
+  text-align: center;
+}
+
+.image-drop-sub {
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.image-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.image-meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: #dce4f5;
+  background: linear-gradient(180deg, rgba(5, 8, 14, 0), rgba(5, 8, 14, 0.88));
+}
+
+.image-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-dim {
+  margin-left: auto;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.image-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--fg-strong);
+  background: rgba(9, 11, 20, 0.62);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-drop:hover .image-overlay {
+  opacity: 1;
+}
+
+.image-drop .drop-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--fg-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+  text-align: center;
+  background: rgba(16, 22, 36, 0.9);
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 2px dashed var(--accent);
+  white-space: nowrap;
+}
+
+.image-drop .drop-hint.show {
+  opacity: 1;
+}
+
+.paint-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.paint-tip {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+</style>

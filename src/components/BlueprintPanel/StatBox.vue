@@ -36,3 +36,28 @@ function onToggle(node: StatNode, e: Event) {
     <div class="stat-value" v-html="node.value"></div>
   </div>
 </template>
+
+<style scoped>
+.stat-checkbox {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.stat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  margin-top: 2px;
+}
+</style>

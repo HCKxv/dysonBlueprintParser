@@ -1,0 +1,54 @@
+/* 应用骨架与面板栅格。
+   .app / .panels / .col / .panel 写在工具根组件里、却给子组件（面板）当容器，
+   所以只能留在全局；.panel h2 同理（标题在子组件的模板里）。
+   各工具自己的列宽与窄屏重排写在那个工具根组件的 scoped 里。 */
+.app {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 面板栅格（列宽由各工具自己定） */
+.panels {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.0rem;
+}
+
+/* 窄屏下页面本身不再锁高度 */
+@media (max-width: 960px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+}

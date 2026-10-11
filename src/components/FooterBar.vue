@@ -86,7 +86,7 @@ onBeforeUnmount(() => {
   <div ref="rootEl" class="footer-bar">
     <a href="#"><div class="footer-item">▲</div></a>
     |
-    <button type="button" class="footer-item" aria-haspopup="dialog" @click="changelogModal?.open()">
+    <button type="button" class="footer-item" @click="changelogModal?.open()">
       更新日志
     </button>
     <template v-for="link in links" :key="link.href">
@@ -100,3 +100,52 @@ onBeforeUnmount(() => {
   </div>
   <ChangelogModal ref="changelogModal" />
 </template>
+
+<style scoped>
+.footer-bar {
+  padding: 14px 20px;
+  /* 比面板底色再深一档，与滑块槽那个 #0b1220 不是同一个色，别并成一个变量 */
+  background: #0b1020;
+  border-top: 2px solid transparent;
+  border-image: linear-gradient(90deg, #243556 0%, #4364eb 25%, #ffd866 50%, #4364eb 75%, #243556 100%) 1;
+  color: var(--fg-secondary);
+  font-size: 13px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 2px;
+}
+
+.footer-bar a {
+  color: var(--fg-secondary);
+  text-decoration: none;
+}
+
+.footer-bar a:hover .footer-item {
+  background: #1a2a44;
+  color: var(--fg);
+}
+
+.footer-bar button.footer-item {
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.footer-bar button.footer-item:hover {
+  background: #1a2a44;
+  color: var(--fg);
+}
+
+.footer-item {
+  padding: 1px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+}
+
+.footer-center {
+  display: flex;
+  align-items: center;
+}
+</style>

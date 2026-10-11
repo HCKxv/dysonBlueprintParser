@@ -15,7 +15,7 @@ const emit = defineEmits<{
     <div class="modal-box">
       <div class="modal-header">
         <span>{{ title }}</span>
-        <button class="modal-close" aria-label="关闭" @click="emit('close')">✕</button>
+        <button class="modal-close" @click="emit('close')">✕</button>
       </div>
       <div class="modal-body scroll-y">
         <slot />

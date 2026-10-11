@@ -28,3 +28,11 @@ import StatBox from './StatBox.vue'
     </div>
   </div>
 </template>
+
+<style scoped>
+.stat-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+</style>

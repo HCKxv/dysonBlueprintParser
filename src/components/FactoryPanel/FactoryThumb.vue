@@ -160,3 +160,120 @@ const slots = computed<(ThumbSlot | null)[]>(() => iconLayoutSlots(props.layout)
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 保持底图比例（10:11），上下自动边距 → 多余空间平分到上下、垂直居中 */
+.factory-thumb {
+  position: relative;
+  aspect-ratio: 10 / 11;
+  margin-block: auto;
+  container-type: inline-size;   /* 文字用 cqw 跟着宽度缩放 */
+  border-radius: 6px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
+/* 图标区: 底图顶部那块正方形（占卡片高的 10/11） */
+.factory-thumb-area {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.factory-thumb-slot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.factory-thumb-slot:hover,
+.factory-thumb-slot:focus-visible {
+  border-color: rgba(120, 200, 255, 0.9);
+  background: rgba(9, 20, 40, 0.35);
+  outline: none;
+}
+
+/* 空位: 虚线框 + 加号 */
+.factory-thumb-slot.empty {
+  border-style: dashed;
+  border-color: rgba(150, 210, 255, 0.45);
+}
+
+.factory-thumb-slot.empty:hover {
+  border-style: solid;
+  border-color: rgba(120, 200, 255, 0.9);
+}
+
+.factory-thumb-plus {
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(200, 230, 255, 0.65);
+  pointer-events: none;
+}
+
+.factory-thumb-slot .factory-thumb-icon,
+.factory-thumb-slot .factory-thumb-fallback {
+  position: static;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #eaf3ff;
+  font-size: 10px;
+  font-weight: bold;
+  text-shadow: 0 1px 3px rgba(0, 20, 60, 0.9);
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* 压在图纸偏下（对齐游戏里蓝图卡片）: 量过游戏截图（卡片 194×213），
+   字号跟缩略图宽度走，所以用 cqw */
+.factory-thumb-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4.5cqw;
+  box-sizing: border-box;
+  font-size: 13.6cqw;
+  line-height: 1;
+  font-weight: bold;
+  color: #f2f7ff;
+  text-shadow: 0 1px 3px rgba(0, 20, 60, 0.9), 0 0 5px rgba(0, 20, 60, 0.55);
+  overflow: hidden;
+}
+
+/* 内嵌图标比字略大（同游戏比例） */
+.factory-thumb-caption :deep(.rich-icon) {
+  width: 1.06em;
+  height: 1.06em;
+  vertical-align: -0.22em;
+}
+
+/* 只读富文本: 居中、按缩略图宽度换行，最多两行
+   （line-height 是 1，一行正好 1em，所以 2em 裁在行边界上） */
+.factory-thumb-caption :deep(.rich-text-view) {
+  text-align: center;
+  white-space: pre-wrap;
+  min-width: 0;                 /* flex 子项默认不肯缩到内容以下 */
+  overflow-wrap: anywhere;      /* 没有空格的整串也能断行 */
+  max-height: 2em;
+  overflow: hidden;
+}
+</style>

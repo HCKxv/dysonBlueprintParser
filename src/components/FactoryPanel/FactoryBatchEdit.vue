@@ -29,9 +29,9 @@ const PICKER_NOUN: Record<string, string> = {
   filter: '物品',
 }
 
-/** 增产模式下拉选项（替换配方用）: 「不替换」= null */
+/** 增产模式下拉选项（替换配方用）: 「不修改」= null */
 const ACCELERATOR_OPTIONS: { value: string, label: string }[] = [
-  { value: 'null', label: '不替换' },
+  { value: 'null', label: '不修改' },
   ...Object.entries(ACCELERATOR_MODE_NAMES).map(([value, label]) => ({ value, label })),
 ]
 
@@ -362,3 +362,230 @@ function onConfirm() {
     @close="picker.open = false"
   />
 </template>
+
+<style scoped>
+.factory-batch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+  min-width: 0;
+}
+
+.factory-batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 行高 = 格子 24 + 上下内边距 12 + 边框 2，跟「添加规则」那一行同高 */
+.factory-batch-rule {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid #1f2c44;
+  border-radius: 10px;
+  background: #111a2b;
+  min-width: 0;
+}
+
+.factory-batch-label {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #8fa3c8;
+}
+
+/* 方框里只有图标（没选就是空框 + 加号），点开配方浮窗 */
+.factory-batch-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg-slot);
+  color: #6d7a92; /* 空框里那个加号 */
+  cursor: pointer;
+}
+
+/* 全局 button:hover 是蓝的，会把这块涂蓝，所以背景要自己写 */
+.factory-batch-slot:hover:enabled {
+  background: #22314b;
+  border-color: var(--accent);
+  color: var(--fg-strong);
+}
+
+.factory-batch-slot:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.factory-batch-slot .factory-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* 没选时的加号比「添加规则」那个小一号 */
+.factory-batch-slot svg {
+  width: 10px;
+  height: 10px;
+}
+
+.factory-batch-accel {
+  margin-left: 2px;
+}
+
+.factory-batch-select {
+  height: 24px;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg-slot);
+  color: var(--fg-value);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.factory-batch-select:hover {
+  border-color: var(--accent);
+}
+
+.factory-batch-arrow {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: #6f8ec0;
+}
+
+/* 批量编辑里的线性图标 */
+.factory-batch-arrow svg,
+.factory-batch-plus svg,
+.factory-batch-remove svg,
+.factory-batch-slot svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.factory-batch-arrow svg,
+.factory-batch-remove svg {
+  width: 100%;
+  height: 100%;
+}
+
+.factory-batch-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #6f8ec0;
+  cursor: pointer;
+}
+
+.factory-batch-remove:hover {
+  background: #22314b;
+  border-color: var(--accent);
+  color: var(--fg-strong);
+}
+
+.factory-batch-add {
+  position: relative;
+}
+
+.factory-batch-plus {
+  width: 100%;
+  justify-content: center;
+  color: var(--fg-icon);
+  cursor: pointer;
+}
+
+.factory-batch-plus:hover {
+  background: #16233a;
+  border-color: var(--accent);
+  color: var(--fg-strong);
+}
+
+.factory-batch-plus svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* 贴在「添加规则」下面，宽度与那一行统一 */
+.factory-batch-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg-pop);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.factory-batch-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-value);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.factory-batch-menu-item:hover {
+  background: #22314b;
+  color: var(--fg-strong);
+}
+
+.factory-batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* 主按钮配色（跟「保存」一致） */
+.factory-batch-confirm {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.factory-batch-confirm:hover:enabled {
+  background: var(--accent-hover);
+}
+
+.factory-batch-confirm:disabled {
+  background: var(--bg-slot);
+  border-color: var(--line-strong);
+  color: #6b7a95;
+  cursor: default;
+}
+</style>

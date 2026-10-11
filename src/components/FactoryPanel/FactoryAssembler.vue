@@ -117,3 +117,65 @@ function onPick(icon: IconRef) {
     />
   </div>
 </template>
+
+<style scoped>
+
+/* 开关尺寸从这两个数推（钮 = 高 − 2×内边距） */
+.factory-selection-accel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --accel-h: 15px;
+  --accel-pad: 2px;
+}
+
+/* 胶囊 + 圆钮（钮在左 = 0 额外产出，在右 = 1 生产加速）。
+   两挡颜色只在 --accel-color 上声明一次，轨道与挡位名都用它，所以两者必然同色 */
+.factory-selection-switch {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.factory-selection-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: var(--accel-h);
+  border-radius: calc(var(--accel-h) / 2);
+  background: var(--accel-color, #5fd3f2);
+  transition: background 0.15s ease;
+}
+
+.factory-selection-switch-knob {
+  position: absolute;
+  top: var(--accel-pad);
+  left: var(--accel-pad);
+  width: calc(var(--accel-h) - var(--accel-pad) * 2);
+  height: calc(var(--accel-h) - var(--accel-pad) * 2);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+/* 钮在左内边；右挡时滑到右内边（30 − 钮 11 − 两侧内边距 4 = 15） */
+.factory-selection-accel[data-mode='1'] .factory-selection-switch-knob {
+  transform: translateX(15px);
+}
+
+.factory-selection-slider-name {
+  min-width: 0;
+  color: var(--accel-color, #5fd3f2);
+  white-space: nowrap;
+}
+
+/* 生产加速那挡: 换一个变量，轨道与文字一起换色 */
+.factory-selection-accel[data-mode='1'] {
+  --accel-color: #ef9a5a;
+}
+</style>

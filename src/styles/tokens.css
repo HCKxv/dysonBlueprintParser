@@ -1,0 +1,36 @@
+/* 设计变量：只放多个组件共用的取值；组件私有的一律留在组件里 */
+:root {
+  /* ── 底色 ── */
+  --bg-page: #090b14;
+  --bg-app: #0b1220;         /* 工具切换滑块的槽 */
+  --bg-panel: #0f1628;
+  --bg-input: #101624;
+  --bg-inset: #111926;
+  --bg-stage: #05080e;
+  --bg-stage-alt: #0a0f1a;
+  --bg-slot: #1a2438;
+  --bg-pop: #131c2e;
+
+  /* ── 文字 ── */
+  --fg: #e7ebff;
+  --fg-strong: #eef2ff;
+  --fg-secondary: #bcc8e0;
+  --fg-muted: #7b8aa6;
+  --fg-icon: #9fb0d0;
+  --fg-value: #cfe0ff;
+
+  /* ── 描边 ── */
+  --line: #243556;
+  --line-strong: #2d4a6e;
+  --line-soft: #23334f;
+  --line-inset: #1e3657;
+  --line-faint: #22304a;
+
+  /* ── 强调 ── */
+  --accent: #4364eb;
+  --accent-hover: #3451c9;
+  --accent-ring: rgba(67, 100, 235, 0.4);    /* 拖放光圈 */
+  --accent-glow: rgba(67, 100, 235, 0.45);   /* 滑动指示块的投影 */
+  --danger: #ff8a8a;
+  --warn: #ffd866;
+}

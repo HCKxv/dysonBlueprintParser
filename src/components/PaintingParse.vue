@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ToolSlider from './ToolSlider.vue'
 import PaintingSection from './PaintingPanel/PaintingSection.vue'
 import PaintingInput from './PaintingPanel/PaintingInput.vue'
 import PaintingImage from './PaintingPanel/PaintingImage.vue'
@@ -20,7 +21,7 @@ import {
 import { useToast } from '../composables/useToast'
 import { saveAsText } from '../utils/download'
 import { handleBlueprintText } from '../stores/preview'
-import { setTool } from '../stores/tool'
+import { activeTool } from '../stores/tool'
 
 const toast = useToast()
 
@@ -78,7 +79,7 @@ async function onDownloadBlueprint() {
 async function onViewInPreview() {
   try {
     const text = await exportPaintingBlueprint()
-    setTool('preview')
+    activeTool.value = 'preview'
     handleBlueprintText(text)
   } catch (error) {
     toast.show(`无法在预览中打开：\n${(error as Error).message}`)
@@ -107,6 +108,17 @@ watch(
 
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
+})
+
+/** 预览视图 */
+const viewItems = computed(() => [
+  { value: '3d', label: '3D 预览' },
+  { value: 'flat', label: isFoundationMode.value ? '量化图' : '平面展开' },
+])
+
+const paintView = computed({
+  get: () => (painting.showFlatMap ? 'flat' : '3d'),
+  set: (v: string) => { painting.showFlatMap = v === 'flat' },
 })
 
 // ── 左栏上下边缘: 超出容器范围的内容做模糊过渡 ──
@@ -203,30 +215,139 @@ onBeforeUnmount(() => {
 
     <div class="col panel paint-col-preview">
       <div class="paint-view-row">
-        <div class="tool-slider paint-view-switch" role="tablist" aria-label="预览视图切换">
-          <span
-            class="tool-slider-thumb"
-            :style="{ transform: `translateX(${painting.showFlatMap ? 100 : 0}%)` }"
-          ></span>
-          <button
-            type="button"
-            role="tab"
-            class="tool-slider-btn"
-            :class="{ active: !painting.showFlatMap }"
-            :aria-selected="!painting.showFlatMap"
-            @click="painting.showFlatMap = false"
-          >3D 预览</button>
-          <button
-            type="button"
-            role="tab"
-            class="tool-slider-btn"
-            :class="{ active: painting.showFlatMap }"
-            :aria-selected="painting.showFlatMap"
-            @click="painting.showFlatMap = true"
-          >{{ isFoundationMode ? '量化图' : '平面展开' }}</button>
-        </div>
+        <ToolSlider
+          v-model="paintView"
+          class="paint-view-switch"
+          :items="viewItems"
+        />
       </div>
       <PaintingPreview />
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 彩绘工具: 两栏 1 : 2，左栏最小 360px。行数必须固定成一行，否则会命中
+   .panels 在 (max-width:1500px) 的 auto minmax(0,1fr)，预览被压扁 */
+.panels--paint {
+  grid-template-columns: minmax(360px, 1fr) minmax(0, 2fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "left center";
+  /* 比通用的 12px 少 4px: 左栏内容右侧还给滚动条留了 4px */
+  column-gap: 8px;
+}
+
+.panels--paint > .paint-col {
+  grid-area: left;
+}
+
+/* 只占一个区域名，与蓝图预览的 .panel-center 无关 */
+.panels--paint > .paint-col-preview {
+  grid-area: center;
+  min-width: 0;
+}
+
+/* 面板本身要当边缘模糊层的定位基准 */
+.paint-col {
+  overflow: hidden;
+  position: relative;
+}
+
+.paint-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.scroll-edge-blur {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 30px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.scroll-edge-blur.show {
+  opacity: 1;
+}
+
+.scroll-edge-blur.top {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(11, 16, 32, 0.7), rgba(11, 16, 32, 0));
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+}
+
+.scroll-edge-blur.bottom {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(11, 16, 32, 0.7), rgba(11, 16, 32, 0));
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+}
+
+.paint-view-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+/* 两列等宽，50% 宽的滑块才正好对上第二格 */
+.paint-view-switch {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.paint-view-switch :deep(.tool-slider-btn) {
+  justify-content: center;
+  padding: 3px 12px;
+  font-size: 12px;
+  gap: 0;
+}
+
+.paint-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 全局 button 是 width: fit-content，这里要撑满整行 */
+.paint-actions .btn {
+  width: 100%;
+  min-width: 0;
+}
+
+.paint-export-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+
+/* 窄屏（≤960px，与顶栏工具切换同断点）: 预览在上、输入在下 */
+@media (max-width: 960px) {
+  .panels--paint {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "center"
+      "left";
+  }
+
+  .panels--paint > .paint-col-preview {
+    order: 1;
+    aspect-ratio: 4 / 3;
+  }
+
+  .panels--paint > .paint-col {
+    order: 2;
+  }
+}
+</style>

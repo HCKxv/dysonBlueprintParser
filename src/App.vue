@@ -8,7 +8,7 @@ import FooterBar from './components/FooterBar.vue'
 import AppToast from './components/AppToast.vue'
 import CopyShellModal from './components/BlueprintPanel/CopyShellModal.vue'
 import { store, parseBlueprint } from './stores/preview'
-import { activeTool, setTool } from './stores/tool'
+import { activeTool } from './stores/tool'
 import { clearTxtParamFromUrl, loadBlueprintFromUrl } from './utils/urlLoader'
 import { useToast } from './composables/useToast'
 import { enableUrlLoad, showFooter } from './config/app'
@@ -25,7 +25,7 @@ function loadUrlBlueprint() {
   loadBlueprintFromUrl({
     onLoadStart: () => toast.show('正在加载蓝图'),
     onLoaded: (text) => {
-      setTool('preview')
+      activeTool.value = 'preview'
       store.input = text
       parseBlueprint()
     },

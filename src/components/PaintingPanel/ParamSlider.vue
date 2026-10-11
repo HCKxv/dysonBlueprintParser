@@ -130,7 +130,7 @@ function onRange(v: number) {
       :style="{ '--paint-range-fill': `${percent}%` }"
       @input="onRange(Number(($event.target as HTMLInputElement).value))"
     />
-    <div v-if="stopList" class="paint-range-ticks" aria-hidden="true">
+    <div v-if="stopList" class="paint-range-ticks">
       <span
         v-for="(s, i) in stopList"
         :key="s"
@@ -141,3 +141,74 @@ function onRange(v: number) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.paint-unit {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* 挡位模式下只显示挡位名，数字等宽，换挡时不左右抖 */
+.paint-unit.mono {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* --paint-range-fill 由组件按比例给出 */
+.paint-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #4364eb 0%,
+    #4364eb var(--paint-range-fill, 50%),
+    #22304a var(--paint-range-fill, 50%),
+    #22304a 100%
+  );
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.paint-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 6px rgba(67, 100, 235, 0.6);
+}
+
+.paint-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 2px solid var(--accent);
+}
+
+.paint-range-ticks {
+  position: relative;
+  height: 7px;
+  margin-top: -1px;
+}
+
+.paint-range-tick {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 5px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+
+.paint-range-tick.active {
+  background: var(--accent);
+}
+</style>

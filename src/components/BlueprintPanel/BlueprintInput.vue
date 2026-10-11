@@ -105,3 +105,71 @@ function onDrop(e: DragEvent) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+}
+
+.input-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-secondary);
+  flex-shrink: 0;
+  padding: 8px 12px 0 12px;
+}
+
+.input-header span {
+  font-size: 1.0rem;
+  font-weight: bold;
+  color: var(--fg);
+}
+
+.input-header .btn-sm {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.textarea-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.textarea-wrapper textarea.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-ring);
+}
+
+.textarea-wrapper .drop-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--fg-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+  text-align: center;
+  background: rgba(16, 22, 36, 0.88);
+  padding: 16px 28px;
+  border-radius: 12px;
+  border: 2px dashed var(--accent);
+  white-space: nowrap;
+}
+
+.textarea-wrapper .drop-hint.show {
+  opacity: 1;
+}
+</style>

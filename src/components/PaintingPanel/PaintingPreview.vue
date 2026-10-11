@@ -237,3 +237,189 @@ const emptyHint = computed(() => (painting.imageUrl ? '正在生成…' : '输�
     </div>
   </div>
 </template>
+
+<style scoped>
+.paint-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.paint-preview-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg-stage-alt);
+}
+
+.paint-preview-stage canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 被展开图盖住时只是看不见，仍占布局尺寸 */
+.paint-preview-stage canvas.is-hidden {
+  visibility: hidden;
+}
+
+/* 空态提示是透明的，不挡底下的网格 */
+.paint-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  font-size: 13px;
+  color: var(--fg-secondary);
+  text-align: center;
+  padding: 12px;
+}
+
+/* 复位视角: 舞台左下角 */
+.paint-preview-tools {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+.paint-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.paint-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-inset);
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.paint-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 网格线开关: 跟在状态标签后面，用竖线分隔 */
+.paint-grid-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-faint);
+  font-size: 11px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.paint-flatmap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  /* 与 3D 预览同一底色 */
+  background: var(--bg-stage-alt);
+}
+
+/* 仅一个「导出展开图」按钮，靠右 */
+.paint-flatmap-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--fg-secondary);
+  flex-shrink: 0;
+}
+
+.paint-flatmap-head .btn-sm {
+  margin-left: auto;
+}
+
+.paint-flatmap-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 只显示，不导出 */
+.paint-flatmap-figure {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.paint-flatmap-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.paint-flatmap-img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  border-radius: 6px;
+  border: 1px solid var(--line-faint);
+  image-rendering: pixelated;
+}
+
+/* 16 色量化图（地基）: 图框和图片都铺满可视区，位图再按原图比例 contain 在里面。
+   不能只给 img 写 max-height: 100% —— 图框高度是 auto 时百分比解不出来，
+   竖图 / 方图会按自身尺寸撑高、顶出容器 */
+.paint-flatmap-figure--fit {
+  width: 100%;
+  height: 100%;
+}
+
+.paint-flatmap-img--fit {
+  image-rendering: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.paint-flatmap-empty {
+  font-size: 12px;
+  color: var(--fg-muted);
+  padding: 12px 0;
+  text-align: center;
+}
+
+.paint-flatmap-hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+</style>

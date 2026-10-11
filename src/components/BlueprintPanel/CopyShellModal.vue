@@ -207,3 +207,12 @@ function closeModal() {
     </div>
   </BaseModal>
 </template>
+
+<style scoped>
+.menu-div {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+</style>

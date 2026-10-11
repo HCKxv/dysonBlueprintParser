@@ -79,18 +79,11 @@ export const showOpenModal = ref(false)
 /** 批量编辑，见 lib/factory/batch.js 的规则类型表 */
 export const batchRules = ref<BatchRule[]>([])
 
-/** 左侧输入栏的三档: 信息 / 详情 / 批量编辑 */
-export const FACTORY_VIEWS = ['info', 'detail', 'batch'] as const
-
-export type FactoryViewId = (typeof FACTORY_VIEWS)[number]
+/** 左侧输入栏的三档: 信息/ 详情/ 批量编辑 */
+export type FactoryViewId = 'info' | 'detail' | 'batch'
 
 /** 当前显示的档位 */
 export const factoryView = ref<FactoryViewId>('info')
-
-/** 切档位 */
-export function setFactoryView(id: FactoryViewId) {
-  factoryView.value = id
-}
 
 // 选中 / 取消选中时自动切
 watch(() => factory.selectedIndex, (index) => {
@@ -259,6 +252,13 @@ export const selectedBuilding = computed(() => {
   // 序号就是下标: 取回来核一下序号，对不上（越界也是 undefined）当没选中
   const building = buildings[index]
   return building && Number(building.index) === index ? building : null
+})
+
+/** 选中建筑的坐标（格） */
+export const selectedBuildingCoord = computed(() => {
+  const index = factory.selectedIndex
+  if (index === null || !factory.blueprint) return null
+  return preview?.buildingCoord(index) ?? null
 })
 
 // ─────────────────────────────────────────────────────────────

@@ -14,7 +14,6 @@ export interface ToolItem {
   label: string
   /** 顶栏标题文字，缺省与 label 相同 */
   title?: string
-  desc?: string
 }
 
 export const TOOLS: ToolItem[] = [
@@ -38,6 +37,7 @@ function loadTool(): ToolId {
 
 export const activeTool = ref<ToolId>(loadTool())
 
+// 落盘: 换工具就记住
 watch(activeTool, (v) => {
   try {
     localStorage.setItem(TOOL_KEY, v)
@@ -45,8 +45,3 @@ watch(activeTool, (v) => {
     /* 同上 */
   }
 })
-
-/** 切换工具 */
-export function setTool(id: ToolId) {
-  activeTool.value = id
-}

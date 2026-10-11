@@ -58,6 +58,11 @@ function openSlotPicker(index: number, itemId: number, e: MouseEvent) {
   slotPicked = false
 }
 
+/** 右键缩略图图标位 = 清掉这一位（id 0 = 空） */
+function onClearSlot(index: number) {
+  factory.header.icons[index] = 0
+}
+
 /** 点字段上的「插入图标」按钮（浮层贴着这个字段弹） */
 function openTextPicker(api: RichTextApi) {
   picker.slot = -1
@@ -172,7 +177,7 @@ const reformIcons = {
           :icons="factory.header.icons"
           :short-desc="factory.header.shortDesc"
           @pick-slot="openSlotPicker"
-          @clear-slot="(index) => (factory.header.icons[index] = 0)"
+          @clear-slot="onClearSlot"
         />
         <button
           class="btn-sm factory-new-attr"
@@ -205,7 +210,6 @@ const reformIcons = {
         <button
           class="factory-prop-remove"
           type="button"
-          aria-label="删除这条属性"
           @click="factory.header.properties.splice(index, 1)"
         >×</button>
       </div>
@@ -296,3 +300,251 @@ const reformIcons = {
     @close="closePicker"
   />
 </template>
+
+<style scoped>
+.factory-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.factory-info-top {
+  display: flex;
+  /* 拉伸: 缩略图栏拿到整行高度，缩略图的上下自动边距才有空间分配 */
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.factory-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  /* 栏位收窄时先让右边缩略图变小，字段栏保住可读宽度 */
+  min-width: 200px;
+}
+
+.factory-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.factory-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  position: relative;
+}
+
+/* 属性名那一格由 RichTextEditor 的 label 变体渲染 */
+.factory-field label,
+.factory-prop-label {
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+
+.factory-field.grow {
+  flex: 1 1 140px;
+}
+
+.factory-field.w-layout {
+  width: 92px;
+  flex: 0 0 auto;
+}
+
+/* 只读文本块与可编辑字段共用一副长相 */
+.factory-input,
+.factory-desc {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: #16233c;
+  color: var(--fg-strong);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.factory-input:focus,
+.factory-desc:focus,
+.factory-input:focus-within,
+.factory-desc:focus-within {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(67, 100, 235, 0.35);
+}
+
+.factory-input {
+  min-height: 27px;
+  line-height: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.factory-input.empty {
+  color: var(--fg-muted);
+}
+
+/* 高度跟着内容长，超长时整组变高由外面那一栏滚动，不做框内滚动 */
+.factory-desc {
+  line-height: 20px;
+  white-space: pre-wrap;
+  min-height: 96px;
+}
+
+/* 箭头用背景画，避开各浏览器默认样式差异 */
+.factory-layout-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 18px;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #bcc8e0 50%),
+    linear-gradient(135deg, #bcc8e0 50%, transparent 50%);
+  background-position: calc(100% - 11px) 12px, calc(100% - 7px) 12px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.factory-layout-select option {
+  background: #16233c;
+  color: var(--fg-strong);
+}
+
+/* 宽度在 96 ~ 132px 之间伸缩 */
+.factory-thumb-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 1 132px;
+  min-width: 96px;
+}
+
+.factory-new-attr {
+  width: 100%;
+  min-width: 0;
+}
+
+.factory-prop-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.factory-prop-head .factory-prop-label {
+  /* 名称输入框占 1/3 宽（最窄 100px） */
+  flex: 0 0 35%;
+  min-width: 100px;
+  box-sizing: border-box;
+  padding-right: 6px;
+  border-right: 1px solid var(--line);
+}
+
+.factory-prop-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.factory-prop-remove:hover {
+  background: rgba(255, 120, 120, 0.15);
+  color: var(--danger);
+}
+
+.factory-fac-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.factory-fac-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--fg);
+}
+
+.factory-fac-sum {
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+
+.factory-fac-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+}
+
+.factory-fac {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: #16233c;
+  color: var(--fg-value);
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+}
+
+/* 没有图标时退化成名字（最多三行） */
+.factory-fac-name {
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.factory-fac-count {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #6ea8ff;
+  text-shadow: 0 0 3px #000, 0 1px 2px #000;
+}
+
+.factory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+
+.factory-meta-right {
+  margin-left: auto;
+}
+</style>

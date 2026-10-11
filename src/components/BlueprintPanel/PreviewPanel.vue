@@ -53,3 +53,23 @@ async function onExportImage() {
     >导出图片</button>
   </div>
 </template>
+
+<style scoped>
+.canvas-container {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg-stage);
+}
+
+.export-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+</style>

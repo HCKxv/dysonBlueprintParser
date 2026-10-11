@@ -1,5 +1,4 @@
-<!-- 平铺（地基的赤道带投影）: 横竖各 3 条线的网格，表示「按原比例平铺、不重复」 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
   <path d="M6 3.6V20.4M12 3.6V20.4M18 3.6V20.4M3.6 6H20.4M3.6 12H20.4M3.6 18H20.4"
         fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 </svg>

@@ -156,12 +156,10 @@ function pick(item: IconRef) {
               class="icon-pin"
               :class="{ active: pinned }"
               type="button"
-              :aria-pressed="pinned"
-              aria-label="固定"
               title="固定"
               @click="pinned = !pinned"
             >
-              <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="13" height="13">
                 <path d="M5 3h6" />
                 <path d="M8 3v6" />
                 <path d="M5.5 9.5h5" />
@@ -169,7 +167,7 @@ function pick(item: IconRef) {
               </svg>
             </button>
           </div>
-          <button class="modal-close" type="button" aria-label="关闭" @click="requestClose">✕</button>
+          <button class="modal-close" type="button" @click="requestClose">✕</button>
         </div>
 
         <div class="icon-picker">
@@ -204,3 +202,157 @@ function pick(item: IconRef) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+/* 只接「点外面关闭」，不压暗（游戏里也没有遮罩） */
+.icon-popover-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+}
+
+.icon-popover {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 92vw);
+  max-height: min(70vh, 560px);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.icon-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 6px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.icon-popover-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 钉住（默认）时选完不关，可以连着插 */
+.icon-pin {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.icon-pin svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.icon-pin:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-strong);
+}
+
+/* 图钉斜过来 + 高亮，同游戏里 pinBtn.highlighted */
+.icon-pin.active {
+  border-color: var(--accent);
+  background: #22345c;
+  color: var(--fg-value);
+}
+
+.icon-pin.active svg {
+  transform: rotate(-35deg);
+}
+
+.icon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+}
+
+.icon-picker-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.icon-picker-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-slot);
+  color: var(--fg-secondary);
+  border: 1px solid var(--line-strong);
+}
+
+.icon-picker-cat.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* 格子里只有图标（名字在悬浮提示里），列可以窄一些 */
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.icon-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-inset);
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+
+.icon-picker-item:hover {
+  border-color: #34506f;
+  background: #16203a;
+}
+
+.icon-picker-item.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(67, 100, 235, 0.5);
+}
+
+.icon-picker-item .factory-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.icon-picker-empty {
+  padding: 20px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+</style>
