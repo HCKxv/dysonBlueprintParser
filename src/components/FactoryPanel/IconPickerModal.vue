@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { IconCategories, IconRef } from '../../lib/markup/itemIcons'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
+import RecipeTip from './RecipeTip.vue'
 
 /**
  * 图标选择浮层: 只负责「列出当前分类的图标、交出一个选中项」
@@ -43,15 +44,50 @@ const activeCategory = computed(() =>
 /** 当前分类的图标 */
 const items = computed(() => props.categories[activeCategory.value] ?? [])
 
-// 分类换了就退回默认分类；
+// ── 悬浮提示 ──────────────────────────────────────────────
+// 带 recipeId 的项交给 RecipeTip，这里只管「哪个格子被悬浮」。
+
+/** 正在悬浮的项 / 格子元素 */
+const hovered = ref<IconRef | null>(null)
+const hoveredCell = ref<HTMLElement | null>(null)
+
+function onHover(item: IconRef, e: MouseEvent) {
+  hovered.value = item
+  hoveredCell.value = e.currentTarget as HTMLElement
+}
+
+function onUnhover(item: IconRef) {
+  if (hovered.value === item) clearTip()
+}
+
+/** 鼠标挪到格子间隙（网格本身）时收起 */
+function onGridLeave(e: MouseEvent) {
+  if (!(e.target as HTMLElement).closest('.icon-picker-item')) clearTip()
+}
+
+/** 格子被滚出列表后就收掉（提示在 body 上，不会自己跟） */
+function onTipMove() {
+  if (hoveredCell.value && !hoveredCell.value.isConnected) clearTip()
+}
+
+/** 关浮层 / 换分类 / 挪浮层时收起 */
+function clearTip() {
+  hovered.value = null
+  hoveredCell.value = null
+}
+
+/** 分类换了就退回默认分类 */
 watch(() => props.categories, () => { category.value = props.defaultCategory ?? '' })
+
+watch(activeCategory, clearTip)
+watch(() => props.open, (open) => { if (!open) clearTip() })
 
 /** 钉住 = 选完不关 */
 const pinned = ref(true)
 /** 选完是否留着不关 */
 const keepOpen = computed(() => props.showPin === true && pinned.value)
 
-/** 贴着锚点摆位置: 水平优先弹在面板外侧，两边都塞不下就按可用空间收窄；竖直跟着字段走，底边放不下就上移 */
+/** 贴着锚点摆位置: 水平优先弹在面板外侧，两边都塞不下就夹进视口；竖直跟着字段走，底边放不下就上移 */
 async function place() {
   const anchor = props.anchor
   const node = box.value
@@ -85,6 +121,7 @@ async function place() {
   // 宽度先落地（网格会重排），量到真实高度后再定 top
   node.style.width = `${Math.round(width)}px`
   pos.value = { left: `${Math.round(left)}px`, top: '0px', width: `${Math.round(width)}px`, visibility: 'hidden' }
+  clearTip() // 浮层挪了，跟着格子摆的提示就不作数了
   await nextTick()
 
   // 竖直方向: 跟着字段走，比字段顶边高一点（不至于压住字段本身）
@@ -114,10 +151,12 @@ function requestClose() {
 function bind(open: boolean) {
   if (open) {
     window.addEventListener('resize', place)
+    window.addEventListener('resize', onTipMove)
     window.addEventListener('scroll', place, true)
     window.addEventListener('keydown', onKeydown)
   } else {
     window.removeEventListener('resize', place)
+    window.removeEventListener('resize', onTipMove)
     window.removeEventListener('scroll', place, true)
     window.removeEventListener('keydown', onKeydown)
   }
@@ -144,7 +183,7 @@ function pick(item: IconRef) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="icon-popover-layer" @mousedown.self="requestClose">
+    <div v-if="open" class="icon-popover-layer" @mousedown.self="requestClose" @mouseleave="clearTip">
       <!-- mousedown 会把焦点移到被点的元素上（点空白也一样），输入框就失焦了: 整块 prevent 掉 -->
       <div ref="box" class="icon-popover" :style="pos" @mousedown.prevent.stop>
         <div class="icon-popover-head">
@@ -183,14 +222,23 @@ function pick(item: IconRef) {
             >{{ name }}</button>
           </div>
 
-          <div v-if="items.length" class="icon-picker-grid">
+          <!-- 格子被滚出列表时要收掉提示 -->
+          <div
+            v-if="items.length"
+            class="icon-picker-grid"
+            @scroll="onTipMove"
+            @mouseover="onGridLeave"
+            @mouseleave="clearTip"
+          >
             <button
               v-for="item in items"
               :key="item.id"
               type="button"
               class="icon-picker-item"
               :class="{ active: current !== undefined && item.id === current }"
-              :title="item.markup ? `${item.name}（${item.markup}）` : item.name"
+              :title="Number(item.recipeId) > 0 ? undefined : (item.markup ? `${item.name}（${item.markup}）` : item.name)"
+              @mouseenter="onHover(item, $event)"
+              @mouseleave="onUnhover(item)"
               @click="pick(item)"
             >
               <img class="factory-icon" :src="itemIconUrl(item.id)" :alt="item.name" />
@@ -200,6 +248,15 @@ function pick(item: IconRef) {
         </div>
       </div>
     </div>
+
+    <!-- 配方提示（换格子会重挂） -->
+    <RecipeTip
+      v-if="open"
+      :key="hoveredCell ? hovered?.id : 'none'"
+      :recipe-id="Number(hovered?.recipeId) || 0"
+      :visible="hoveredCell !== null"
+      :anchor="hoveredCell"
+    />
   </Teleport>
 </template>
 

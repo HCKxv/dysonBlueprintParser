@@ -1,8 +1,9 @@
 import { computed, markRaw, reactive, ref, watch } from 'vue'
 import { parseBlueprintString } from '../lib/blueprint/factory/factoryParser.js'
 import { stringifyBlueprint } from '../lib/blueprint/factory/factoryEncoder.js'
-import { itemName } from '../lib/blueprint/factory/factoryItems.js'
-import { applyBatchRules } from '../lib/factory/batch.js'
+import { itemName, isStation } from '../lib/blueprint/factory/factoryItems.js'
+import { applyBatchRules, syncBeltIcon } from '../lib/factory/batch.js'
+import { ITEM_MODEL } from '../lib/factory/buildingModels.js';
 import type { FactoryPreview } from '../lib/factory/FactoryPreview.js'
 import { saveAsText } from '../utils/download'
 
@@ -115,11 +116,21 @@ watch(() => factory.selectedIndex, (index) => {
 
 /**
  * 换一份蓝图 → 让预览重摆（「蓝图 → 场景」只有这一个出口）
+ *
+ * @param blueprint 新蓝图
  * @param resetView 视角要不要归位
  */
 function applyBlueprint(blueprint: FactoryBlueprint | null, resetView: boolean = true) {
-  factory.blueprint = blueprint
-  preview?.setBlueprint(blueprint, resetView)
+  const selected = factory.selectedIndex
+
+  factory.blueprint = blueprint ? markRaw({ ...blueprint }) : null
+  preview?.setBlueprint(factory.blueprint, resetView)
+
+  if (selected !== null && !resetView) {
+    // 编号没变 → 上面那个 watch 不会触发，选中得自己送进场景
+    factory.selectedIndex = selected
+    preview?.selectBuilding(selected)
+  }
 }
 
 /** 空白蓝图头部 */
@@ -179,7 +190,7 @@ function setBlueprint(parsed: Record<string, any> | null, raw = '') {
     return
   }
 
-  applyBlueprint(markRaw(structuredClone(parsed) as FactoryBlueprint))
+  applyBlueprint(structuredClone(parsed) as FactoryBlueprint)
   // 用于界面显示与编辑
   Object.assign(factory.header, copyHeader(factory.blueprint!.header))
 }
@@ -444,14 +455,9 @@ export function editBuilding(index: number, changes: BuildingChanges): boolean {
   if (Object.keys(edits).length === 0) return false
 
   buildings[index] = { ...building, ...edits }
-
-  const selected = factory.selectedIndex
-  applyBlueprint(markRaw({ ...blueprint, buildings }), false)
-  if (selected !== null) {
-    // 重新选中建筑
-    factory.selectedIndex = selected
-    preview?.selectBuilding(selected)
-  }
+  if (isStation(building.itemId)) syncBeltIcon(blueprint)
+  
+  applyBlueprint(blueprint, false)
   factory.modified = true
   return true
 }
@@ -479,6 +485,49 @@ export function editLabGroup(index: number, changes: BuildingChanges): boolean {
 }
 
 /**
+ * 替换物流塔: 行星内物流运输站（2103）↔ 星际物流运输站（2104）
+ *
+ * @param index 建筑编号
+ * @param dropSlot 降回行星内时丢弃第几个物品栏位（1-5）；不给就丢最后一个
+ */
+export function editStationType(index: number, dropSlot: number | null = null): boolean {
+  const blueprint = factory.blueprint
+  
+  const building = blueprint.buildings[index]
+  if (!building || Number(building.index) !== index) return false
+
+  const slot = Number.isInteger(dropSlot) ? Number(dropSlot) : 5
+
+  if (building.itemId === 2103) {
+    // 行星内 → 星际: 补一个空栏位
+    if (building.parameters.storage?.length <= 4) {
+      building.parameters.storage?.push({ itemId: 0, localRole: 0, remoteRole: 0, max: 0, lockAmount: 0 })
+    }
+    building.itemId = 2104
+    building.modelIndex = ITEM_MODEL[2104]?.[0]
+  } else if (building.itemId === 2104) {
+    // 星际 → 行星内: 丢一个栏位，再把指着它的传送带槽位改掉
+    building.parameters.storage.splice(slot - 1, 1)
+    building.parameters.slots.forEach(belt => {
+      const storageIdx = Number(belt?.storageIdx)
+      if (storageIdx < 1 || storageIdx > 5) return   // 0 = 不输出、6 = 翘曲器
+      if (storageIdx === slot) belt.storageIdx = 0
+      else if (storageIdx > slot) belt.storageIdx = storageIdx - 1
+    })
+    building.itemId = 2103
+    building.modelIndex = ITEM_MODEL[2103]?.[0]
+  } else {
+    return false
+  }
+
+  syncBeltIcon(blueprint)
+  
+  applyBlueprint(blueprint, false)
+  factory.modified = true
+  return true
+}
+
+/**
  * 批量编辑: 把规则数组（batchRules）作用到当前蓝图上
  *
  * @returns ok=false 时 message 说明原因，规则数组保持原样
@@ -494,14 +543,8 @@ export function applyBatchEdit(): {
 
   applyBatchRules(blueprint, batchRules.value)
 
-  const selected = factory.selectedIndex
-  // 预览按新数据重摆（视角不归位）
-  applyBlueprint(markRaw({ ...blueprint }), false)
-  if (selected !== null) {
-    // 重新选中建筑
-    factory.selectedIndex = selected
-    preview?.selectBuilding(selected)
-  }
+  // 预览按新数据重摆
+  applyBlueprint(blueprint, false)
   factory.modified = true
   batchRules.value = []                       // 提交完就清空规则数组
   return { ok: true, message: '' }
@@ -585,7 +628,7 @@ export async function saveBlueprintFile(): Promise<{ ok: boolean, message: strin
 function markSaved(handle: FileSystemFileHandle | null, text: string) {
   const blueprint = factory.blueprint
   // 只换了头部，建筑没动 → 不归位视角
-  if (blueprint) applyBlueprint(markRaw({ ...blueprint, header: copyHeader(factory.header) }), false)
+  if (blueprint) applyBlueprint({ ...blueprint, header: copyHeader(factory.header) }, false)
   factory.raw = text
   factory.modified = false
   setFileHandle(handle)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 详情: 预览里点中的那栋建筑 */
-import { computed, reactive, watch } from 'vue'
-import { editBuilding, editLabGroup, linkedLabBuildings, selectedBuilding, selectedBuildingCoord } from '../../stores/factory'
+import { computed, reactive, ref, watch } from 'vue'
+import { editBuilding, editLabGroup, editStationType, linkedLabBuildings, selectedBuilding, selectedBuildingCoord } from '../../stores/factory'
 import { isAssembler, isBelt, isInserter, isLab, isStation, itemName } from '../../lib/blueprint/factory/factoryItems.js'
 import { cloneData } from '../../lib/blueprint/clonePlain.js'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
@@ -10,8 +10,10 @@ import { ICON_CATEGORIES } from '../../lib/markup/iconCatalog'
 import { useToast } from '../../composables/useToast'
 import FactoryAssembler from './FactoryAssembler.vue'
 import FactoryBelt from './FactoryBelt.vue'
+import FactoryDispenser from './FactoryDispenser.vue'
 import FactoryInserter from './FactoryInserter.vue'
 import FactoryStation from './FactoryStation.vue'
+import FactoryStorage from './FactoryStorage.vue'
 
 const toast = useToast()
 
@@ -69,31 +71,39 @@ const itemIcons = computed<IconCategories>(() => {
 /** 有没有改过 */
 const dirty = computed(() => Object.keys(staged).length > 0)
 
+/** 「星际 → 行星内」要丢弃的物品栏位（1-5） */
+const dropSlot = ref(5)
+
+/** 参数组件报上来的提示 */
+const paramHint = ref('')
+
 /** 这栋连在一起的研究站有几个；不是研究站给 0。 */
 const labCount = computed(() => (isLab(selectedBuilding.value?.itemId)
   ? linkedLabBuildings(Number(selectedBuilding.value?.index)).length
   : 0))
+
+/** 清空暂存 */
+function resetStaged() {
+  for (const key of Object.keys(staged)) delete staged[key]
+  paramHint.value = ''        // 提示是上一栋报的，先清掉，新的一栋会自己报
+}
 
 /** 保存: 把改过的项交出 */
 function onSave() {
   const building = selectedBuilding.value
   if (!building || !dirty.value) return
 
-  const changes: Record<string, any> = {}
-  if (staged.recipeId !== undefined) changes.recipeId = staged.recipeId
-  if (staged.filterId !== undefined) changes.filterId = staged.filterId
-  if (staged.parameters !== undefined) changes.parameters = staged.parameters
-
   // 研究站按「整栋」保存: 连同相连的那些一起改
   const lab = isLab(building.itemId)
-  const ok = lab ? editLabGroup(Number(building.index), changes) : editBuilding(building.index, changes)
+  const ok = lab
+    ? editLabGroup(Number(building.index), { ...staged })
+    : editBuilding(Number(building.index), { ...staged })
+  // 保存成功就清空暂存
+  if (ok) resetStaged()
   toast.show(ok ? '已保存该建筑的修改' : '保存失败：没找到该建筑')
 }
 
-/** 清空暂存 */
-function resetStaged() {
-  for (const key of Object.keys(staged)) delete staged[key]
-}
+// 换选中建筑时清空暂存
 watch(selectedBuilding, resetStaged)
 
 </script>
@@ -123,6 +133,33 @@ watch(selectedBuilding, resetStaged)
         </span>
       </span>
     </div>
+
+    <div
+      v-if="[2103, 2104].includes(selectedBuilding?.itemId)"
+      class="factory-selection-param factory-selection-row"
+    >
+      <button
+        class="btn-sm"
+        type="button"
+        :title="dirty?'同时保存当前修改':''"
+        @click="onSave(), editStationType(selectedBuilding.index, dropSlot)"
+      >{{ selectedBuilding.itemId === 2103 ? '替换为星际' : "替换为本地" }}</button>
+      <template v-if="selectedBuilding.itemId === 2104">
+        <span class="factory-selection-label">丢弃槽位:</span>
+        <select
+          class="factory-selection-select"
+          :value="dropSlot"
+          @change="(e) => (dropSlot = Number((e.target as HTMLSelectElement).value))"
+        >
+          <option
+            v-for="(row, i) in parameters.storage"
+            :key="i" :value="Number(i)+1"
+          >槽位{{ Number(i)+1 }}-{{ row.itemId > 0 ?itemName(row.itemId) :'无' }}</option>
+        </select>
+      </template>
+    </div>
+
+    <div class="factory-selection-divider" />
 
     <!-- 制造设备 -->
     <FactoryAssembler
@@ -162,10 +199,64 @@ watch(selectedBuilding, resetStaged)
       :parameters="parameters"
       :item-icons="itemIcons"
       @change="onParametersChange"
+      @hint="(text) => (paramHint = text)"
     />
+
+    <!-- 物流配送器（2107） -->
+    <FactoryDispenser
+      v-if="Number(selectedBuilding.itemId) === 2107"
+      :key="selectedBuilding.index"
+      :filter-id="Number(staged.filterId ?? selectedBuilding.filterId ?? 0)"
+      :parameters="parameters"
+      :item-icons="itemIcons"
+      @update:filter-id="(v) => (staged.filterId = v)"
+      @change="onParametersChange"
+    />
+
+    <!-- 储物仓（2101 / 2102）、储液罐（2106）与战场分析基站（3009） -->
+    <FactoryStorage
+      v-if="[2101, 2102, 2106, 3009].includes(Number(selectedBuilding.itemId))"
+      :key="selectedBuilding.index"
+      :type="Number(selectedBuilding.itemId)"
+      :parameters="parameters"
+    />
+
+    <!-- 射线接收站（2208） -->
+    <div
+      v-if="Number(selectedBuilding.itemId) === 2208"
+      class="factory-selection-params"
+    >
+      <div class="factory-selection-row factory-selection-param">
+        <span class="factory-selection-label">模式</span>
+        <select
+          class="factory-selection-select"
+          :value="parameters?.productId ?? 0"
+          @change="(e)=>(onParametersChange('productId', Number((e.target as HTMLSelectElement).value)))"
+        >
+          <option
+            v-for="mode in [{ value: 0, name: '直接发电' },{ value: 1208, name: '光子生成' },]"
+            :key="mode.value" :value="mode.value"
+          >{{ mode.name }}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 能量枢纽（2209） -->
+    <div
+      v-if="Number(selectedBuilding.itemId) === 2209"
+      class="factory-selection-params"
+    >
+      <div class="factory-selection-row factory-selection-param">
+        <span class="factory-selection-value">模式：{{
+          [{ value: -1, name: '放电' },{ value: 0, name: '待机' },{ value: 1, name: '充电' },]
+            .find((mode) => mode.value === Number(parameters?.mode ?? 0))?.name ?? '待机'
+        }}</span>
+      </div>
+    </div>
 
     <!-- 编辑: 有改动才可点 -->
     <div class="factory-selection-actions">
+      <span class="factory-selection-hint" role="status">{{ paramHint }}</span>
       <button
         class="btn-sm factory-selection-save"
         type="button"
@@ -189,6 +280,13 @@ watch(selectedBuilding, resetStaged)
   font-size: 14px;
   font-weight: bold;
   color: #6ea8ff;
+}
+
+/* 分隔线 */
+.factory-selection-divider {
+  height: 0;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
 }
 
 .factory-selection-title {
@@ -254,8 +352,17 @@ watch(selectedBuilding, resetStaged)
 
 .factory-selection-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   margin-top: 4px;
+}
+
+/* 保存左边的提示位 */
+.factory-selection-hint {
+  margin-right: 4px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  min-height: 16px;
 }
 
 .factory-selection-save {

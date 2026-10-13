@@ -25,14 +25,18 @@ const props = defineProps<{
 }>()
 
 /** 改一项就报出去；父组件用 editParameters() 落进暂存，点保存才写回蓝图 */
-const emit = defineEmits<{ change: [key: string, value: unknown] }>()
+const emit = defineEmits<{
+  change: [key: string, value: unknown]
+  /** 给「保存」左边的提示位 */
+  hint: [text: string]
+}>()
 
 /** 拖动中的临时值（按字段 key / 栏位下标）: 只在松手时写回，免得每一帧都重摆预览 */
 const dragging = reactive<Record<string, number>>({})
 const draggingMax = reactive<Record<number, number>>({})
 
-/** 物品上限: 吸附到 100 的倍数；行星内站每栏只有星际站的一半（实测 10000 / 20000） */
-const MIN_ITEM_AMOUNT = 100
+/** 物品上限: 吸附到 100 的倍数；行星内站每栏只有星际站的一半 */
+const MIN_ITEM_AMOUNT = 0
 const MAX_ITEM_AMOUNT = 20000
 const PLANET_ITEM_MAX = 10000
 const ITEM_AMOUNT_STEP = 100
@@ -61,6 +65,15 @@ const itemMax = computed(() => (isStellar.value ? MAX_ITEM_AMOUNT : PLANET_ITEM_
 const pilerTech = computed(() => Number(props.parameters?.pilerCount ?? 0) === 0)
 /** 物品栏（每项: 物品 / 上限 / 锁定 / 本地供需 / 星际供需） */
 const storage = computed<any[]>(() => (Array.isArray(props.parameters?.storage) ? props.parameters.storage : []))
+
+/** 物品栏里有没有重复物品 */
+const hint = computed(() => {
+  const used = storage.value.map((row) => Number(row?.itemId)).filter((itemId) => itemId > 0)
+  return new Set(used).size !== used.length ? '物品栏存在重复物品' : ''
+})
+
+// 报给父组件的提示位
+watch(hint, (text) => emit('hint', text), { immediate: true })
 
 /** 夹到区间并按步长吸附（步长决定保留几位小数） */
 function clamp(min: number, max: number, value: number, step = 1) {
@@ -250,8 +263,10 @@ function emitStorage(index: number, patch: Record<string, any>) {
 function onMaxInput(index: number, e: Event) {
   const el = e.target as HTMLInputElement
   const typed = Number(el.value)
-  // 清空或敲了非法内容时退回下限，别把 NaN 写进参数
-  const value = clamp(MIN_ITEM_AMOUNT, itemMax.value, Number.isFinite(typed) ? typed : MIN_ITEM_AMOUNT, ITEM_AMOUNT_STEP)
+  // 清空或敲了非法内容时退回原来的值，别把 NaN 写进参数
+  const fallback = Number(storage.value[index]?.max ?? MIN_ITEM_AMOUNT)
+  const raw = el.value.trim() === '' || !Number.isFinite(typed) ? fallback : typed
+  const value = clamp(MIN_ITEM_AMOUNT, itemMax.value, raw, ITEM_AMOUNT_STEP)
   el.value = String(value)
   emitStorage(index, { max: value })
 }
@@ -293,6 +308,12 @@ function onPickItem(icon: IconRef) {
   picker.anchor = null
 }
 
+/** 右键图标 = 清除这一栏的物品 */
+function onClearItem(index: number) {
+  if (Number(storage.value[index]?.itemId ?? 0) <= 0) return
+  emitStorage(index, { itemId: 0 })
+}
+
 // 参数对象换了（选了别的塔 / 换蓝图）就清掉拖动中的临时值，别让它盖住新值
 watch(() => props.parameters, () => {
   for (const key of Object.keys(dragging)) delete dragging[key]
@@ -314,8 +335,9 @@ watch(pilerTech, () => {
           :ref="(el) => { if (el) iconEls[index] = el as HTMLElement }"
           class="factory-storage-icon"
           type="button"
-          :title="row.itemId ? itemName(Number(row.itemId)) : '选择物品'"
+          :title="Number(row.itemId) > 0 ? '右键清除' : '选择物品'"
           @click="openPicker(index)"
+          @contextmenu.prevent="onClearItem(index)"
         >
           <img v-if="Number(row.itemId) > 0" class="factory-icon" :src="itemIconUrl(Number(row.itemId))" :alt="itemName(Number(row.itemId))" />
           <span v-else class="factory-storage-empty">+</span>
@@ -341,7 +363,7 @@ watch(pilerTech, () => {
           <input
             class="factory-station-range factory-storage-range"
             type="range"
-            min="0"
+            :min="MIN_ITEM_AMOUNT"
             :max="itemMax"
             :step="ITEM_AMOUNT_STEP"
             :value="maxSliderAt(index, row)"
@@ -488,7 +510,6 @@ watch(pilerTech, () => {
   gap: 5px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--line-faint);   /* 与上面那一段的分隔线 */
 }
 
 .factory-station-row {

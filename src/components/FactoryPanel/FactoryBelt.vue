@@ -38,6 +38,13 @@ function onPick(icon: IconRef) {
   emit('change', 'iconId', Number(icon.id))
 }
 
+/** 右键图标 = 清除标签（数字跟着图标走，一并归零） */
+function onClear() {
+  if (iconId.value <= 0) return
+  emit('change', 'iconId', 0)
+  emit('change', 'count', 0)
+}
+
 /** 数字: 取整并钳在 0~999999；空着或敲了非法内容就当 0 */
 function onCount(e: Event) {
   const el = e.target as HTMLInputElement
@@ -54,8 +61,9 @@ function onCount(e: Event) {
       <button
         class="factory-belt-icon"
         type="button"
-        :title="iconId > 0 ? itemName(iconId) : '选择物品'"
+        :title="iconId > 0 ? '右键清除' : '选择物品'"
         @click="openPicker"
+        @contextmenu.prevent="onClear"
       >
         <img v-if="iconId > 0" class="factory-icon" :src="itemIconUrl(iconId)" :alt="itemName(iconId)" />
         <span v-else class="factory-belt-empty">+</span>

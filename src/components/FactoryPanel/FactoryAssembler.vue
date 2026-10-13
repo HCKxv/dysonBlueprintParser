@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /** 制造设备的参数 */
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ACCELERATOR_MODE_NAMES, RESEARCH_MODE_NAMES, isLab } from '../../lib/blueprint/factory/factoryItems.js'
 import { recipeName, recipeProductive } from '../../lib/blueprint/factory/factoryRecipes.js'
 import { itemIconUrl } from '../../lib/markup/itemIcons'
 import type { IconRef } from '../../lib/markup/itemIcons'
 import { recipeCategoriesForBuilding } from '../../lib/markup/recipeCatalog'
 import IconPickerModal from './IconPickerModal.vue'
+import RecipeTip from './RecipeTip.vue'
 
 const props = defineProps<{
   /** 建筑id */
@@ -40,6 +41,9 @@ const recipeText = computed(() => {
 const fixedAccelerator = computed(() => props.recipeId > 0 && !recipeProductive(props.recipeId))
 const acceleratorMode = computed(() => Number(props.parameters?.acceleratorMode ?? 0))
 
+/** 配方那行悬浮时贴着它画配方提示 */
+const recipeHover = ref<HTMLElement | null>(null)
+
 /** 配方浮层 */
 const picker = reactive({
   open: false,
@@ -72,7 +76,11 @@ function onPick(icon: IconRef) {
     <template v-if="useRecipe">
       <div class="factory-selection-row factory-selection-param">
         <span class="factory-selection-label">配方</span>
-        <span class="factory-selection-recipe">
+        <span
+          class="factory-selection-recipe"
+          @mouseenter="recipeHover = $event.currentTarget as HTMLElement"
+          @mouseleave="recipeHover = null"
+        >
           <img v-if="recipeIcon" class="factory-icon factory-selection-icon" :src="recipeIcon" :alt="recipeText" />
           <span class="factory-selection-value">{{ recipeText }}</span>
         </span>
@@ -115,6 +123,9 @@ function onPick(icon: IconRef) {
       @select="onPick"
       @close="picker.open = false"
     />
+
+    <!-- 配方提示: 悬浮配方那行时画 -->
+    <RecipeTip :recipe-id="recipeId" :visible="recipeHover !== null" :anchor="recipeHover" />
   </div>
 </template>
 

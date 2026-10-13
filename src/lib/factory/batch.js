@@ -1,7 +1,8 @@
 import { ITEM_MODEL } from './buildingModels.js';
-import { isBelt, isInserter, isLab } from '../blueprint/factory/factoryItems.js';
+import { isBelt, isInserter, isLab, isStation } from '../blueprint/factory/factoryItems.js';
 
 /**
+ * 替换配方
  * @param {object} blueprint 
  * @param {{ from: number, to: number, acceleratorMode: 0 | 1 | null }} options 
  */
@@ -19,6 +20,7 @@ function editRecipe(blueprint, options) {
 };
 
 /**
+ * 升降级建筑
  * @param {object} blueprint 
  * @param {{ from: number, to: number }} options 
  */
@@ -37,6 +39,7 @@ function batchUp(blueprint, options) {
 };
 
 /**
+ * 修改物流塔物品
  * @param {object} blueprint 
  * @param {{ from: number, to: number }} options 
  */
@@ -65,6 +68,35 @@ function editStationItems(blueprint, options) {
 };
 
 /**
+ * 将传送带的图标标签对齐连接的运输站
+ *
+ * @param {object} blueprint 蓝图对象
+ */
+function syncBeltIcon(blueprint) {
+  if (!blueprint?.buildings) return false;
+
+  blueprint.buildings.forEach((building) => {
+    if (!building) return;
+
+    if (isBelt(building.itemId)) {
+      const station = blueprint.buildings[building.inputObjIdx];
+      if (!isStation(station?.itemId)) return;
+      const storageIdx = station.parameters.slots[building.inputFromSlot]?.storageIdx;
+      
+      let item = 0;
+      if (storageIdx >= 1 && storageIdx <= 5) {
+        const storage = station.parameters.storage[storageIdx - 1];
+        item = storage?.itemId ?? 0;
+      }
+      else if (storageIdx == 6) item = 1210;
+
+      building.parameters.iconId = item;
+    };
+  });
+}
+
+/**
+ * 修改物品过滤
  * @param {object} blueprint 
  * @param {{ from: number, to: number, target: '全部'|'分拣器'|'四向'|'配送器' }} options 
  */
@@ -138,4 +170,4 @@ function applyBatchRules(blueprint, rules) {
   }
 }
 
-export { BATCH_RULE_TYPES, applyBatchRules };
+export { BATCH_RULE_TYPES, applyBatchRules, syncBeltIcon };

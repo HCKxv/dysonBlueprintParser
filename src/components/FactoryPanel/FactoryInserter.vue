@@ -31,6 +31,11 @@ function openPicker(e: MouseEvent) {
 function onPick(icon: IconRef) {
   emit('update:filter-id', Number(icon.id))
 }
+
+/** 右键图标 = 清除筛选 */
+function onClear() {
+  emit('update:filter-id', 0)
+}
 </script>
 
 <template>
@@ -40,8 +45,9 @@ function onPick(icon: IconRef) {
       <button
         class="factory-inserter-filter"
         type="button"
-        :title="filterId > 0 ? itemName(filterId) : '选择物品'"
+        :title="filterId > 0 ? '右键清除' : '选择物品'"
         @click="openPicker"
+        @contextmenu.prevent="onClear"
       >
         <img
           v-if="filterId > 0"
