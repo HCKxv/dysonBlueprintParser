@@ -5,8 +5,30 @@ import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 const dragging = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const canReset = computed(() => !!(store.parsed || store.errorMessage))
+
+/** 读取蓝图文件并交给校验解析 */
+function readFile(file: File) {
+  const reader = new FileReader()
+  reader.onload = (ev) => handleBlueprintText(String(ev.target?.result ?? ''))
+  reader.onerror = () => toast.show('读取文件失败')
+  reader.readAsText(file)
+}
+
+/** 打开系统文件选择窗口 */
+function pickFile() {
+  fileInput.value?.click()
+}
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) readFile(file)
+  // 清空以便连续选择同一个文件时仍能触发 change
+  input.value = ''
+}
 
 async function onPaste() {
   try {
@@ -54,10 +76,7 @@ function onDrop(e: DragEvent) {
 
   const file = dt.files && dt.files[0]
   if (file) {
-    const reader = new FileReader()
-    reader.onload = (ev) => handleBlueprintText(String(ev.target?.result ?? ''))
-    reader.onerror = () => toast.show('读取文件失败')
-    reader.readAsText(file)
+    readFile(file)
     return
   }
 
@@ -74,21 +93,33 @@ function onDrop(e: DragEvent) {
   <div class="input-group">
     <div class="input-header">
       <span>蓝图输入</span>
-      <div class="btn-group">
-        <button
-          class="btn-sm"
-          :disabled="store.parsing"
-          @click="parseBlueprint()"
-        >解析蓝图</button>
-        <button
-          class="btn-sm"
-          :disabled="!canReset || store.parsing"
-          @click="resetBlueprint()"
-        >清空结果</button>
-        <button class="btn-sm" @click="onPaste">粘贴</button>
-        <button class="btn-sm" @click="onCopy">复制</button>
+      <div class="btn-actions">
+        <div class="btn-group parse-actions">
+          <button
+            class="btn-sm"
+            :disabled="store.parsing"
+            @click="parseBlueprint()"
+          >解析蓝图</button>
+          <button
+            class="btn-sm"
+            :disabled="!canReset || store.parsing"
+            @click="resetBlueprint()"
+          >清空结果</button>
+        </div>
+        <div class="btn-group io-actions">
+          <button class="btn-sm" @click="pickFile">文件</button>
+          <button class="btn-sm" @click="onPaste">粘贴</button>
+          <button class="btn-sm" @click="onCopy">复制</button>
+        </div>
       </div>
     </div>
+    <input
+      ref="fileInput"
+      class="hidden"
+      type="file"
+      accept=".txt,text/plain"
+      @change="onFileChange"
+    />
     <div
       class="textarea-wrapper"
       @dragover="onDragOver"
@@ -119,7 +150,9 @@ function onDrop(e: DragEvent) {
 .input-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* 标题与按钮容器放不下时换行 */
+  flex-wrap: wrap;
+  gap: 4px 8px;
   font-size: 13px;
   color: var(--fg-secondary);
   flex-shrink: 0;
@@ -130,12 +163,45 @@ function onDrop(e: DragEvent) {
   font-size: 1.0rem;
   font-weight: bold;
   color: var(--fg);
+  /* 变窄时先压缩标题，按钮宽度保持不变 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input-header .btn-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* shared.css 的 .btn-group 带 margin-left: auto，会把第一组往右推，这里清掉 */
+.input-header .btn-group {
+  margin: 0;
+}
+
+/* 第一组保持自身宽度 */
+.input-header .parse-actions {
+  flex: 0 0 auto;
+}
+
+.input-header .io-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .input-header .btn-sm {
   padding: 4px 10px;
   border-radius: 8px;
   font-size: 12px;
+  /* 按钮内部文字保持单行，避免按钮被压窄后文字竖排 */
+  white-space: nowrap;
 }
 
 .textarea-wrapper {

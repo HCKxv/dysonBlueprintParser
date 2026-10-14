@@ -2,16 +2,30 @@
   "showVisitorStats": true,
   "links": [
     {
-      "label": "GitHub仓库",
-      "href": "https://github.com/HCKxv/dysonBlueprintParser"
-    },
-    {
       "label": "戴森球蓝图集",
       "href": "https://hckxv.github.io/DSB/"
+    }
+  ],
+  "contact": [
+    {
+      "type": "text",
+      "text": "QQ：3882206278"
     },
     {
-      "label": "联系作者",
+      "type": "link",
+      "text": "哔哩哔哩：",
+      "label": "space.bilibili.com/397260674",
       "href": "https://space.bilibili.com/397260674"
+    },
+    {
+      "type": "link",
+      "text": "GitHub：",
+      "label": "github.com/HCKxv/dysonBlueprintParser",
+      "href": "https://github.com/HCKxv/dysonBlueprintParser/issues"
+    },
+    {
+      "type": "text",
+      "text": "邮箱：无"
     }
   ]
 }

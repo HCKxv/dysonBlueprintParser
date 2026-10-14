@@ -307,6 +307,7 @@ const ICON_TAGS: Record<string, [number, string]> = {
   's516': [516, 'SIGNAL-516'],
   's517': [517, 'SIGNAL-517'],
   's518': [518, 'SIGNAL-518'],
+  's519': [519, 'SIGNAL-519'],
   's600': [600, 'SIGNAL-600'],
   's601': [601, 'SIGNAL-601'],
   's602': [602, 'SIGNAL-602'],

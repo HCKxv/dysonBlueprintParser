@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, defineAsyncComponent } from 'vue'
 import ChangelogModal from './ChangelogModal.vue'
+import ContactModal from './ContactModal.vue'
 
 const changelogModal = ref<InstanceType<typeof ChangelogModal> | null>(null)
+const contactModal = ref<InstanceType<typeof ContactModal> | null>(null)
 
 const VisitorStats = defineAsyncComponent(() =>
   import('./VisitorStats.vue')
@@ -13,7 +15,35 @@ interface FooterLink {
   href: string
 }
 
+interface ContactItem {
+  type: 'text' | 'link'
+  text?: string
+  label?: string
+  href?: string
+}
+
 const links = ref<FooterLink[]>([])
+const contact = ref<ContactItem[]>([])
+
+function normalizeContact(raw: unknown): ContactItem[] {
+  if (!Array.isArray(raw)) return []
+  const items: ContactItem[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const row = entry as Record<string, unknown>
+    const text = typeof row.text === 'string' ? row.text.trim() : ''
+    const label = typeof row.label === 'string' ? row.label.trim() : ''
+    const href = typeof row.href === 'string' ? row.href.trim() : ''
+    if (row.type === 'link') {
+      if (!href || (!label && !text)) continue
+      items.push({ type: 'link', href, ...(label ? { label } : {}), ...(text ? { text } : {}) })
+    } else if (row.type === 'text') {
+      if (!text) continue
+      items.push({ type: 'text', text })
+    }
+  }
+  return items
+}
 
 const visitorStatsAllowed = import.meta.env.PROD
 const showVisitorStats = ref(false)
@@ -26,11 +56,13 @@ async function loadLinks() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     links.value = Array.isArray(data?.links) ? data.links : []
+    contact.value = normalizeContact(data?.contact)
     if (visitorStatsAllowed && typeof data?.showVisitorStats === 'boolean') {
       showVisitorStats.value = data.showVisitorStats
     }
   } catch {
     links.value = []
+    contact.value = []
   }
 }
 
@@ -96,9 +128,17 @@ onBeforeUnmount(() => {
       </a>
     </template>
 
+    <template v-if="contact.length">
+      |
+      <button type="button" class="footer-item" @click="contactModal?.open()">
+        联系方式
+      </button>
+    </template>
+
     <VisitorStats v-if="showVisitorStats" />
   </div>
   <ChangelogModal ref="changelogModal" />
+  <ContactModal ref="contactModal" :items="contact" />
 </template>
 
 <style scoped>

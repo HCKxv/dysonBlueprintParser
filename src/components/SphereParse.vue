@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import StatsPanel from './BlueprintPanel/StatsPanel.vue'
-import PreviewPanel from './BlueprintPanel/PreviewPanel.vue'
-import SettingsPanel from './BlueprintPanel/SettingsPanel.vue'
-import BlueprintInput from './BlueprintPanel/BlueprintInput.vue'
+import StatsPanel from './SpherePanel/StatsPanel.vue'
+import PreviewPanel from './SpherePanel/PreviewPanel.vue'
+import SettingsPanel from './SpherePanel/SettingsPanel.vue'
+import BlueprintInput from './SpherePanel/BlueprintInput.vue'
+import CopyShellModal from './SpherePanel/CopyShellModal.vue'
 </script>
 
 <template>
@@ -20,6 +21,8 @@ import BlueprintInput from './BlueprintPanel/BlueprintInput.vue'
       <BlueprintInput />
     </div>
   </div>
+
+  <CopyShellModal />
 </template>
 
 <style scoped>
@@ -110,10 +113,6 @@ import BlueprintInput from './BlueprintPanel/BlueprintInput.vue'
 
   .panel-right :deep(.power-main) {
     white-space: nowrap;
-  }
-
-  .panel-right :deep(.input-header) {
-    flex-wrap: wrap;
   }
 
   .panel-right :deep(textarea) {

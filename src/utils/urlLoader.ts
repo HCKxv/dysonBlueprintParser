@@ -1,12 +1,21 @@
 // URL 参数（?txt=...）蓝图加载器
 const DEFAULT_WHITELIST = [
-  'raw.githubusercontent.com/DSPBluePrints/DysonSphereBluePrints/',
-  'cdn.jsdelivr.net/gh/DSPBluePrints/DysonSphereBluePrints@main/',
+  'raw.githubusercontent.com/DSPBluePrints/',
+  'cdn.jsdelivr.net/gh/DSPBluePrints/',
+]
+
+/** 蓝图种类 */
+export type BlueprintKind = 'sphere' | 'factory'
+
+/** 蓝图的开头标记 */
+const BLUEPRINT_PREFIXES: ReadonlyArray<{ prefix: string, kind: BlueprintKind }> = [
+  { prefix: 'DYBP:', kind: 'sphere' },
+  { prefix: 'BLUEPRINT:', kind: 'factory' },
 ]
 
 export interface UrlLoadCallbacks {
   onLoadStart?: () => void
-  onLoaded?: (text: string) => void
+  onLoaded?: (text: string, type: BlueprintKind) => void
   onError?: (e: Error) => void
 }
 
@@ -67,8 +76,11 @@ export async function loadBlueprintFromUrl({
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const text = await response.text()
 
-    if (!text.trim().startsWith('DYBP:')) throw new Error('链接不是有效的蓝图代码')
-    onLoaded?.(text)
+    const value = text.trim()
+    const matched = BLUEPRINT_PREFIXES.find(({ prefix }) => value.startsWith(prefix))
+    if (!matched) throw new Error('链接不是有效的蓝图代码')
+
+    onLoaded?.(text, matched.kind)
     return true
   } catch (e) {
     onError?.(e as Error)

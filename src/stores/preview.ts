@@ -4,8 +4,8 @@ import { extractSingleShell, extractStructure } from '../lib/blueprint/sphere/sp
 import { stringifyBlueprint } from '../lib/blueprint/sphere/sphereEncoder.js'
 import { computePower, fmtKW } from '../lib/power/power.js'
 import { computePointsAsync } from '../lib/power/powerAsync.js'
-import { buildStatsTree, type StatNode } from '../components/BlueprintPanel/statsTree'
-import { downloadTxt } from '../utils/download'
+import { buildStatsTree, type StatNode } from '../components/SpherePanel/statsTree'
+import { saveAsText } from '../utils/download'
 import { useToast } from '../composables/useToast'
 
 /** DysonSpherePreview 的命令式子集（由 PreviewPanel 注入实例） */
@@ -149,6 +149,18 @@ function afterPaint(callback: () => void): void {
   })
 }
 
+/** 弹「另存为」对话框把蓝图文本存成 .txt */
+export async function saveBlueprintText(text: string, baseName: string): Promise<string> {
+  const saved = await saveAsText(text, {
+    suggestedName: `${baseName}.txt`,
+    startIn: 'downloads',
+    types: [{ description: '蓝图文件', accept: { 'text/plain': ['.txt'] } }],
+  })
+  if (saved.error) throw new Error(saved.error)
+  if (saved.canceled) return ''
+  return saved.handle ? `已保存到 ${saved.handle.name}` : '已下载蓝图'
+}
+
 // ─────────────────────────────────────────────────────────────
 // 动作
 // ─────────────────────────────────────────────────────────────
@@ -275,7 +287,7 @@ export function setLayerVisible(type: 'shell' | 'cloud', id: number, visible: bo
   preview.value?.setLayerVisible(type, id, visible)
 }
 
-/** 提取多层壳中的某个壳层 */
+/** 提取多层壳中的某个壳层（复制到剪贴板） */
 async function exportShellLayer(orbitId: number) {
   const parsed = store.parsed
   if (!parsed) {
@@ -285,7 +297,6 @@ async function exportShellLayer(orbitId: number) {
   try {
     const single = extractSingleShell(toRaw(parsed), orbitId)
     const text = await stringifyBlueprint(single)
-    downloadTxt(text, `壳层${orbitId}`)
     await navigator.clipboard.writeText(text)
     toast.show(`已提取壳层 ${orbitId} 为单层壳蓝图，并复制到剪贴板`)
   } catch (error) {
@@ -312,7 +323,7 @@ function closeCopyShellModal() {
   store.showCopyShellModal = false
 }
 
-/** 提取戴森壳或云 */
+/** 提取戴森壳或云（复制到剪贴板） */
 async function exportStructure(type:'shell'|'cloud') {
   const parsed = store.parsed
   if (!parsed) {
@@ -322,7 +333,6 @@ async function exportStructure(type:'shell'|'cloud') {
   try {
     const single = extractStructure(toRaw(parsed), type)
     const text = await stringifyBlueprint(single)
-    downloadTxt(text, type === 'shell' ? '戴森壳' : '戴森云')
     await navigator.clipboard.writeText(text)
     toast.show(`已提取为${type==='shell'? '戴森壳':'戴森云'}蓝图，并复制到剪贴板`)
   } catch (error) {
@@ -339,8 +349,8 @@ async function exportBlueprint() {
   }
   try {
     const text = await stringifyBlueprint(toRaw(parsed))
-    downloadTxt(text, '戴森球')
-    toast.show('已将蓝图导出到下载目录')
+    const saved = await saveBlueprintText(text, '戴森球')
+    if (saved) toast.show(saved)   // 取消保存不提示
   } catch (error) {
     toast.show(`导出蓝图失败：\n${(error as Error).message}`)
   }

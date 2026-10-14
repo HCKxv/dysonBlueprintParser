@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { computed, reactive, ref, toRaw, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from 'vue'
 import BaseModal from '../BaseModal.vue'
-import { store } from '../../stores/preview'
+import { store, saveBlueprintText } from '../../stores/preview'
 import { copyShell } from '../../lib/blueprint/sphere/sphereEdit.js'
 import { stringifyBlueprint } from '../../lib/blueprint/sphere/sphereEncoder.js'
 import { computePower, fmtKW } from '../../lib/power/power.js'
 import { computePointsAsync, cancelPowerComputes } from '../../lib/power/powerAsync.js'
-import { downloadTxt } from '../../utils/download'
 import { useToast } from '../../composables/useToast'
 
 const toast = useToast()
 
-const busy = ref(false)
+/** 正在生成的动作：'' 空闲 / 'copy' 复制到剪贴板 / 'save' 下载到文件 */
+const busy = ref<'' | 'copy' | 'save'>('')
 const computing = ref(false)
 const previewPowerText = ref('')
 
@@ -30,7 +30,7 @@ watch(
   () => store.showCopyShellModal,
   (open) => {
     if (!open) return
-    busy.value = false
+    busy.value = ''
     computing.value = false
     previewPowerText.value = ''
     form.radius = 10000
@@ -59,29 +59,50 @@ const invalidText = computed(() => {
   return ''
 })
 
-async function confirm() {
-  if (busy.value || invalidText.value) return
-  busy.value = true
-
+/** 生成蓝图文本 */
+async function generateMultiShellText(): Promise<string | null> {
   const parsed = store.parsed
   if (!parsed || parsed?.typeId !== 1) {
-    busy.value = false
     toast.show('没有已解析的蓝图或不是单层壳蓝图')
-    return
+    return null
   }
+  const multi = await copyShell(toRaw(parsed), { ...form })
+  return stringifyBlueprint(multi)
+}
 
-  try{
-    const multi = await copyShell(toRaw(parsed), { ...form })
-    const text = await stringifyBlueprint(multi)
-    downloadTxt(text, `${form.count}层戴森${form.autoOrbitCloud?'球':'壳'}`)
+/** 复制到剪贴板 */
+async function copyToClipboard() {
+  if (busy.value || invalidText.value) return
+  busy.value = 'copy'
+  try {
+    const text = await generateMultiShellText()
+    if (!text) return
     await navigator.clipboard.writeText(text)
     store.showCopyShellModal = false
     toast.show(`已生成 ${form.count} 层戴森壳，并复制到剪贴板`)
   } catch (error) {
-    toast.show(`提取壳层失败：\n${(error as Error).message}`)
+    toast.show(`生成或复制失败：\n${(error as Error).message}`)
+  } finally {
+    busy.value = ''
   }
+}
 
-  busy.value = false
+/** 下载到文件 */
+async function downloadToFile() {
+  if (busy.value || invalidText.value) return
+  busy.value = 'save'
+  try {
+    const text = await generateMultiShellText()
+    if (!text) return
+    const saved = await saveBlueprintText(text, `${form.count}层戴森${form.autoOrbitCloud?'球':'壳'}`)
+    if (!saved) return   // 取消保存：不关弹窗也不提示
+    store.showCopyShellModal = false
+    toast.show(`已生成 ${form.count} 层戴森壳；${saved}`)
+  } catch (error) {
+    toast.show(`生成或保存失败：\n${(error as Error).message}`)
+  } finally {
+    busy.value = ''
+  }
 }
 
 /** 发电量预览: 生成多层壳 + 在 Worker 里算点数（算的时候按钮置灰） */
@@ -109,6 +130,11 @@ function closeModal() {
   cancelPowerComputes('copy-shell')   // 放弃还在算的发电量预览
   store.showCopyShellModal = false
 }
+
+// 组件卸载时
+onBeforeUnmount(() => {
+  store.showCopyShellModal = false
+})
 </script>
 
 <template>
@@ -190,7 +216,7 @@ function closeModal() {
           min="0.1"
           class="input-dark w-70"
         /></form>
-        <button class="btn-sm" :disabled="busy || computing || !!invalidText" @click="previewPower">
+        <button class="btn-sm" :disabled="!!busy || computing || !!invalidText" @click="previewPower">
           {{ computing ? '计算中...' : '计算发电量' }}
         </button>
         <span v-if="previewPowerText">⚡ {{ previewPowerText }}</span>
@@ -199,10 +225,13 @@ function closeModal() {
       <hr class="menu-divider" />
 
       <span class="btn-group center">
-        <button class="btn-sm" :disabled="busy || !!invalidText" @click="confirm">
-          {{ busy ? '生成中...' : '确认' }}
+        <button class="btn-sm" :disabled="!!busy || !!invalidText" @click="copyToClipboard">
+          {{ busy === 'copy' ? '生成中...' : '复制到剪贴板' }}
         </button>
-        <button class="btn-sm" :disabled="busy" @click="closeModal">取消</button>
+        <button class="btn-sm" :disabled="!!busy || !!invalidText" @click="downloadToFile">
+          {{ busy === 'save' ? '生成中...' : '下载到文件' }}
+        </button>
+        <button class="btn-sm" :disabled="!!busy" @click="closeModal">取消</button>
       </span>
     </div>
   </BaseModal>
