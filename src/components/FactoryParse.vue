@@ -49,7 +49,7 @@ import OpenBlueprintModal from './FactoryPanel/OpenBlueprintModal.vue'
 
   .panels--factory > .factory-col-preview {
     order: 1;
-    height: 80vh;
+    height: 60vh;
   }
 
   /* 舞台本来有 240px 底（见 FactoryPreview.vue）: 视口很矮时它会顶破 60vh 被裁掉 */

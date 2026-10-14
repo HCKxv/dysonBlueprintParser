@@ -2,9 +2,11 @@
 import { onMounted, onBeforeUnmount, ref, defineAsyncComponent } from 'vue'
 import ChangelogModal from './ChangelogModal.vue'
 import ContactModal from './ContactModal.vue'
+import FeaturesModal from './FeaturesModal.vue'
 
 const changelogModal = ref<InstanceType<typeof ChangelogModal> | null>(null)
 const contactModal = ref<InstanceType<typeof ContactModal> | null>(null)
+const featuresModal = ref<InstanceType<typeof FeaturesModal> | null>(null)
 
 const VisitorStats = defineAsyncComponent(() =>
   import('./VisitorStats.vue')
@@ -121,6 +123,10 @@ onBeforeUnmount(() => {
     <button type="button" class="footer-item" @click="changelogModal?.open()">
       更新日志
     </button>
+    |
+    <button type="button" class="footer-item" @click="featuresModal?.open()">
+      功能介绍
+    </button>
     <template v-for="link in links" :key="link.href">
       |
       <a :href="link.href" target="_blank" rel="noopener">
@@ -138,6 +144,7 @@ onBeforeUnmount(() => {
     <VisitorStats v-if="showVisitorStats" />
   </div>
   <ChangelogModal ref="changelogModal" />
+  <FeaturesModal ref="featuresModal" />
   <ContactModal ref="contactModal" :items="contact" />
 </template>
 
