@@ -2,10 +2,12 @@
  * cameraRig — 工厂预览的相机与操作（**贴地表面行走**那一套）
  *
  * 观察点在球面上走、相机始终盯住它，`camera.up` = 观察点当地法线。操作: 左键拖动 / W/A/S/D 挪观察点、
- * 中键拖动绕当地竖轴转台、滚轮改取景距离（观察点不动，但仰角下限是距离的函数，缩放后必须重夹，见 tick）。
+ * 中键拖动绕当地竖轴转台、滚轮改取景距离（观察点不动，但仰角下限是距离的函数，缩放后必须重夹，见 tick）；
+ * 触屏单指**长按**选中建筑（判定收尾见 consumeLongPress）、**双指拖动**挪观察点 + **双指捏合**缩放
+ * （见 _beginTwoFingerPan / _pinchByDistance）。
  * OrbitControls 只留滚轮缩放与阻尼 —— 另外两个预览是「绕球心转」，那套十几行就够，与这里不共用。
  *
- * 本模块 = 机位数学 + 指针拖动 + 点击判定；场景与蓝图、按键集合在 FactoryPreview。
+ * 本模块 = 机位数学 + 指针拖动 + 点击 / 长按判定；场景与蓝图、按键集合、长按后拿坐标去拾取在 FactoryPreview。
  * 它**不认识蓝图**（不 import blueprintLayout）: 取景只认 (lat, lng, 距离, 仰角)，见 setHome。
  */
 
@@ -107,6 +109,15 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** 点击与拖动的分界（像素）: 左键按下到抬起位移不超过它才算「点了一下」，免得拖完顺手选了建筑 */
 const CLICK_MOVE_TOLERANCE = 4;
 
+/** 触屏单指长按多久算「选中建筑」（毫秒） */
+const TOUCH_LONG_PRESS_MS = 500;
+
+/** 长按允许的抖动（像素）: 超过它，或期间多按了一根手指，就不算长按 */
+const TOUCH_LONG_PRESS_SLOP = 8;
+
+/** 一次触屏手势最多认两根手指（第三根不接管，抬起也不顶掉前两根） */
+const TOUCH_MAX_CONTACTS = 2;
+
 /** 焦点在输入框 / 下拉框 / 可编辑区里时，按键不归预览管（别抢 WASD） */
 function isTypingTarget(element) {
   const tag = element?.tagName;
@@ -160,6 +171,18 @@ class CameraRig {
     /** 上一次抬起是否算「点了一下」（见 consumeClick） */
     this._clicked = false;
 
+    /** 触屏这一轮接触的落点（pointerId → {x, y}）: 认两根手指，判长按与双指挪观察点都看它 */
+    this._touchPoints = new Map();
+    /** 长按计时器与两个落点: _longPressStart = 正在等的，_longPressAt = 到点的结论（见 _armLongPress） */
+    this._longPressTimer = null;
+    this._longPressStart = null;
+    this._longPressAt = null;
+    /** 双指拖动: 冻结的轴与斜率、上一帧接触点、上一帧两指间距（见 _beginTwoFingerPan） */
+    this._touchPan = null;
+    this._touchPanX = 0;
+    this._touchPanY = 0;
+    this._pinchSpan = 0;
+
     /** 按住的方向键（W/A/S/D，由调用方维护后交给 setMoveKeys） */
     this._moveKeys = null;
   }
@@ -184,8 +207,11 @@ class CameraRig {
     // 旋转自己接管（见 _rotateByPixels）: OrbitControls 只有一个 rotateSpeed 符号，
     // 水平 / 垂直定不了各自方向。它继续负责滚轮缩放与阻尼。
     controls.mouseButtons = { LEFT: null, MIDDLE: null, RIGHT: null };
-    controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN };
-    canvas.style.touchAction = 'pan-y';    // 触屏: 单指留给页面滚动，双指 = 缩放；拖动 / 点选只认鼠标
+    // 触屏全部自己接管（见 beginPointer），OrbitControls 一根也不认
+    controls.touches = { ONE: null, TWO: null };
+    // 单指纵向留给页面滚动（画布很高，禁掉就翻不动页了）；浏览器一旦按 pan-y 接管就会把这一串
+    // touch 事件取消成 pointercancel，长按 / 拖动自己收尾（见 _endTouchContact）
+    canvas.style.touchAction = 'pan-y';
     // update() 只在位置 / 朝向真的变了时才返回 true 并派发 change，正好当脏标记，不必自己比距离
     controls.addEventListener('change', () => { this._dirty = true; });
     this._controls = controls;
@@ -334,10 +360,14 @@ class CameraRig {
     return dirty;
   }
 
-  // ─── 指针操作（左键挪观察点 / 中键转视角 / 抬手算点击） ──────────────
-  /** 按下: 左键挪观察点、中键转视角，其余键不接管（触屏只留双指缩放）；事件挂载在渲染层 */
+  // ─── 指针操作（左键挪观察点 / 中键转视角 / 抬手算点击 / 触屏长按与双指） ──
+  /** 按下: 左键挪观察点、中键转视角，其余键不接管；触屏走另一条路（见 _beginTouchContact） */
   beginPointer(event) {
-    if (!this._camera || event.pointerType === 'touch') return;
+    if (!this._camera) return;
+    if (event.pointerType === 'touch') {
+      this._beginTouchContact(event);
+      return;
+    }
     if (event.button === BUTTON_MIDDLE) {
       this._dragMode = 'rotate';
       // 中键不搬输入框焦点，转完视角按 WASD 会被 isTypingTarget 拦下 —— 按下就清一次（只清输入类元素）
@@ -369,9 +399,13 @@ class CameraRig {
     this._canvas?.setPointerCapture?.(event.pointerId);
   }
 
-  /** 移动: 在拖动就按这一帧的位移转视角 / 挪观察点 */
+  /** 移动: 在拖动就按这一帧的位移转视角 / 挪观察点；触屏按接触点分流（见 _moveTouchContacts） */
   movePointer(event) {
-    if (!this._dragMode || event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch') {
+      this._moveTouchContacts(event);
+      return;
+    }
+    if (!this._dragMode) return;
     const dx = event.clientX - this._dragX;
     const dy = event.clientY - this._dragY;
     if (dx === 0 && dy === 0) return;
@@ -385,9 +419,13 @@ class CameraRig {
     else this._rotateByPixels(dx, dy);
   }
 
-  /** 抬起: 只有 pointerup（不是 pointercancel）且左键没拖动过才算「点了一下」，结果留给 consumeClick 取 */
+  /** 抬起: 鼠标只有 pointerup（不是 pointercancel）且左键没拖动过才算「点了一下」；触屏见 _endTouchContact */
   endPointer(event) {
-    if (!this._dragMode || event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch') {
+      this._endTouchContact(event);
+      return;
+    }
+    if (!this._dragMode) return;
     this._clicked = this._dragMode === 'pan' && !this._pressMoved && event.type === 'pointerup';
     this.endDrag();
     if (this._clicked && this._canvas?.hasPointerCapture?.(event.pointerId)) {
@@ -400,6 +438,166 @@ class CameraRig {
     const clicked = this._clicked;
     this._clicked = false;
     return clicked;
+  }
+
+  /**
+   * 取走「上一次触屏长按」的落点并清掉（同 consumeClick）。
+   * 落点用**按下那一刻**的坐标: 长按期间晃几像素不该选中旁边那栋。
+   * @returns {{x: number, y: number}|null} 画布坐标；null = 这次不是长按
+   */
+  consumeLongPress() {
+    const at = this._longPressAt;
+    this._longPressAt = null;
+    return at;
+  }
+
+  // ─── 触屏: 单指长按选中 / 双指挪观察点 + 捏合缩放 ───────────────
+  /**
+   * 一根手指按下: 第一根起长按计时，第二根撤掉长按、改由两指中点拖动。
+   * **单指拖动挪观察点是有意不给的** —— 单手划过去只会误触，纵向还留给页面滚动（见 attach 的 touchAction）。
+   */
+  _beginTouchContact(event) {
+    if (this._touchPoints.has(event.pointerId) || this._touchPoints.size >= TOUCH_MAX_CONTACTS) return;
+    this._touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (this._touchPoints.size === 1) {
+      // 落在画布上才算按住场景: 叠在画布上的按钮（复位视角那些）点一下不该顺带选中建筑
+      if (event.target === this._canvas) this._armLongPress(event.pointerId, event.clientX, event.clientY);
+      return;
+    }
+    this._cancelLongPress();
+    this._beginTwoFingerPan();
+    this._syncTouchPanOrigin();
+  }
+
+  /** 一根手指移动: 还没拖动就只看它有没有晃出长按容差；已在拖动就按接触点位移挪（两根都在时顺带捏合缩放） */
+  _moveTouchContacts(event) {
+    const point = this._touchPoints.get(event.pointerId);
+    if (!point) return;
+    point.x = event.clientX;
+    point.y = event.clientY;
+
+    if (!this._touchPan) {
+      // 晃过就撤掉，不必等计时器到点（判定用按下那一刻的坐标算位移）
+      const start = this._longPressStart;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > TOUCH_LONG_PRESS_SLOP) {
+        this._cancelLongPress();
+      }
+      return;
+    }
+
+    const [first, second] = [...this._touchPoints.values()];
+    if (second) this._pinchByDistance(Math.hypot(first.x - second.x, first.y - second.y));
+    const x = second ? (first.x + second.x) * 0.5 : first.x;
+    const y = second ? (first.y + second.y) * 0.5 : first.y;
+    const dx = x - this._touchPanX;
+    const dy = y - this._touchPanY;
+    this._touchPanX = x;
+    this._touchPanY = y;
+    if (dx === 0 && dy === 0) return;
+    this._panByPixels(dx, dy);
+  }
+
+  /**
+   * 一根手指抬起 / 被取消: 双指里走了一根就按剩下那根接着挪，全走光了收尾。
+   * 剩下的那根不重新起长按 —— 这一轮手势已经是「挪视角」了。
+   */
+  _endTouchContact(event) {
+    if (!this._touchPoints.delete(event.pointerId)) return;
+    // 只撤「还没到点」的那份: 到点的结论得留给渲染层在这次抬手里取走（见 FactoryPreview._onPointerUp）
+    this._cancelLongPress();
+    // 被浏览器抢走的那串手势（纵向滚动等）连结论一起丢: 那一下是页面在滚，不是按住选中
+    if (event.type === 'pointercancel') this._discardLongPress();
+    if (!this._touchPan) return;
+    if (this._touchPoints.size) this._syncTouchPanOrigin();
+    else this._endTwoFingerPan();
+  }
+
+  /**
+   * 起长按计时: 到点且期间没多按手指、没晃出容差、没变成双指拖动，才把结论记进 _longPressAt
+   * （不到点一律不给结论）；上一轮手势留下的结论也在这里丢掉。
+   */
+  _armLongPress(pointerId, x, y) {
+    this._cancelLongPress();
+    this._discardLongPress();
+    this._longPressStart = { x, y };
+    this._longPressTimer = setTimeout(() => {
+      this._longPressTimer = null;
+      // 到点时手指可能已经走了，或已经变成双指拖动
+      if (this._touchPoints.has(pointerId) && !this._touchPan) this._longPressAt = this._longPressStart;
+    }, TOUCH_LONG_PRESS_MS);
+  }
+
+  /** 撤掉**还没到点**的长按（多按手指、晃出容差、抬起、被浏览器抢走都走这里） */
+  _cancelLongPress() {
+    if (this._longPressTimer !== null) clearTimeout(this._longPressTimer);
+    this._longPressTimer = null;
+    this._longPressStart = null;
+  }
+
+  /** 丢掉已到点、还没被取走的长按结论（抬手时不能丢，见 _endTouchContact） */
+  _discardLongPress() {
+    this._longPressAt = null;
+  }
+
+  /**
+   * 双指拖动开始: 两个大圆轴与每像素斜率照左键拖动那套在**这一刻定死**（探针取两指中点），
+   * 另存一份是因为它整段只读，不必挤占左键拖动那份状态；顺带记下两指间距给捏合缩放。
+   */
+  _beginTwoFingerPan() {
+    const [first, second] = [...this._touchPoints.values()];
+    const midX = (first.x + second.x) * 0.5;
+    const midY = (first.y + second.y) * 0.5;
+    const target = this._controls.target;
+    const { forward, left } = this._screenTangentFrame(target);
+    const rates = this._tangentRates(forward, left, this._dragProbeAt(midX, midY));
+    this._touchPan = {
+      axisForward: forward,
+      axisSide: left,
+      rateSide: rates.rateSide / PAN_SENSITIVITY,
+      rateForward: rates.rateForward / PAN_SENSITIVITY,
+    };
+    this._pinchSpan = Math.hypot(first.x - second.x, first.y - second.y);
+  }
+
+  /**
+   * 把「上一帧的接触原点」对齐到当前接触点: 双指 = 两指中点，剩一根 = 那根自己。
+   * 挪观察点用的是位移，原点取哪一点无所谓，但换手时不对齐就会算出「剩下那根到旧中点」的大位移、视角猛跳。
+   */
+  _syncTouchPanOrigin() {
+    const points = [...this._touchPoints.values()];
+    if (!points.length) return;
+    const [first, second] = points;
+    this._touchPanX = second ? (first.x + second.x) * 0.5 : first.x;
+    this._touchPanY = second ? (first.y + second.y) * 0.5 : first.y;
+  }
+
+  /**
+   * 捏合缩放: 观察点不动，只改取景距离，按两指**间距比**逐帧增量地乘（这一帧间距 / 上一帧间距）。
+   * 不用「起手间距 : 当前间距」一次算到底 —— 那种在顶到远近限位后往回捏要先把多捏的还回去才动，手感是「先僵一下再猛跳」。
+   */
+  _pinchByDistance(span) {
+    const previous = this._pinchSpan;
+    this._pinchSpan = span;
+    if (!(previous > 0) || !(span > 0)) return;      // 两指重合（间距 0）时不算，免得把相机甩飞
+    this._zoomTo(this._camera.position.distanceTo(this._controls.target) * (previous / span));
+  }
+
+  /** 改取景距离并重新摆相机（观察点不动）: 夹进远近限位，仰角按新距离重夹（下限是距离的函数） */
+  _zoomTo(distance) {
+    const target = this._controls.target;
+    const offset = this._camera.position.clone().sub(target);
+    const next = Math.min(MAX_VIEW_DISTANCE, Math.max(MIN_VIEW_DISTANCE, distance));
+    const elevation = this._clampElevation(this._elevationOf(offset, target.clone().normalize()), next);
+    this._placeCamera(target, offset, elevation, next);
+  }
+
+  /** 双指拖动收尾 */
+  _endTwoFingerPan() {
+    this._touchPan = null;
+    this._touchPanX = 0;
+    this._touchPanY = 0;
+    this._pinchSpan = 0;
   }
 
   /** 结束拖动并丢掉拖动期间冻结的一切（抬起、指针被抢、销毁都走这里） */
@@ -484,8 +682,8 @@ class CameraRig {
   }
 
   /**
-   * 左键拖动: 把观察点挪到球面别处（相机跟着走）。左右拖绕 `forward`、上下拖绕 `left`（= 法线 × forward）;
-   * 两个轴与每像素斜率在按下那一刻定死（每帧重算就不是测地线了）；仰角保持拖动前的值。
+   * 拖动（左键 / 触屏双指）: 把观察点挪到球面别处（相机跟着走）。左右拖绕 `forward`、上下拖绕 `left`
+   * （= 法线 × forward）; 两个轴与每像素斜率在起手那一刻定死（每帧重算就不是测地线了）；仰角保持拖动前的值。
    * 「跟手」语义走像素 → 斜率，与键盘那条弧长链分开（见 _moveByKeys）。
    */
   _panByPixels(dx, dy) {
@@ -494,11 +692,12 @@ class CameraRig {
     const distance = offset.length();                          // 当前取景距离（滚轮定的，拖动不变）
     const elevation = Math.PI / 2 - target.clone().normalize().angleTo(offset);
 
-    // 优先用按下那一刻冻结的轴与斜率；没有（拖动被中断 / 脚本直调）才现算
-    let axisForward = this._dragAxisForward;
-    let axisSide = this._dragAxisSide;
-    let rateSide = this._dragRateSide;
-    let rateForward = this._dragRateForward;
+    // 冻结的轴与斜率: 触屏双指那份在 _touchPan 里，其余用左键那份；都没有（拖动被中断 / 脚本直调）才现算
+    const frozen = this._touchPan;
+    let axisForward = frozen?.axisForward ?? this._dragAxisForward;
+    let axisSide = frozen?.axisSide ?? this._dragAxisSide;
+    let rateSide = frozen?.rateSide ?? this._dragRateSide;
+    let rateForward = frozen?.rateForward ?? this._dragRateForward;
     if (!axisForward || !axisSide || !(rateSide > 0) || !(rateForward > 0)) {
       const frame = this._screenTangentFrame(target);
       const probe = this._dragProbe ?? this._canvasCenterProbe();
@@ -523,7 +722,7 @@ class CameraRig {
 
   /**
    * 观察点当地切平面内的两个正交方向: `forward` = 视线的切向分量（屏幕"上"）、
-   * `left` = 法线 × forward（屏幕右是 forward × 法线）。只在按下左键那一刻调一次，整段拖动沿用。
+   * `left` = 法线 × forward（屏幕右是 forward × 法线）。只在起手那一刻调一次，整段拖动沿用。
    */
   _screenTangentFrame(target) {
     const normal = target.clone().normalize();
@@ -667,6 +866,11 @@ class CameraRig {
     this._moveKeys = null;
     this.endDrag();
     this._clicked = false;
+    // 长按计时器必须清掉: 到点还会去写 _longPressAt，而组件已经拆了
+    this._cancelLongPress();
+    this._discardLongPress();
+    this._touchPoints.clear();
+    this._endTwoFingerPan();
     this._controls?.dispose();
     this._controls = null;
     this._camera = null;

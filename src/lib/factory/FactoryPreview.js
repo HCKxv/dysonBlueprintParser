@@ -8,6 +8,7 @@
  *
  * 操作: 左键拖动 / **W/A/S/D** 让观察点在球面上走、左键**点**建筑选中并高亮（再点同一栋或点空处取消）、
  *       中键拖动转视角、滚轮缩放；右键不接管。
+ *       触屏: 双指拖动挪观察点 + 双指捏合缩放、单指长按选中建筑（判定在 cameraRig，这里拿落点去拾取）。
  *
  * 用法: init(canvas) / setBlueprint(data, resetView)（null = 清空）/ setGridVisible(visible) /
  *       setLayerVisible('buildings'|'belts'|'inserters'|'icons', visible) / setTargetLatitude(lat, north) /
@@ -651,14 +652,17 @@ class FactoryPreview {
     this._rig.attach(canvas, this._camera);
     this._rig.setMoveKeys(this._moveKeys);
 
-    // 左键 / 中键拖动: 按下在画布上，移动/抬起挂到 window，拖出面板也不会断
+    // 左键 / 中键 / 触屏拖动: 按下在画布上，移动/抬起挂到 window，拖出面板也不会断
     // （按下与拖动直接交给 rig；抬起还要接拾取，见 _onPointerUp）
     this._pointerHandlers = {
       down: (event) => this._rig?.beginPointer(event),
       move: (event) => this._rig?.movePointer(event),
       up: (event) => this._onPointerUp(event),
+      // 触屏长按会带出浏览器的右键菜单，压掉它
+      menu: (event) => event.preventDefault(),
     };
     canvas.addEventListener('pointerdown', this._pointerHandlers.down);
+    canvas.addEventListener('contextmenu', this._pointerHandlers.menu);
     window.addEventListener('pointermove', this._pointerHandlers.move);
     window.addEventListener('pointerup', this._pointerHandlers.up);
     window.addEventListener('pointercancel', this._pointerHandlers.up);
@@ -1771,7 +1775,7 @@ class FactoryPreview {
   }
 
   /**
-   * 点击拾取: 点到建筑就选中它，再点同一栋 / 点空处则取消（单选，没有多选）。位置用画布坐标。
+   * 拾取并切换选中: 取到建筑就选中，取到同一栋或空处则取消（单选）。位置用画布坐标。
    */
   _clickSelect(clientX, clientY) {
     const building = this._pickBuilding(clientX, clientY);
@@ -2226,9 +2230,17 @@ class FactoryPreview {
     this._needsRender = true;
   }
 
-  /** 抬起: rig 收尾后取「这一次算不算点了一下」的结论 —— 算就拾取（rig 只给结论，谁消费是这边的事） */
+  /**
+   * 抬起: 取「这次算不算点了一下 / 长按」的结论 —— 算就拾取（rig 只给结论与落点）。
+   * 顺序要紧: **先取长按再 endPointer**，抬手时 endPointer 会把长按那份收掉。
+   */
   _onPointerUp(event) {
+    const longPress = this._rig?.consumeLongPress();
     this._rig?.endPointer(event);
+    if (longPress) {
+      this._clickSelect(longPress.x, longPress.y);
+      return;
+    }
     if (this._rig?.consumeClick()) this._clickSelect(event.clientX, event.clientY);
   }
 
@@ -2326,6 +2338,7 @@ class FactoryPreview {
     this._renderer = null;
     if (this._pointerHandlers) {
       this._canvas?.removeEventListener('pointerdown', this._pointerHandlers.down);
+      this._canvas?.removeEventListener('contextmenu', this._pointerHandlers.menu);
       if (typeof window !== 'undefined') {
         window.removeEventListener('pointermove', this._pointerHandlers.move);
         window.removeEventListener('pointerup', this._pointerHandlers.up);
