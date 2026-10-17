@@ -405,7 +405,7 @@ export function createProjector(img, params) {
       // 4) 边缘过渡: a 从 FADE_FROM 降到 cosLimit 时 blend 由 1 到 0
       blend = a >= FADE_FROM ? 1 : (a - cosLimit) / (FADE_FROM - cosLimit);
     } else if (isBand) {
-        // 赤道带的上下、左右都用开区间: 正好压在图片边界上的点不算图内，否则会多涂一圈格子
+        // 赤道带的上下、左右都用开区间: 正好压线的点算图外
       if (lat <= -eqHalfLat + EDGE_EPS || lat >= eqHalfLat - EDGE_EPS) return null;
       dy = lat / eq.copyHeight; // 图片中心在赤道，上下边 = ±copyHeight/2
       // 到最近一份中心的经度差（份中心在 projLng + k×period）→ 落在空隙即图外
@@ -442,8 +442,8 @@ export function createProjector(img, params) {
   const resample = params.resample || 'average';
   const TARGET_SAMPLES = resample === 'average' ? 25 : 1;
 
-  // 每格的像素矩形（半开区间 [x0,x1) × [y0,y1)）: 只有等距圆柱用得上（半球的格子是曲面片、
-  // 环绕赤道的格子可能横跨「图片 / 空隙」，两者都走逐点采样）
+  // 每格的像素矩形（半开区间 [x0,x1) × [y0,y1)）: 只有球面等距圆柱用；
+  // 地基三档、半球、赤道带都走逐点采样
   const useRects = isEquirect;
   for (const band of bands) {
     if (!useRects) break;
@@ -509,15 +509,13 @@ export function createProjector(img, params) {
     };
   }
 
-  // ── 逐点采样（半球 / 环绕赤道）: 每格按经纬范围取点，走 uvAt ──
+  // ── 逐点采样（球面: 半球 / 环绕赤道；地基: 三档全部）──
   const AREA_DIV = 4;
   let accR = 0, accG = 0, accB = 0, accN = 0;
-  /** 本格是否整格都在图内（要求整格在图内，否则边缘会往外多出一圈格子） */
-  let allIn = true;
 
   function addSampleLatLng(lat, lng) {
     const uv = uvAt(lat, lng);
-    if (!uv) { allIn = false; return; } // 图外 → 整格不涂
+    if (!uv) return; // 图外: 不参与颜色
     const col = texelAt(uv[0], uv[1]);
     if (col[3] < PAINT_ALPHA_MIN) return; // 透明（a ≤ 85）没有自己的颜色，不算采样点
     const cr = col[0];
@@ -531,9 +529,19 @@ export function createProjector(img, params) {
     accN += 1;
   }
 
+  /**
+   * 涂不涂统一看格心（最多差半格）；球面全景走矩形抽样，不经过这里。
+   * 不能用「整格采样点都在图内」: 采样点含格边，压线的整行 / 整圈会被误判成图外。
+   */
+  function centerInside(lat, lng) {
+    return uvAt(lat, lng) !== null;
+  }
+
   function sampleCellByPoints(band, li, step) {
     const lngLo = li * step;
-    accR = 0; accG = 0; accB = 0; accN = 0; allIn = true;
+    const latMid = (band.latLo + band.latHi) / 2;
+    const lngMid = lngLo + step / 2;
+    accR = 0; accG = 0; accB = 0; accN = 0;
     if (TARGET_SAMPLES > 1) {
       for (let a = 0; a <= AREA_DIV; a += 1) {
         const lat = band.latLo + (band.latHi - band.latLo) * (a / AREA_DIV);
@@ -542,9 +550,9 @@ export function createProjector(img, params) {
         }
       }
     } else {
-      addSampleLatLng((band.latLo + band.latHi) / 2, lngLo + step / 2);
+      addSampleLatLng(latMid, lngMid);
     }
-    if (accN > 0 && allIn) {
+    if (accN > 0 && centerInside(latMid, lngMid)) {
       return {
         r: Math.round(accR / accN),
         g: Math.round(accG / accN),
@@ -552,13 +560,13 @@ export function createProjector(img, params) {
         a: 255,
       };
     }
-    // 没有可用采样点 / 有采样点在图外 → 底色 / 不涂色
+    // 没有可用采样点 / 格心不在图内 → 底色 / 不涂色
     return outCell;
   }
 
   /**
    * 按格子采样（下标 = 游戏 fillGrid.colors 的格子序号 = 带内累计偏移 + 经向序号）
-   * 等距圆柱走矩形抽样，半球 / 环绕赤道走逐点采样
+   * 球面等距圆柱走矩形抽样，半球 / 环绕赤道走逐点采样
    *
    * @param {(done:number,total:number)=>void} [onProgress]
    * @returns {Array<{r:number,g:number,b:number,a:number}|null>} null = 不涂色
@@ -614,7 +622,9 @@ export function createProjector(img, params) {
    * @param {number} lngHi 经度右界（度）
    */
   function samplePlanetCell(latLo, latHi, lngLo, lngHi) {
-    accR = 0; accG = 0; accB = 0; accN = 0; allIn = true;
+    const latMid = (latLo + latHi) / 2;
+    const lngMid = (lngLo + lngHi) / 2;
+    accR = 0; accG = 0; accB = 0; accN = 0;
     if (planetAreaDiv > 0) {
       for (let a = 0; a <= planetAreaDiv; a += 1) {
         const lat = latLo + (latHi - latLo) * (a / planetAreaDiv);
@@ -623,10 +633,10 @@ export function createProjector(img, params) {
         }
       }
     } else {
-      addSampleLatLng((latLo + latHi) / 2, (lngLo + lngHi) / 2);
+      addSampleLatLng(latMid, lngMid);
     }
-    // 整格在图外 / 有采样点在图外 → 不铺
-    if (accN <= 0 || !allIn) return planetFill;
+    // 没有可用采样点 / 格心不在图内 → 不铺
+    if (accN <= 0 || !centerInside(latMid, lngMid)) return planetFill;
     return packSample(Math.round(accR / accN), Math.round(accG / accN), Math.round(accB / accN));
   }
 

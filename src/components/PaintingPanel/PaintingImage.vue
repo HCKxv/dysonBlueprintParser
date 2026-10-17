@@ -24,7 +24,7 @@ const FILL_MODES: Array<{ value: FillMode; label: string; title?: string }> = [
   { value: 'black', label: '黑色' },
   { value: 'white', label: '白色' },
   { value: 'bg', label: '自动' },
-  { value: 'none', label: '透明' },
+  { value: 'none', label: '无' },
   { value: 'custom', label: '自定义' },
 ]
 
