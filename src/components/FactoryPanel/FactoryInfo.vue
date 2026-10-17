@@ -261,6 +261,7 @@ const reformIcons = {
       <div class="factory-fac-head">
         <span class="factory-fac-title">包含地基</span>
         <span class="factory-fac-sum">{{ foundationTotal }}个地基</span>
+        <span class="factory-fac-note">暂不支持显示地基</span>
       </div>
       <div class="factory-fac-grid">
         <div
@@ -487,6 +488,14 @@ const reformIcons = {
 .factory-fac-sum {
   font-size: 12px;
   color: var(--fg-secondary);
+}
+
+/* 标题右边的说明: 暂不支持显示地基 */
+.factory-fac-note {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--fg-muted);
 }
 
 .factory-fac-grid {
