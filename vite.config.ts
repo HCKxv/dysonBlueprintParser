@@ -10,9 +10,9 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'sphere.svg'],
       injectRegister: 'auto',
       manifest: {
-        name: '戴森球蓝图预览 & 发电量计算',
-        short_name: '戴森球预览',
-        description: '戴森球蓝图预览、发电量计算与离线查看工具',
+        name: '戴森球计划蓝图工具',
+        short_name: '蓝图工具',
+        description: '《戴森球计划》的蓝图工具，支持蓝图预览、编辑、发电量计算。',
         theme_color: '#0b1020',
         background_color: '#0b1020',
         display: 'standalone',
@@ -29,7 +29,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,svg,json,png}'],
+        globPatterns: ['**/*.{js,css,html,ico,svg,json}'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/.*\.png$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'assets-png',
+              expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
       // 开发服务器不启用 PWA
       devOptions: {

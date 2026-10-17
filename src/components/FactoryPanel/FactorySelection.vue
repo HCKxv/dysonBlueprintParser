@@ -24,7 +24,17 @@ const name = computed(() => (selectedBuilding.value ? itemName(selectedBuilding.
 /** 网格坐标（格） */
 const coord = computed(() => selectedBuildingCoord.value)
 /** 原始坐标 */
-const BPcoord = computed(() => selectedBuilding.value?.localOffset?.[0] ?? null)
+const localCoord = computed(() => {
+  const building = selectedBuilding.value
+  if (!building) return null
+  const offset = building?.localOffset?.[0]
+  return {
+    area: building?.areaIndex,
+    x: offset.x,
+    y: offset.y,
+    z: offset.z,
+  }
+})
 
 /** 坐标数值 */
 function num(value: number) {
@@ -121,7 +131,7 @@ watch(selectedBuilding, resetStaged)
         <span>位置 ({{ num(coord.x) }}, {{ num(coord.y) }})</span>
         <span>高 {{ num(coord.z) }}</span>
         <span class="factory-selection-coord-hint"
-          :title= "`原始坐标：x=${BPcoord.x}, y=${BPcoord.y}, z=${BPcoord.z}`">
+          :title= "`区域${localCoord.area}：x=${localCoord.x}, y=${localCoord.y}, z=${localCoord.z}`">
           <svg viewBox="0 0 16 16">
             <circle cx="8" cy="8" r="6.8" />
             <path

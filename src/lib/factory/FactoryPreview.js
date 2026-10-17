@@ -759,7 +759,7 @@ class FactoryPreview {
     });
     this._buildBlueprintObjects(layout);
 
-    this._addMarkers(layout, Math.min(Math.max(blueprint.primaryAreaIdx ?? 0, 0), layout.areas.length - 1));
+    this._addMarkers(layout);
 
     // 归位目标按新蓝图重算（「复位视角」据此回蓝图中心），只是不一定要马上把镜头挪过去
     if (layout.focus) {
@@ -1539,48 +1539,29 @@ class FactoryPreview {
     group.userData.links = n;
   }
 
-  /**
-   * 标出蓝图原点与各区域起点（都是一条从地表戳出来的细线）: 蓝图原点 = 主区域的锚点
-   * （建筑偏移的参考点，旋转 180° 时是区域盒的另一端）；其余区域的锚点是红色短线。
-   */
-  _addMarkers(layout, primaryAreaIdx) {
-    /** 各区域起点标记（红）与蓝图原点标记（橙） */
-    const AREA_MARKER_COLOR = 0xff6b6b;
-    const ORIGIN_MARKER_COLOR = 0xffb454;
+  /** 标出各区域的锚点 */
+  _addMarkers(layout) {
+    const MARKER_COLOR = 0xffb454;
     /** 标记线长度（场景单位；半径 1 的球面上一个赤道格 ≈ 0.00628） */
-    const AREA_MARKER_LENGTH = 0.012;
-    const ORIGIN_MARKER_LENGTH = 0.028;
+    const MARKER_LENGTH = 0.012;
     /** 起点离地表抬一点: 必须抬过网格线所在的半径，否则会被网格盖住半截 */
     const MARKER_BASE_LIFT = 0.0003;
 
     const group = new THREE.Group();
     group.name = 'factory-markers';
 
-    const addLine = (latDeg, lngDeg, color, length) => {
+    const addLine = (latDeg, lngDeg) => {
       const dir = surfaceDirection(latDeg, lngDeg);
       const base = PLANET_RADIUS + MARKER_BASE_LIFT;
       const geometry = new THREE.BufferGeometry().setFromPoints([
         dir.clone().multiplyScalar(base),
-        dir.clone().multiplyScalar(base + length),
+        dir.clone().multiplyScalar(base + MARKER_LENGTH),
       ]);
-      group.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color })));
+      group.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: MARKER_COLOR })));
     };
 
-    /** 优先用锚点（建筑参考点），老数据没有就退回盒起点 */
-    const anchorOf = (area) => ({
-      latDeg: area.anchorLatDeg ?? area.startLatDeg,
-      lngDeg: area.anchorLngDeg ?? area.startLngDeg,
-    });
-
-    layout.areas.forEach((area, i) => {
-      if (i === primaryAreaIdx) return;
-      const anchor = anchorOf(area);
-      addLine(anchor.latDeg, anchor.lngDeg, AREA_MARKER_COLOR, AREA_MARKER_LENGTH);
-    });
-    const primary = layout.areas[primaryAreaIdx];
-    if (primary) {
-      const anchor = anchorOf(primary);
-      addLine(anchor.latDeg, anchor.lngDeg, ORIGIN_MARKER_COLOR, ORIGIN_MARKER_LENGTH);
+    for (const area of layout.areas) {
+      addLine(area.anchorLatDeg, area.anchorLngDeg);
     }
 
     this._markers = group;
