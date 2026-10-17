@@ -395,7 +395,7 @@ export function handleBlueprintText(text: string) {
     return
   }
   if (!trimmed.startsWith('DYBP:')) {
-    toast.show('内容不是有效的蓝图')
+    toast.show('内容不是有效的球体蓝图')
     return
   }
 
