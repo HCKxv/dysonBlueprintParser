@@ -491,40 +491,35 @@ export function editLabGroup(index: number, changes: BuildingChanges): boolean {
  * @param dropSlot 降回行星内时丢弃第几个物品栏位（1-5）；不给就丢最后一个
  */
 export function editStationType(index: number, dropSlot: number | null = null): boolean {
-  const blueprint = factory.blueprint
-  
-  const building = blueprint.buildings[index]
+  const building = factory.blueprint?.buildings[index]
   if (!building || Number(building.index) !== index) return false
 
   const slot = Number.isInteger(dropSlot) ? Number(dropSlot) : 5
 
+  const parameters = { ...(building.parameters ?? {}) }
+
+  let itemId: number
   if (building.itemId === 2103) {
     // 行星内 → 星际: 补一个空栏位
-    if (building.parameters.storage?.length <= 4) {
-      building.parameters.storage?.push({ itemId: 0, localRole: 0, remoteRole: 0, max: 0, lockAmount: 0 })
+    if (parameters.storage.length <= 4) {
+      parameters.storage.push({ itemId: 0, localRole: 0, remoteRole: 0, max: 0, lockAmount: 0 })
     }
-    building.itemId = 2104
-    building.modelIndex = ITEM_MODEL[2104]?.[0]
+    itemId = 2104
   } else if (building.itemId === 2104) {
     // 星际 → 行星内: 丢一个栏位，再把指着它的传送带槽位改掉
-    building.parameters.storage.splice(slot - 1, 1)
-    building.parameters.slots.forEach(belt => {
+    parameters.storage.splice(slot - 1, 1)
+    parameters.slots.forEach(belt => {
       const storageIdx = Number(belt?.storageIdx)
       if (storageIdx < 1 || storageIdx > 5) return   // 0 = 不输出、6 = 翘曲器
       if (storageIdx === slot) belt.storageIdx = 0
       else if (storageIdx > slot) belt.storageIdx = storageIdx - 1
     })
-    building.itemId = 2103
-    building.modelIndex = ITEM_MODEL[2103]?.[0]
+    itemId = 2103
   } else {
     return false
   }
 
-  syncBeltIcon(blueprint)
-  
-  applyBlueprint(blueprint, false)
-  factory.modified = true
-  return true
+  return editBuilding(index, { itemId, modelIndex: ITEM_MODEL[itemId]?.[0], parameters })
 }
 
 /**

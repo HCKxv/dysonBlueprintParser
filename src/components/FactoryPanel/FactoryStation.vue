@@ -31,10 +31,6 @@ const emit = defineEmits<{
   hint: [text: string]
 }>()
 
-/** 拖动中的临时值（按字段 key / 栏位下标）: 只在松手时写回，免得每一帧都重摆预览 */
-const dragging = reactive<Record<string, number>>({})
-const draggingMax = reactive<Record<number, number>>({})
-
 /** 物品上限: 吸附到 100 的倍数；行星内站每栏只有星际站的一半 */
 const MIN_ITEM_AMOUNT = 0
 const MAX_ITEM_AMOUNT = 20000
@@ -199,33 +195,25 @@ function rawUi(field: Field) {
 /** 滑杆位置: 界面值钳到区间（超范围的就停在两端） */
 const toUi = (field: Field) => clamp(fieldMin(field), fieldMax(field), rawUi(field), field.step ?? 1)
 
-/** 滑杆当前位置: 拖动中用本地值；集装数量勾了科技上限就停在最右档 */
+/** 滑杆当前位置: 集装数量勾了科技上限就停在最右档 */
 function sliderAt(field: Field) {
-  if (dragging[field.key] !== undefined) return dragging[field.key]
   if (field.key === 'pilerCount' && pilerTech.value) return fieldMax(field)
   return toUi(field)
 }
 
-/** 数值那格: 显示参数里的真实值，拖动时跟着走 */
+/** 数值那格: 显示参数里的真实值 */
 function display(field: Field) {
   if (field.key === 'pilerCount' && pilerTech.value) return '科技上限'
-  const ui = dragging[field.key] ?? rawUi(field)
+  const ui = rawUi(field)
   const scale = field.scale ? SCALES[field.scale] : undefined
   if (scale?.noLimit !== undefined && ui >= scale.noLimit) return scale.noLimitText ?? '不限'
   const unit = scale?.unit ?? ''
   return unit ? `${ui} ${unit}` : String(ui)
 }
 
-/** 滑杆拖一下 / 松手: 拖动中只动本地值，松手才吸附并写回 */
+/** 拖滑杆 */
 function onSlide(field: Field, e: Event) {
-  dragging[field.key] = clamp(fieldMin(field), fieldMax(field), Number((e.target as HTMLInputElement).value), field.step ?? 1)
-}
-
-function onCommit(field: Field, e: Event) {
-  const el = e.target as HTMLInputElement
-  const ui = clamp(fieldMin(field), fieldMax(field), Number(el.value), field.step ?? 1)
-  dragging[field.key] = ui
-  el.value = String(ui)
+  const ui = clamp(fieldMin(field), fieldMax(field), Number((e.target as HTMLInputElement).value), field.step ?? 1)
   const scale = field.scale ? SCALES[field.scale].toRaw : (v: number) => v
   emit('change', field.key, scale(ui))
 }
@@ -271,18 +259,9 @@ function onMaxInput(index: number, e: Event) {
   emitStorage(index, { max: value })
 }
 
-/** 上限滑杆当前位置（拖动中用本地值；输入框跟着它实时变） */
-const maxSliderAt = (index: number, row: any) => draggingMax[index] ?? Number(row.max ?? 0)
-
+/** 拖上限滑杆 */
 function onMaxSlide(index: number, e: Event) {
-  draggingMax[index] = Number((e.target as HTMLInputElement).value)
-}
-
-function onMaxSlideCommit(index: number, e: Event) {
-  const el = e.target as HTMLInputElement
-  const value = clamp(MIN_ITEM_AMOUNT, itemMax.value, Number(el.value), ITEM_AMOUNT_STEP)
-  el.value = String(value)
-  delete draggingMax[index]
+  const value = clamp(MIN_ITEM_AMOUNT, itemMax.value, Number((e.target as HTMLInputElement).value), ITEM_AMOUNT_STEP)
   emitStorage(index, { max: value })
 }
 
@@ -313,17 +292,6 @@ function onClearItem(index: number) {
   if (Number(storage.value[index]?.itemId ?? 0) <= 0) return
   emitStorage(index, { itemId: 0 })
 }
-
-// 参数对象换了（选了别的塔 / 换蓝图）就清掉拖动中的临时值，别让它盖住新值
-watch(() => props.parameters, () => {
-  for (const key of Object.keys(dragging)) delete dragging[key]
-  for (const key of Object.keys(draggingMax)) delete draggingMax[key]
-})
-
-// 勾上 / 取消「使用科技上限」时，也要清掉这一行拖出来的临时值（否则它会盖住「停在最右档」）
-watch(pilerTech, () => {
-  delete dragging.pilerCount
-})
 </script>
 
 <template>
@@ -351,7 +319,7 @@ watch(pilerTech, () => {
               :min="MIN_ITEM_AMOUNT"
               :max="itemMax"
               :step="ITEM_AMOUNT_STEP"
-              :value="maxSliderAt(index, row)"
+              :value="Number(row.max ?? 0)"
               @change="onMaxInput(index, $event)"
             />
             <button
@@ -366,10 +334,9 @@ watch(pilerTech, () => {
             :min="MIN_ITEM_AMOUNT"
             :max="itemMax"
             :step="ITEM_AMOUNT_STEP"
-            :value="maxSliderAt(index, row)"
-            :style="{ '--factory-range-fill': `${(maxSliderAt(index, row) / itemMax) * 100}%` }"
+            :value="Number(row.max ?? 0)"
+            :style="{ '--factory-range-fill': `${(Number(row.max ?? 0) / itemMax) * 100}%` }"
             @input="onMaxSlide(index, $event)"
-            @change="onMaxSlideCommit(index, $event)"
           />
         </div>
 
@@ -422,7 +389,6 @@ watch(pilerTech, () => {
           :disabled="field.key === 'pilerCount' && pilerTech"
           :style="{ '--factory-range-fill': `${((sliderAt(field) - fieldMin(field)) / (fieldMax(field) - fieldMin(field))) * 100}%` }"
           @input="onSlide(field, $event)"
-          @change="onCommit(field, $event)"
         />
         <span class="factory-station-value">{{ display(field) }}</span>
 

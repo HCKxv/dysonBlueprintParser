@@ -120,9 +120,6 @@ const storageName = computed(() => STORAGE_MODE_NAMES[storageMode.value])
 const storageStop = computed(() => STORAGE_STOPS[STORAGE_MODES.indexOf(storageMode.value)])
 const storageClass = computed(() => `factory-dispenser-storage-${storageMode.value}`)
 
-/** 拖动中先只动本地值，松手才吸附并写回 */
-const dragging = ref<number | undefined>(undefined)
-
 /** 吸附到步长并钳在区间内（超范围的就停在两端）；NaN 退回下限 */
 function snap(value: number) {
   const from = Number.isFinite(value) ? value : POWER_MIN
@@ -131,26 +128,17 @@ function snap(value: number) {
   return Math.round(clamped * 10) / 10   // 只留一位小数，消掉浮点尾巴
 }
 
-/** 滑块 / 数值当前的位置: 拖动中用本地值，否则用参数值吸附后的结果 */
-const powerAt = computed(() => (dragging.value ?? snap(Number(props.parameters?.workEnergyPerTick))))
+/** 滑块 / 数值当前的位置: 参数值吸附后的结果 */
+const powerAt = computed(() => snap(Number(props.parameters?.workEnergyPerTick)))
 
 const powerFill = computed(() =>
   `${((powerAt.value - POWER_MIN) / (POWER_MAX - POWER_MIN)) * 100}%`)
 
-/** 数值那一格；拖动中跟着滑块走 */
+/** 数值那一格 */
 const powerText = computed(() => `${powerAt.value.toFixed(1)} MW`)
 
 function onPowerInput(e: Event) {
-  dragging.value = snap(Number((e.target as HTMLInputElement).value))
-}
-
-/** 松手: 吸附后写回参数 */
-function onPowerCommit(e: Event) {
-  const el = e.target as HTMLInputElement
-  const value = snap(Number(el.value))
-  dragging.value = value
-  el.value = String(value)
-  emit('change', 'workEnergyPerTick', value)
+  emit('change', 'workEnergyPerTick', snap(Number((e.target as HTMLInputElement).value)))
 }
 
 // 注入成 CSS 变量（两个色的值只写一份，CSS 里只引用变量名）
@@ -257,7 +245,6 @@ const COLORS: Record<string, string> = {
         :value="powerAt"
         :style="{ '--factory-range-fill': powerFill }"
         @input="onPowerInput"
-        @change="onPowerCommit"
       />
       <span class="factory-dispenser-power-value">{{ powerText }}</span>
     </div>

@@ -95,7 +95,6 @@ const labCount = computed(() => (isLab(selectedBuilding.value?.itemId)
 /** 清空暂存 */
 function resetStaged() {
   for (const key of Object.keys(staged)) delete staged[key]
-  paramHint.value = ''        // 提示是上一栋报的，先清掉，新的一栋会自己报
 }
 
 /** 保存: 把改过的项交出 */
@@ -113,8 +112,11 @@ function onSave() {
   toast.show(ok ? '已保存该建筑的修改' : '保存失败：没找到该建筑')
 }
 
-// 换选中建筑时清空暂存
-watch(selectedBuilding, resetStaged)
+// 换选中建筑时清空暂存和提示
+watch(() => selectedBuilding.value?.index, () => {
+  resetStaged()
+  paramHint.value = ''
+})
 
 </script>
 
@@ -268,11 +270,17 @@ watch(selectedBuilding, resetStaged)
     <div class="factory-selection-actions">
       <span class="factory-selection-hint" role="status">{{ paramHint }}</span>
       <button
+        class="btn-sm btn-ghost"
+        type="button"
+        :disabled="!dirty"
+        @click="resetStaged"
+      >放弃修改</button>
+      <button
         class="btn-sm factory-selection-save"
         type="button"
         :disabled="!dirty"
         @click="onSave"
-      >保存</button>
+      >保存修改</button>
     </div>
   </div>
   <div v-else class="factory-selection-empty">未选择建筑</div>
@@ -364,12 +372,12 @@ watch(selectedBuilding, resetStaged)
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 6px;
   margin-top: 4px;
 }
 
-/* 保存左边的提示位 */
+/* 按钮左边的提示位 */
 .factory-selection-hint {
-  margin-right: 4px;
   font-size: 12px;
   color: var(--fg-muted);
   min-height: 16px;
